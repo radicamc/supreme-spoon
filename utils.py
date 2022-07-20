@@ -1,24 +1,15 @@
-from astropy.io import fits
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Wed Jul 20 08:51 2022
+
+@author: MCR
+
+Miscellaneous pipeline tools.
+"""
+
 import bottleneck as bn
-from matplotlib.gridspec import GridSpec
-import matplotlib.pyplot as plt
 import numpy as np
-from tqdm import tqdm
-import warnings
-
-from jwst import datamodels
-from jwst.pipeline import calwebb_detector1
-from jwst.pipeline import calwebb_spec2
-from jwst.extract_1d.soss_extract import soss_boxextract
-
-from sys import path
-
-soss_path = '/home/radica/GitHub/jwst-mtl/'
-path.insert(1, soss_path)
-
-from SOSS.dms import soss_oneoverf
-from SOSS.dms import soss_outliers
-from SOSS.dms.soss_centroids import get_soss_centroids
 
 
 def get_interp_box(data, box_size, i, j, dimx, dimy):
@@ -63,6 +54,8 @@ def do_replacement(frame, badpix_map, box_size=5):
 
 
 def make_deepstack(cube, return_rms=False):
+    """Make deepstack of a TSO.
+    """
 
     deepstack = bn.nanmedian(cube, axis=0)
     if return_rms is True:

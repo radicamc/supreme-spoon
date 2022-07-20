@@ -1,24 +1,20 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Wed Jul 20 08:53 2022
+
+@author: MCR
+
+Custom JWST DMS pipeline steps.
+"""
+
 from astropy.io import fits
 import bottleneck as bn
-from matplotlib.gridspec import GridSpec
-import matplotlib.pyplot as plt
 import numpy as np
 from tqdm import tqdm
 import warnings
 
 from jwst import datamodels
-from jwst.pipeline import calwebb_detector1
-from jwst.pipeline import calwebb_spec2
-from jwst.extract_1d.soss_extract import soss_boxextract
-
-from sys import path
-
-soss_path = '/home/radica/GitHub/jwst-mtl/'
-path.insert(1, soss_path)
-
-from SOSS.dms import soss_oneoverf
-from SOSS.dms import soss_outliers
-from SOSS.dms.soss_centroids import get_soss_centroids
 
 import utils
 
@@ -78,7 +74,7 @@ def badpixstep(datafiles, thresh=3, box_size=5, max_iter=2, output_dir=None,
 
         # Generate the deepstack.
         print(' Generating a deep stack using all integrations...')
-        deepframe = bn.nanmedian(newdata, axis=0)
+        deepframe = utils.make_deepstack(newdata)[0]
         badpix = np.zeros_like(deepframe)
         count = 0
         nint, dimy, dimx = np.shape(newdata)
@@ -308,7 +304,8 @@ def oneoverfstep(datafiles, output_dir=None, save_results=False,
             if datamodel.meta.subarray.name == 'SUBSTRIP256':
                 with warnings.catch_warnings():
                     warnings.simplefilter('ignore', category=RuntimeWarning)
-                    dc = np.nansum(w * sub_m[i], axis=1) / np.nansum(w * current_outlier, axis=1)
+                    dc = np.nansum(w * sub_m[i], axis=1)
+                    dc /= np.nansum(w * current_outlier, axis=1)
                 # make sure no NaN will corrupt the whole column
                 dc = np.where(np.isfinite(dc), dc, 0)
                 # dc is 2D - expand to the 3rd (columns) dimension
@@ -318,7 +315,8 @@ def oneoverfstep(datafiles, output_dir=None, save_results=False,
             elif datamodel.meta.subarray.name == 'SUBSTRIP96':
                 with warnings.catch_warnings():
                     warnings.simplefilter('ignore', category=RuntimeWarning)
-                    dc = np.nansum(w * sub_m[i], axis=1) / np.nansum(w * current_outlier, axis=1)
+                    dc = np.nansum(w * sub_m[i], axis=1)
+                    dc /= np.nansum(w * current_outlier, axis=1)
                 # make sure no NaN will corrupt the whole column
                 dc = np.where(np.isfinite(dc), dc, 0)
                 # dc is 2D - expand to the 3rd (columns) dimension
@@ -349,16 +347,16 @@ def oneoverfstep(datafiles, output_dir=None, save_results=False,
         # Save results to disk if requested.
         if save_results is True:
             hdu = fits.PrimaryHDU(sub)
-            hdu.writeto(output_dir + fileroots[n] + 'oneoverfstep_diffim.fits',
+            hdu.writeto(output_dir+fileroots[n]+'oneoverfstep_diffim.fits',
                         overwrite=True)
             hdu = fits.PrimaryHDU(subcorr)
-            hdu.writeto(output_dir + fileroots[n] + 'oneoverfstep_diffimcorr.fits',
+            hdu.writeto(output_dir+fileroots[n]+'oneoverfstep_diffimcorr.fits',
                         overwrite=True)
             hdu = fits.PrimaryHDU(dcmap)
-            hdu.writeto(output_dir + fileroots[n] + 'oneoverfstep_noisemap.fits',
+            hdu.writeto(output_dir+fileroots[n]+'oneoverfstep_noisemap.fits',
                         overwrite=True)
             corrected_rampmodels.append(rampmodel_corr)
-            rampmodel_corr.write(output_dir + fileroots[n] + 'oneoverfstep.fits')
+            rampmodel_corr.write(output_dir+fileroots[n]+'oneoverfstep.fits')
 
         datamodel.close()
 
