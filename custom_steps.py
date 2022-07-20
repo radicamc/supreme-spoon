@@ -9,7 +9,6 @@ Custom JWST DMS pipeline steps.
 """
 
 from astropy.io import fits
-import bottleneck as bn
 import numpy as np
 from tqdm import tqdm
 import warnings

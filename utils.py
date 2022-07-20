@@ -8,8 +8,11 @@ Created on Wed Jul 20 08:51 2022
 Miscellaneous pipeline tools.
 """
 
+from astropy.io import fits
+from astropy.time import Time
 import bottleneck as bn
 import numpy as np
+from jwst import datamodels
 
 
 def get_interp_box(data, box_size, i, j, dimx, dimy):
@@ -64,6 +67,35 @@ def make_deepstack(cube, return_rms=False):
         rms = None
 
     return deepstack, rms
+
+
+def unpack_spectra(filename, quantities=('WAVELENGTH', 'FLUX', 'FLUX_ERROR')):
+    multi_spec = datamodels.open(filename)
+
+    all_spec = {sp_ord: {quantity: [] for quantity in quantities}
+                for sp_ord in [1, 2, 3]}
+    for spec in multi_spec.spec:
+        sp_ord = spec.spectral_order
+        for quantity in quantities:
+            all_spec[sp_ord][quantity].append(spec.spec_table[quantity])
+
+    for sp_ord in all_spec:
+        for key in all_spec[sp_ord]:
+            all_spec[sp_ord][key] = np.array(all_spec[sp_ord][key])
+
+    multi_spec.close()
+    return all_spec
+
+
+def make_time_axis(filepath):
+    header = fits.getheader(filepath, 0)
+    t_start = header['DATE-OBS'] + 'T' + header['TIME-OBS']
+    tgroup = header['TGROUP'] / 3600 / 24
+    ngroup = header['NGROUPS'] + 1
+    nint = header['NINTS']
+    t_start = Time(t_start, format='isot', scale='utc')
+    t = np.arange(nint) * tgroup * ngroup + t_start.jd
+    return t
 
 
 
