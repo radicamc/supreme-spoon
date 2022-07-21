@@ -8,6 +8,7 @@ Created on Wed Jul 20 14:02 2022
 JWST data analysis plotting routines.
 """
 
+# TODO: Save plotting to file instead of showing
 import corner
 import matplotlib.backends.backend_pdf
 from matplotlib.gridspec import GridSpec
@@ -189,4 +190,3 @@ def do_centroid_plot(deepstack, x1, y1, x2, y2, x3, y3, labels=None):
     plt.colorbar()
     plt.legend(fontsize=12)
     plt.show()
-

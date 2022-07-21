@@ -11,12 +11,14 @@ Miscellaneous pipeline tools.
 from astropy.io import fits
 from astropy.time import Time
 import bottleneck as bn
-import os
+from datetime import datetime
 import numpy as np
+import os
 import warnings
 
 from jwst import datamodels
 from jwst.extract_1d.soss_extract import soss_solver
+from jwst.pipeline import calwebb_spec2
 
 from sys import path
 applesoss_path = '/home/radica/GitHub/APPLESOSS/'
@@ -81,8 +83,12 @@ def make_deepstack(cube, return_rms=False):
     return deepstack, rms
 
 
-def unpack_spectra(filename, quantities=('WAVELENGTH', 'FLUX', 'FLUX_ERROR')):
-    multi_spec = datamodels.open(filename)
+def unpack_spectra(datafile, quantities=('WAVELENGTH', 'FLUX', 'FLUX_ERROR')):
+
+    if isinstance(datafile, str):
+        multi_spec = datamodels.open(datafile)
+    else:
+        multi_spec = datafile
 
     all_spec = {sp_ord: {quantity: [] for quantity in quantities}
                 for sp_ord in [1, 2, 3]}
@@ -137,7 +143,11 @@ def verify_path(path):
         os.mkdir(path)
 
 
-def determine_soss_transform(deepframe, spec_trace, show_plots=False):
+def determine_soss_transform(deepframe, datafile, show_plots=False):
+
+    step = calwebb_spec2.extract_1d_step.Extract1dStep()
+    spectrace_ref = step.get_reference_file(datafile, 'spectrace')
+    spec_trace = datamodels.SpecTraceModel(spectrace_ref)
 
     xref_o1 = spec_trace.trace[0].data['X']
     yref_o1 = spec_trace.trace[0].data['Y']
@@ -175,7 +185,7 @@ def determine_soss_transform(deepframe, spec_trace, show_plots=False):
 
 
 def get_trace_centroids(deepframe, subarray):
-
+    # TODO: save output
     dimy, dimx = np.shape(deepframe)
     with warnings.catch_warnings():
         warnings.filterwarnings('ignore')
@@ -204,3 +214,87 @@ def get_trace_centroids(deepframe, subarray):
     return cen_o1, cen_o2, cen_o3
 
 
+def write_spectra_to_file(filename, w1, f1, e1, w2, f2, e2, t,
+                          header_dict=None, header_comments=None):
+    hdr = fits.Header()
+    if header_dict is not None:
+        for key in header_dict:
+            hdr[key] = header_dict[key]
+            if key in header_comments.keys():
+                hdr.comments[key] = header_comments[key]
+    hdu1 = fits.PrimaryHDU(header=hdr)
+    hdr = fits.Header()
+    hdr['EXTNAME'] = "Wave 2D Order 1"
+    hdr['UNITS'] = "Micron"
+    hdu2 = fits.ImageHDU(w1, header=hdr)
+    hdr = fits.Header()
+    hdr['EXTNAME'] = "Flux Order 1"
+    hdr['UNITS'] = "Electrons"
+    hdu3 = fits.ImageHDU(f1, header=hdr)
+    hdr = fits.Header()
+    hdr['EXTNAME'] = "Flux Error Order 1"
+    hdr['UNITS'] = "Electrons"
+    hdu4 = fits.ImageHDU(e1, header=hdr)
+    hdr = fits.Header()
+    hdr['EXTNAME'] = "Wave 2D Order 2"
+    hdr['UNITS'] = "Micron"
+    hdu5 = fits.ImageHDU(w2, header=hdr)
+    hdr = fits.Header()
+    hdr['EXTNAME'] = "Flux Order 2"
+    hdr['UNITS'] = "Electrons"
+    hdu6 = fits.ImageHDU(f2, header=hdr)
+    hdr = fits.Header()
+    hdr['EXTNAME'] = "Flux Error Order 2"
+    hdr['UNITS'] = "Electrons"
+    hdu7 = fits.ImageHDU(e2, header=hdr)
+    hdr = fits.Header()
+    hdr['EXTNAME'] = "Time"
+    hdr['UNITS'] = "BJD"
+    hdu8 = fits.ImageHDU(t, header=hdr)
+    hdul = fits.HDUList([hdu1, hdu2, hdu3, hdu4, hdu5, hdu6, hdu7, hdu8])
+    hdul.writeto(filename, overwrite=True)
+
+
+def sigma_clip_lightcurves(flux, ferr, thresh=5):
+    flux_clipped = np.copy(flux)
+    nints, nwave = np.shape(flux)
+    clipsum = 0
+    for itg in range(nints):
+        med = np.nanmedian(flux[itg])
+        ii = np.where(np.abs(flux[itg] - med) / ferr[itg] > thresh)[0]
+        flux_clipped[itg, ii] = med
+        clipsum += len(ii)
+
+    print('{0} pixels clipped ({1:.3f}%)'.format(clipsum, clipsum / nints / nwave * 100))
+
+    return flux_clipped
+
+
+def get_default_header():
+    header_dict = {'Target_Name': None,
+                   'Instrument': 'NIRISS/SOSS',
+                   'Pipeline': 'Supreme Spoon',
+                   'Date': datetime.utcnow().replace(microsecond=0).isoformat(),
+                   'Author': 'MCR',
+                   'Contents': 'Full resolution 1D stellar spectra'}
+    header_comments = {'Target_Name': 'Name of the target',
+                       'Instrument': 'Instrument used to acquire the data',
+                       'Pipeline': 'Pipeline that produced this file',
+                       'Date': 'UTC date file created',
+                       'Author': 'File author',
+                       'Contents': 'Description of file contents'}
+
+    return header_dict, header_comments
+
+
+def get_dn2e(datafile):
+    if isinstance(datafile, str):
+        data = datamodels.open(datafile)
+    else:
+        data = datafile
+    ngroup = data.meta.exposure.ngroups
+    frame_time = data.meta.exposure.frame_time
+    gain_factor = 1.6
+    dn2e = gain_factor * (ngroup - 1) * frame_time
+
+    return dn2e

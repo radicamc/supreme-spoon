@@ -27,10 +27,11 @@ import utils
 # ================== User Input ========================
 uncal_indir = 'DMS_uncal/'  # Directory containing uncalibrated data files
 background_file = 'model_background256.npy'  # Background model file
+planet_name = 'WASP-96b'  # Name of observed planet
 
-save_results = True
-show_plots = True
-process_f277w = False
+save_results = True  # Save results of each intermediate step to file
+show_plots = False  # Show plots
+process_f277w = False  # Process F277W exposures in addition to CLEAR
 # ======================================================
 
 # =================== Initial Setup ====================
@@ -291,13 +292,8 @@ for filter in all_exposures.keys():
 
         # ===== 1D Extraction Step =====
         # Custom/default DMS step.
-        step = calwebb_spec2.extract_1d_step.Extract1dStep()
-        spectrace_ref = step.get_reference_file(results[0], 'spectrace')
-        spec_trace = datamodels.SpecTraceModel(spectrace_ref)
-
-        transform = utils.determine_soss_transform(deepframe, spec_trace,
+        transform = utils.determine_soss_transform(deepframe, results[0],
                                                    show_plots=show_plots)
-
         new_results = []
         for segment in results:
             step = calwebb_spec2.extract_1d_step.Extract1dStep()
@@ -311,7 +307,12 @@ for filter in all_exposures.keys():
         # Hack to fix file names
         results = utils.fix_filenames(results, 'badpixstep_', outdir)
 
-
-
+        # ===== Construct Lightcurves =====
+        # Custom DMS step.
+        res = custom_steps.construct_lightcurves(results, output_dir=outdir,
+                                                 save_results=save_results,
+                                                 show_plots=show_plots,
+                                                 planet_name=planet_name)
+        normalized_lightcurves, stellar_spectra = res
 
 print('Done')
