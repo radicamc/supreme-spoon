@@ -21,7 +21,7 @@ from jwst import datamodels
 from jwst.pipeline import calwebb_detector1
 from jwst.pipeline import calwebb_spec2
 
-from supreme_spoon import custom_steps
+from supreme_spoon import custom_stage1, custom_stage2, custom_stage3
 from supreme_spoon import utils
 
 # ================== User Input ========================
@@ -148,10 +148,10 @@ for filter in all_exposures.keys():
         else:
             outlier_maps = None
             trace_mask = None
-        results = custom_steps.oneoverfstep(results, output_dir=outdir,
-                                            save_results=save_results,
-                                            outlier_maps=outlier_maps,
-                                            trace_mask=trace_mask)
+        results = custom_stage1.oneoverfstep(results, output_dir=outdir,
+                                             save_results=save_results,
+                                             outlier_maps=outlier_maps,
+                                             trace_mask=trace_mask)
 
         # ===== Superbias Subtraction Step =====
         # Default DMS step.
@@ -261,17 +261,17 @@ for filter in all_exposures.keys():
         background_model = np.load(background_file)
         with warnings.catch_warnings():
             warnings.filterwarnings('ignore')
-            results = custom_steps.backgroundstep(results, background_model,
-                                                  output_dir=outdir,
-                                                  save_results=save_results,
-                                                  show_plots=show_plots)
+            results = custom_stage2.backgroundstep(results, background_model,
+                                                   output_dir=outdir,
+                                                   save_results=save_results,
+                                                   show_plots=show_plots)
 
         # ===== Construct Trace Mask =====
         # Custom DMS step.
-        res = custom_steps.make_tracemask(results, output_dir=outdir,
-                                          mask_width=30,
-                                          save_results=save_results,
-                                          show_plots=show_plots)
+        res = custom_stage2.make_tracemask(results, output_dir=outdir,
+                                           mask_width=30,
+                                           save_results=save_results,
+                                           show_plots=show_plots)
         deepframe, tracemask = res
 
         # ===== Bad Pixel Correction Step =====
@@ -279,9 +279,9 @@ for filter in all_exposures.keys():
         if iteration == 2:
             with warnings.catch_warnings():
                 warnings.simplefilter('ignore')
-                results = custom_steps.badpixstep(results, max_iter=2,
-                                                  output_dir=outdir,
-                                                  save_results=save_results)[0]
+                results = custom_stage2.badpixstep(results, max_iter=2,
+                                                   output_dir=outdir,
+                                                   save_results=save_results)[0]
 
     # ============== DMS Stage 3 ==============
     # 1D spectral extraction.
@@ -309,10 +309,10 @@ for filter in all_exposures.keys():
 
         # ===== Construct Lightcurves =====
         # Custom DMS step.
-        res = custom_steps.construct_lightcurves(results, output_dir=outdir,
-                                                 save_results=save_results,
-                                                 show_plots=show_plots,
-                                                 planet_name=planet_name)
+        res = custom_stage3.construct_lightcurves(results, output_dir=outdir,
+                                                  save_results=save_results,
+                                                  show_plots=show_plots,
+                                                  planet_name=planet_name)
         normalized_lightcurves, stellar_spectra = res
 
 print('Done')

@@ -21,7 +21,7 @@ from jwst.extract_1d.soss_extract import soss_solver
 from jwst.pipeline import calwebb_spec2
 
 from sys import path
-applesoss_path = '/home/radica/GitHub/APPLESOSS/'
+applesoss_path = '/users/michaelradica/Documents/GitHub/APPLESOSS/'
 path.insert(1, applesoss_path)
 
 from APPLESOSS.edgetrigger_centroids import get_soss_centroids
