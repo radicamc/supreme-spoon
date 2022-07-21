@@ -26,7 +26,7 @@ path.insert(1, applesoss_path)
 
 from APPLESOSS.edgetrigger_centroids import get_soss_centroids
 
-import plotting
+from supreme_spoon import plotting
 
 
 def get_interp_box(data, box_size, i, j, dimx, dimy):

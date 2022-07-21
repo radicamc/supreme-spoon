@@ -21,8 +21,8 @@ from jwst import datamodels
 from jwst.pipeline import calwebb_detector1
 from jwst.pipeline import calwebb_spec2
 
-import custom_steps
-import utils
+from supreme_spoon import custom_steps
+from supreme_spoon import utils
 
 # ================== User Input ========================
 uncal_indir = 'DMS_uncal/'  # Directory containing uncalibrated data files

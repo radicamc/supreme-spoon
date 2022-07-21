@@ -16,14 +16,8 @@ import warnings
 from jwst import datamodels
 from jwst.extract_1d.soss_extract import soss_boxextract
 
-from sys import path
-applesoss_path = '/home/radica/GitHub/APPLESOSS/'
-path.insert(1, applesoss_path)
-
-from APPLESOSS.edgetrigger_centroids import get_soss_centroids
-
-import plotting
-import utils
+from supreme_spoon import utils
+from supreme_spoon import plotting
 
 
 def badpixstep(datafiles, thresh=3, box_size=5, max_iter=2, output_dir=None,
