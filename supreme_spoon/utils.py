@@ -11,7 +11,9 @@ Miscellaneous pipeline tools.
 from astropy.io import fits
 from astropy.time import Time
 import bottleneck as bn
+import os
 import numpy as np
+
 from jwst import datamodels
 
 
@@ -96,6 +98,26 @@ def make_time_axis(filepath):
     t_start = Time(t_start, format='isot', scale='utc')
     t = np.arange(nint) * tgroup * ngroup + t_start.jd
     return t
+
+
+def fix_filenames(old_files, to_remove, outdir):
+    # Hack to fix file names
+    new_files = []
+    for file in old_files:
+        if isinstance(file, str):
+            file = datamodels.open(file)
+
+        old_filename = file.meta.filename
+
+        split = old_filename.split(to_remove)
+        new_filename = split[0] + split[1]
+        file.write(outdir + new_filename)
+
+        new_files.append(outdir + new_filename)
+        file.close()
+        os.remove(outdir + old_filename)
+
+    return new_files
 
 
 

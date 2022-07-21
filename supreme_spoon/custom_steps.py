@@ -14,7 +14,15 @@ from tqdm import tqdm
 import warnings
 
 from jwst import datamodels
+from jwst.extract_1d.soss_extract import soss_boxextract
 
+from sys import path
+applesoss_path = '/home/radica/GitHub/APPLESOSS/'
+path.insert(1, applesoss_path)
+
+from APPLESOSS.edgetrigger_centroids import get_soss_centroids
+
+import plotting
 import utils
 
 
@@ -147,15 +155,15 @@ def badpixstep(datafiles, thresh=3, box_size=5, max_iter=2, output_dir=None,
     return newdata, badpix_mask
 
 
-def oneoverfstep(datafiles, output_dir=None, save_results=False,
+def oneoverfstep(datafiles, output_dir=None, save_results=True,
                  outlier_maps=None, trace_mask=None, use_dq=True):
     """Custom 1/f correction routine to be applied at the group level.
 
     Parameters
     ----------
-    datafiles : list[str]
-        List of paths to data files for each segment of the TSO. Should be 4D
-        ramps and not rate files.
+    datafiles : list[str], or list[RampModel]
+        List of paths to data files, or RampModels themselves for each segment
+        of the TSO. Should be 4D ramps and not rate files.
     output_dir : str
         Directory to which to save results.
     save_results : bool
@@ -191,10 +199,13 @@ def oneoverfstep(datafiles, output_dir=None, save_results=False,
     data, fileroots = [], []
     # Load in datamodels from all segments.
     for i, file in enumerate(datafiles):
-        currentfile = datamodels.open(file)
+        if isinstance(file, str):
+            currentfile = datamodels.open(file)
+        else:
+            currentfile = file
         data.append(currentfile)
         # Hack to get filename root.
-        filename_split = file.split('/')[-1].split('_')
+        filename_split = currentfile.meta.filename.split('/')[-1].split('_')
         fileroot = ''
         for seg, segment in enumerate(filename_split):
             if seg == len(filename_split) - 1:
@@ -360,3 +371,122 @@ def oneoverfstep(datafiles, output_dir=None, save_results=False,
         datamodel.close()
 
     return corrected_rampmodels
+
+
+def backgroundstep(datafiles, background_model, subtract_column_median=False,
+                   output_dir=None, save_results=True, show_plots=False):
+    # Output directory formatting.
+    if output_dir is not None:
+        if output_dir[-1] != '/':
+            output_dir += '/'
+
+    datafiles = np.atleast_1d(datafiles)
+    results = []
+    for file in datafiles:
+        if isinstance(file, str):
+            currentfile = datamodels.open(file)
+        else:
+            currentfile = file
+
+        old_filename = currentfile.meta.filename
+        to_remove = old_filename.split('_')[-1]
+        fileroot = old_filename.split(to_remove)[0]
+
+        scale_mod = np.nanmedian(background_model[:, :500])
+        scale_dat = np.nanmedian(currentfile.data[:, 200:, :500], axis=(1, 2))
+        model_scaled = background_model / scale_mod * scale_dat[:, None, None]
+        data_backsub = currentfile.data - model_scaled
+
+        if subtract_column_median is True:
+            # Placeholder for median subtraction
+            pass
+        currentfile.data = data_backsub
+
+        if save_results is True:
+            hdu = fits.PrimaryHDU(model_scaled)
+            hdu.writeto(output_dir + fileroot + 'background.fits',
+                        overwrite=True)
+
+            currentfile.write(output_dir + fileroot + 'backgroundstep.fits')
+
+        if show_plots is True:
+            plotting.do_backgroundsubtraction_plot(currentfile.data,
+                                                   background_model,
+                                                   scale_mod, scale_dat)
+        results.append(currentfile.data)
+        currentfile.close()
+
+    return results
+
+
+def make_tracemask(datafiles, output_dir, mask_width=30, save_results=True,
+                   show_plots=False):
+
+    datafiles = np.atleast_1d(datafiles)
+
+    for i, file in enumerate(datafiles):
+        if isinstance(file, str):
+            currentfile = datamodels.open(file)
+        else:
+            currentfile = file
+
+        if i == 0:
+            cube = currentfile.data
+            fileroot = currentfile.meta.filename.split('_')[0]
+        else:
+            cube = np.concatenate([cube, currentfile.data], axis=0)
+        currentfile.close()
+
+    deepframe = utils.make_deepstack(cube)[0]
+
+    # Get orders 1 to 3 centroids
+    dimy, dimx = np.shape(deepframe)
+    if dimy == 256:
+        subarray = 'SUBSTRIP256'
+    else:
+        raise NotImplementedError
+
+    with warnings.catch_warnings():
+        warnings.filterwarnings('ignore')
+        centroids = get_soss_centroids(deepframe, subarray=subarray)
+
+    X1, Y1 = centroids['order 1']['X centroid'], centroids['order 1'][
+        'Y centroid']
+    X2, Y2 = centroids['order 2']['X centroid'], centroids['order 2'][
+        'Y centroid']
+    X3, Y3 = centroids['order 3']['X centroid'], centroids['order 3'][
+        'Y centroid']
+    ii = np.where((X1 >= 0) & (X1 <= dimx - 1))
+    ii2 = np.where((X2 >= 0) & (X2 <= dimx - 1) & (Y2 <= dimy - 1))
+    ii3 = np.where((X3 >= 0) & (X3 <= dimx - 1) & (Y3 <= dimy - 1))
+
+    # Interpolate onto native pixel grid
+    x1 = np.arange(dimx)
+    y1 = np.interp(x1, X1[ii], Y1[ii])
+    x2 = np.arange(np.max(np.floor(X2[ii2]).astype(int)))
+    y2 = np.interp(x2, X2[ii2], Y2[ii2])
+    x3 = np.arange(np.max(np.floor(X3[ii3]).astype(int)))
+    y3 = np.interp(x3, X3[ii3], Y3[ii3])
+
+    if show_plots is True:
+        plotting.do_centroid_plot(deepframe, x1, y1, x2, y2, x3, y3)
+
+    weights1 = soss_boxextract.get_box_weights(y1, mask_width, (dimy, dimx),
+                                               cols=x1.astype(int))
+    weights2 = soss_boxextract.get_box_weights(y2, mask_width, (dimy, dimx),
+                                               cols=x2.astype(int))
+    weights3 = soss_boxextract.get_box_weights(y3, mask_width, (dimy, dimx),
+                                               cols=x3.astype(int))
+    weights1 = np.where(weights1 == 0, 0, 1)
+    weights2 = np.where(weights2 == 0, 0, 1)
+    weights3 = np.where(weights3 == 0, 0, 1)
+
+    tracemask = weights1 | weights2 | weights3
+    if show_plots is True:
+        plotting.do_tracemask_plot(tracemask)
+
+    if save_results is True:
+        hdu = fits.PrimaryHDU(tracemask)
+        hdu.writeto(output_dir + fileroot + '_tracemask.fits', overwrite=True)
+
+    return tracemask

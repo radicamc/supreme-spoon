@@ -148,3 +148,45 @@ def make_corner(fit_params, results, posterior_names=None, outpdf=None,
     else:
         plt.show()
 
+
+def do_backgroundsubtraction_plot(data, model, model_scale, data_scale):
+
+    tt = data + model/model_scale*data_scale[:, None, None]
+    plt.plot(tt[10, 220], label='Before Subtraction', c='salmon')
+    plt.plot(data[10, 220], label='After Subtraction', c='royalblue')
+    plt.plot((model/model_scale*data_scale[:, None, None])[10, 220], c='black',
+             label='Background Model')
+    plt.ylim(-1.5, 6.5)
+    plt.xlabel('Spectral Pixel', fontsize=16)
+    plt.ylabel('Counts', fontsize=16)
+    plt.legend(fontsize=12)
+    plt.show()
+
+
+def do_tracemask_plot(tracemask, **kwargs):
+    plt.figure(figsize=(8, 4), facecolor='white')
+    plt.imshow(tracemask, origin='lower', aspect='auto', **kwargs)
+    plt.show()
+
+
+def do_centroid_plot(deepstack, x1, y1, x2, y2, x3, y3, labels=None):
+    x1, y1 = np.atleast_2d(x1), np.atleast_2d(y1)
+    x2, y2 = np.atleast_2d(x2), np.atleast_2d(y2)
+    x3, y3 = np.atleast_2d(x3), np.atleast_2d(y3)
+    colours = ['red', 'blue', 'white', 'green']
+    if labels is None:
+        labels = [None for xx in x1]
+
+    plt.figure(figsize=(10, 4), facecolor='white')
+    plt.imshow(deepstack, origin='lower', aspect='auto', vmin=0, vmax=25)
+    for i, cens in enumerate(zip(x1, y1)):
+        plt.plot(cens[0], cens[1], c=colours[i], ls='--', label=labels[i])
+    for i, cens in enumerate(zip(x2, y2)):
+        plt.plot(cens[0], cens[1], c=colours[i], ls='--')
+    for i, cens in enumerate(zip(x3, y3)):
+        plt.plot(cens[0], cens[1], c=colours[i], ls='--')
+
+    plt.colorbar()
+    plt.legend(fontsize=12)
+    plt.show()
+
