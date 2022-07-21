@@ -168,10 +168,10 @@ def oneoverfstep(datafiles, output_dir=None, save_results=True,
         Directory to which to save results.
     save_results : bool
         If True, save results to disk.
-    outlier_maps : list[str]
+    outlier_maps : list[str], None
         List of paths to outlier maps for each data segment. Can be
         3D (nints, dimy, dimx), or 2D (dimy, dimx) files.
-    trace_mask : str
+    trace_mask : str, None
         Path to trace mask file. Should be 2D (dimy, dimx).
     use_dq : bool
         If True, also mask all pixels flagged in the DQ array.
@@ -446,27 +446,10 @@ def make_tracemask(datafiles, output_dir, mask_width=30, save_results=True,
     else:
         raise NotImplementedError
 
-    with warnings.catch_warnings():
-        warnings.filterwarnings('ignore')
-        centroids = get_soss_centroids(deepframe, subarray=subarray)
-
-    X1, Y1 = centroids['order 1']['X centroid'], centroids['order 1'][
-        'Y centroid']
-    X2, Y2 = centroids['order 2']['X centroid'], centroids['order 2'][
-        'Y centroid']
-    X3, Y3 = centroids['order 3']['X centroid'], centroids['order 3'][
-        'Y centroid']
-    ii = np.where((X1 >= 0) & (X1 <= dimx - 1))
-    ii2 = np.where((X2 >= 0) & (X2 <= dimx - 1) & (Y2 <= dimy - 1))
-    ii3 = np.where((X3 >= 0) & (X3 <= dimx - 1) & (Y3 <= dimy - 1))
-
-    # Interpolate onto native pixel grid
-    x1 = np.arange(dimx)
-    y1 = np.interp(x1, X1[ii], Y1[ii])
-    x2 = np.arange(np.max(np.floor(X2[ii2]).astype(int)))
-    y2 = np.interp(x2, X2[ii2], Y2[ii2])
-    x3 = np.arange(np.max(np.floor(X3[ii3]).astype(int)))
-    y3 = np.interp(x3, X3[ii3], Y3[ii3])
+    cen_o1, cen_o2, cen_o3 = utils.get_trace_centroids(deepframe, subarray)
+    x1, y1 = cen_o1
+    x2, y2 = cen_o2
+    x3, y3 = cen_o3
 
     if show_plots is True:
         plotting.do_centroid_plot(deepframe, x1, y1, x2, y2, x3, y3)
@@ -489,4 +472,4 @@ def make_tracemask(datafiles, output_dir, mask_width=30, save_results=True,
         hdu = fits.PrimaryHDU(tracemask)
         hdu.writeto(output_dir + fileroot + '_tracemask.fits', overwrite=True)
 
-    return tracemask
+    return deepframe, tracemask
