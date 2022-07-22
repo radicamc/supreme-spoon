@@ -180,13 +180,15 @@ def do_centroid_plot(deepstack, x1, y1, x2, y2, x3, y3, labels=None):
 
     plt.figure(figsize=(10, 4), facecolor='white')
     plt.imshow(deepstack, origin='lower', aspect='auto', vmin=0, vmax=25)
-    for i, cens in enumerate(zip(x1, y1)):
-        plt.plot(cens[0], cens[1], c=colours[i], ls='--', label=labels[i])
-    for i, cens in enumerate(zip(x2, y2)):
-        plt.plot(cens[0], cens[1], c=colours[i], ls='--')
-    for i, cens in enumerate(zip(x3, y3)):
-        plt.plot(cens[0], cens[1], c=colours[i], ls='--')
+    for i in range(x1.shape[1]):
+        plt.plot(x1[:, i][0], y1[:, i][0], c=colours[i], ls='--', label=labels[i])
+    for i in range(x2.shape[1]):
+        plt.plot(x2[:, i][0], y2[:, i][0], c=colours[i], ls='--')
+    for i in range(x3.shape[0]):
+        plt.plot(x3[i], y3[i], c=colours[i], ls='--')
 
     plt.colorbar()
+    plt.xlim(0, 2047)
+    plt.ylim(0, 255)
     plt.legend(fontsize=12)
     plt.show()
