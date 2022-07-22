@@ -239,17 +239,17 @@ def oneoverfstep(datafiles, output_dir=None, save_results=True,
 
 
 def run_stage1(results, iteration, save_results=True, outlier_maps=None,
-               trace_mask=None, force_redo=False):
+               trace_mask=None, force_redo=False, **kwargs):
     # ============== DMS Stage 1 ==============
     # Detector level processing.
     # Documentation: https://jwst-pipeline.readthedocs.io/en/latest/jwst/pipeline/calwebb_detector1.html
     utils.verify_path('pipeline_outputs_directory')
     utils.verify_path('pipeline_outputs_directory/Stage1')
-    utils.verify_path('pipeline_outputs_directory/Stage1/FirstPass')
-    utils.verify_path('pipeline_outputs_directory/Stage1/SecondPass')
     if iteration == 1:
+        utils.verify_path('pipeline_outputs_directory/Stage1/FirstPass')
         outdir = 'pipeline_outputs_directory/Stage1/FirstPass/'
     else:
+        utils.verify_path('pipeline_outputs_directory/Stage1/SecondPass')
         outdir = 'pipeline_outputs_directory/Stage1/SecondPass/'
 
     all_files = glob.glob(outdir + '*')
@@ -280,7 +280,7 @@ def run_stage1(results, iteration, save_results=True, outlier_maps=None,
         else:
             step = calwebb_detector1.group_scale_step.GroupScaleStep()
             res = step.call(segment, output_dir=outdir,
-                            save_results=save_results)
+                            save_results=save_results, **kwargs)
         new_results.append(res)
     results = new_results
 
@@ -297,7 +297,7 @@ def run_stage1(results, iteration, save_results=True, outlier_maps=None,
         else:
             step = calwebb_detector1.dq_init_step.DQInitStep()
             res = step.call(segment, output_dir=outdir,
-                            save_results=save_results)
+                            save_results=save_results, **kwargs)
         new_results.append(res)
     results = new_results
 
@@ -314,7 +314,7 @@ def run_stage1(results, iteration, save_results=True, outlier_maps=None,
         else:
             step = calwebb_detector1.saturation_step.SaturationStep()
             res = step.call(segment, output_dir=outdir,
-                            save_results=save_results)
+                            save_results=save_results, **kwargs)
         new_results.append(res)
     results = new_results
 
@@ -324,18 +324,22 @@ def run_stage1(results, iteration, save_results=True, outlier_maps=None,
     # improve the 1/f noise estimation.
     step_tag = 'oneoverfstep.fits'
     do_step = 1
+    new_results = []
     for i in range(len(results)):
         expected_file = fileroots[i] + step_tag
         if expected_file not in all_files:
             do_step *= 0
+        else:
+            new_results.append(outdir + expected_file)
     if do_step == 1 and force_redo is False:
-        print('Output files already exists.')
+        print('Output files already exist.')
         print('Skipping 1/f Correction Step.')
+        results = new_results
     else:
         results = oneoverfstep(results, output_dir=outdir,
                                save_results=save_results,
                                outlier_maps=outlier_maps,
-                               trace_mask=trace_mask)
+                               trace_mask=trace_mask, **kwargs)
 
     # ===== Superbias Subtraction Step =====
     # Default DMS step.
@@ -350,7 +354,7 @@ def run_stage1(results, iteration, save_results=True, outlier_maps=None,
         else:
             step = calwebb_detector1.superbias_step.SuperBiasStep()
             res = step.call(segment, output_dir=outdir,
-                            save_results=save_results)
+                            save_results=save_results, **kwargs)
         new_results.append(res)
     results = new_results
     # Hack to fix file names
@@ -369,7 +373,7 @@ def run_stage1(results, iteration, save_results=True, outlier_maps=None,
         else:
             step = calwebb_detector1.linearity_step.LinearityStep()
             res = step.call(segment, output_dir=outdir,
-                            save_results=save_results)
+                            save_results=save_results, **kwargs)
         new_results.append(res)
     results = new_results
 
@@ -386,8 +390,8 @@ def run_stage1(results, iteration, save_results=True, outlier_maps=None,
         else:
             step = calwebb_detector1.jump_step.JumpStep()
             res = step.call(segment, maximum_cores='quarter',
-                            rejection_threshold=5, output_dir=outdir,
-                            save_results=save_results)
+                            output_dir=outdir, save_results=save_results,
+                            **kwargs)
         new_results.append(res)
     results = new_results
 
@@ -404,7 +408,7 @@ def run_stage1(results, iteration, save_results=True, outlier_maps=None,
         else:
             step = calwebb_detector1.ramp_fit_step.RampFitStep()
             res = step.call(segment, output_dir=outdir,
-                            save_results=save_results)[1]
+                            save_results=save_results, **kwargs)[1]
             # Store pixel flags in seperate files to be used for 1/f noise
             # correction.
             hdu = fits.PrimaryHDU(res.dq)
@@ -428,7 +432,7 @@ def run_stage1(results, iteration, save_results=True, outlier_maps=None,
         else:
             step = calwebb_detector1.gain_scale_step.GainScaleStep()
             res = step.call(segment, output_dir=outdir,
-                            save_results=save_results)
+                            save_results=save_results, **kwargs)
         new_results.append(res)
     results = new_results
 
@@ -441,7 +445,8 @@ if __name__ == "__main__":
                                                process_f277w=False)
     outlier_maps = None
     trace_mask = None
+    kwargs = {'rejection_threshold': 5}
     stage1_results = run_stage1(input_files, iteration=1, save_results=True,
                                 outlier_maps=outlier_maps,
                                 trace_mask=trace_mask,
-                                force_redo=False)
+                                force_redo=False, **kwargs)

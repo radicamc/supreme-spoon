@@ -9,11 +9,14 @@ Custom JWST DMS pipeline steps for Stage 2 (Spectroscopic processing).
 """
 
 from astropy.io import fits
+import glob
 import numpy as np
 from tqdm import tqdm
+import warnings
 
 from jwst import datamodels
 from jwst.extract_1d.soss_extract import soss_boxextract
+from jwst.pipeline import calwebb_spec2
 
 from supreme_spoon import utils
 from supreme_spoon import plotting
@@ -194,8 +197,8 @@ def backgroundstep(datafiles, background_model, subtract_column_median=False,
     return results
 
 
-def make_tracemask(datafiles, output_dir, mask_width=30, save_results=True,
-                   show_plots=False):
+def tracemaskstep(datafiles, output_dir, mask_width=30, save_results=True,
+                  show_plots=False):
 
     datafiles = np.atleast_1d(datafiles)
 
@@ -250,10 +253,162 @@ def make_tracemask(datafiles, output_dir, mask_width=30, save_results=True,
     return deepframe, tracemask
 
 
-def run_stage2(iteration):
-    return
+def run_stage2(results, iteration, background_model=None, save_results=True,
+               force_redo=False, show_plots=False, **kwargs):
+    # ============== DMS Stage 2 ==============
+    # Spectroscopic processing.
+    # Documentation: https://jwst-pipeline.readthedocs.io/en/latest/jwst/pipeline/calwebb_spec2.html
+    utils.verify_path('pipeline_outputs_directory')
+    utils.verify_path('pipeline_outputs_directory/Stage2')
+    if iteration == 1:
+        utils.verify_path('pipeline_outputs_directory/Stage2/FirstPass')
+        outdir = 'pipeline_outputs_directory/Stage2/FirstPass/'
+    else:
+        utils.verify_path('pipeline_outputs_directory/Stage2/SecondPass')
+        outdir = 'pipeline_outputs_directory/Stage2/SecondPass/'
+
+    all_files = glob.glob(outdir + '*')
+    results = np.atleast_1d(results)
+    # Get file root
+    fileroots = []
+    for file in results:
+        if isinstance(file, str):
+            data = datamodels.open(file)
+        else:
+            data = file
+        filename_split = data.meta.filename.split('_')
+        fileroot = ''
+        for chunk in filename_split[:-1]:
+            fileroot += chunk + '_'
+        fileroots.append(fileroot)
+
+    # ===== Assign WCS Step =====
+    # Default DMS step.
+    step_tag = 'assignwcsstep.fits'
+    new_results = []
+    for i, segment in enumerate(results):
+        expected_file = fileroots[i] + step_tag
+        if expected_file in all_files and force_redo is False:
+            print('Output file {} already exists.'.format(expected_file))
+            print('Skipping Assign WCS Step.')
+            res = outdir + expected_file
+        else:
+            step = calwebb_spec2.assign_wcs_step.AssignWcsStep()
+            res = step.call(segment, output_dir=outdir,
+                            save_results=save_results, **kwargs)
+        new_results.append(res)
+    results = new_results
+
+    # ===== Source Type Determination Step =====
+    # Default DMS step.
+    step_tag = 'sourcetypestep.fits'
+    new_results = []
+    for i, segment in enumerate(results):
+        expected_file = fileroots[i] + step_tag
+        if expected_file in all_files and force_redo is False:
+            print('Output file {} already exists.'.format(expected_file))
+            print('Skipping Source Type Determination Step.')
+            res = outdir + expected_file
+        else:
+            step = calwebb_spec2.srctype_step.SourceTypeStep()
+            res = step.call(segment, output_dir=outdir,
+                            save_results=save_results, **kwargs)
+        new_results.append(res)
+    results = new_results
+
+    # ===== Flat Field Correction Step =====
+    # Default DMS step.
+    step_tag = 'flatfieldstep.fits'
+    new_results = []
+    for i, segment in enumerate(results):
+        expected_file = fileroots[i] + step_tag
+        if expected_file in all_files and force_redo is False:
+            print('Output file {} already exists.'.format(expected_file))
+            print('Skipping Flat Field Correction Step.')
+            res = outdir + expected_file
+        else:
+            step = calwebb_spec2.flat_field_step.FlatFieldStep()
+            res = step.call(segment, output_dir=outdir,
+                            save_results=save_results, **kwargs)
+        new_results.append(res)
+    results = new_results
+
+    # ===== Background Subtraction Step =====
+    # Custom DMS step.
+    step_tag = 'backgroundstep.fits'
+    do_step = 1
+    new_results = []
+    for i in range(len(results)):
+        expected_file = fileroots[i] + step_tag
+        if expected_file not in all_files:
+            do_step *= 0
+        else:
+            new_results.append(outdir + expected_file)
+    if do_step == 1 and force_redo is False:
+        print('Output files already exist.')
+        print('Skipping Background Subtraction Step.')
+        results = new_results
+    else:
+        if background_model is None:
+            msg = 'No background model provided'
+            raise ValueError(msg)
+        with warnings.catch_warnings():
+            warnings.filterwarnings('ignore')
+            results = backgroundstep(results, background_model,
+                                     output_dir=outdir,
+                                     save_results=save_results,
+                                     show_plots=show_plots, **kwargs)
+
+    # ===== Trace Mask Creation Step =====
+    # Custom DMS step.
+    step_tag = 'tracemask.fits'
+    abs_root = fileroots[0].split('/')[0]
+    expected_file = abs_root + '_' + step_tag
+    if expected_file in all_files and force_redo is False:
+        print('Output file {} already exists.'.format(expected_file))
+        print('Skipping Trace Mask Creation Step.')
+        tracemask = outdir + expected_file
+    else:
+        res = tracemaskstep(results, output_dir=outdir,
+                            save_results=save_results, show_plots=show_plots,
+                            **kwargs)
+        tracemask = res[1]
+
+    # ===== Bad Pixel Correction Step =====
+    # Custom DMS step.
+    step_tag = 'badpixstep.fits'
+    do_step = 1
+    new_results = []
+    for i in range(len(results)):
+        expected_file = fileroots[i] + step_tag
+        if expected_file not in all_files:
+            do_step *= 0
+        else:
+            new_results.append(outdir + expected_file)
+    if do_step == 1 and force_redo is False:
+        print('Output files already exist.')
+        print('Skipping Bad Pixel Correction Step.')
+        results = new_results
+    else:
+        if iteration == 2:
+            with warnings.catch_warnings():
+                warnings.simplefilter('ignore')
+                results = badpixstep(results, output_dir=outdir,
+                                     save_results=save_results, **kwargs)[0]
+
+    return results, tracemask
 
 
-# TODO: Add main to just run stage 2
 if __name__ == "__main__":
-    run_stage2()
+    indir = 'pipeline_outputs_directory/Stage1/FirstPass/'
+    input_files = utils.unpack_input_directory(indir, filetag='gainscalestep',
+                                               process_f277w=False)
+    kwargs = {'max_iter': 2,
+              'mask_width': 30}
+    background_file = 'model_background256.npy'
+    background_model = np.load(background_file)
+    result = run_stage2(input_files, iteration=1,
+                        background_model=background_model,
+                        save_results=True, force_redo=False, show_plots=False,
+                        **kwargs)
+    stage2_results, trace_mask = result

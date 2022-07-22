@@ -242,10 +242,10 @@ for filter in all_exposures.keys():
 
         # ===== Construct Trace Mask =====
         # Custom DMS step.
-        res = custom_stage2.make_tracemask(results, output_dir=outdir,
-                                           mask_width=30,
-                                           save_results=save_results,
-                                           show_plots=show_plots)
+        res = custom_stage2.tracemaskstep(results, output_dir=outdir,
+                                          mask_width=30,
+                                          save_results=save_results,
+                                          show_plots=show_plots)
         deepframe, tracemask = res
 
         # ===== Bad Pixel Correction Step =====
