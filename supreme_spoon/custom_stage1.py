@@ -7,6 +7,9 @@ Created on Thurs Jul 21 17:30 2022
 
 Custom JWST DMS pipeline steps for Stage 1 (detector level processing).
 """
+# import os
+# os.environ['CRDS_PATH'] = root_dir + 'crds_cache'
+# os.environ['CRDS_SERVER_URL'] = 'https://jwst-crds.stsci.edu'
 
 from astropy.io import fits
 import glob
@@ -446,10 +449,16 @@ def run_stage1(results, iteration, save_results=True, outlier_maps=None,
 if __name__ == "__main__":
     root_dir = '/home/radica/jwst/ERO/WASP-96b/'
     indir = root_dir + 'DMS_uncal/'
-    input_files = utils.unpack_input_directory(indir, filetag='uncal',
-                                               process_f277w=False)
+    input_filetag = 'uncal'
     outlier_maps = None
     trace_mask = None
+
+    import os
+    os.environ['CRDS_PATH'] = root_dir + 'crds_cache'
+    os.environ['CRDS_SERVER_URL'] = 'https://jwst-crds.stsci.edu'
+
+    input_files = utils.unpack_input_directory(indir, filetag=input_filetag,
+                                               process_f277w=False)
 
     clear_segments, f277w_segments = input_files[0], input_files[1]
     all_exposures = {'CLEAR': clear_segments}

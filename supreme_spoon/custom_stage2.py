@@ -416,9 +416,15 @@ def run_stage2(results, iteration, background_model=None, save_results=True,
 if __name__ == "__main__":
     root_dir = '/home/radica/jwst/ERO/WASP-96b/'
     indir = root_dir + 'pipeline_outputs_directory/Stage1/FirstPass/'
-    input_files = utils.unpack_input_directory(indir, filetag='gainscalestep',
-                                               process_f277w=False)
+    input_filetag = 'gainscalestep'
     background_file = root_dir + 'model_background256.npy'
+
+    import os
+    os.environ['CRDS_PATH'] = root_dir + 'crds_cache'
+    os.environ['CRDS_SERVER_URL'] = 'https://jwst-crds.stsci.edu'
+
+    input_files = utils.unpack_input_directory(indir, filetag=input_filetag,
+                                               process_f277w=False)
     background_model = np.load(background_file)
 
     clear_segments, f277w_segments = input_files[0], input_files[1]

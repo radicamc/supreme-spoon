@@ -25,8 +25,6 @@ path.insert(1, applesoss_path)
 
 from APPLESOSS.edgetrigger_centroids import get_soss_centroids
 
-#from supreme_spoon import plotting
-
 
 def get_interp_box(data, box_size, i, j, dimx, dimy):
     """ Get median and standard deviation of a box centered on a specified
