@@ -12,13 +12,12 @@ from astropy.io import fits
 from astropy.time import Time
 import bottleneck as bn
 from datetime import datetime
+import glob
 import numpy as np
 import os
 import warnings
 
 from jwst import datamodels
-from jwst.extract_1d.soss_extract import soss_solver
-from jwst.pipeline import calwebb_spec2
 
 from sys import path
 applesoss_path = '/users/michaelradica/Documents/GitHub/APPLESOSS/'
@@ -143,47 +142,6 @@ def verify_path(path):
         os.mkdir(path)
 
 
-def determine_soss_transform(deepframe, datafile, show_plots=False):
-
-    step = calwebb_spec2.extract_1d_step.Extract1dStep()
-    spectrace_ref = step.get_reference_file(datafile, 'spectrace')
-    spec_trace = datamodels.SpecTraceModel(spectrace_ref)
-
-    xref_o1 = spec_trace.trace[0].data['X']
-    yref_o1 = spec_trace.trace[0].data['Y']
-    xref_o2 = spec_trace.trace[1].data['X']
-    yref_o2 = spec_trace.trace[1].data['Y']
-
-    with warnings.catch_warnings():
-        warnings.filterwarnings('ignore')
-        transform = soss_solver.solve_transform(deepframe, np.isnan(deepframe),
-                                                xref_o1, yref_o1,
-                                                xref_o2, yref_o2,
-                                                soss_filter='SUBSTRIP256',
-                                                is_fitted=(True, True, True),
-                                                guess_transform=(0, 0, 0))
-
-    if show_plots is True:
-        cen_o1, cen_o2, cen_o3 = get_trace_centroids(deepframe, 'SUBSTRIP256')
-        xdat_o1, ydat_o1 = cen_o1
-        xdat_o2, ydat_o2 = cen_o2
-        xdat_o3, ydat_o3 = cen_o3
-
-        xtrans_o1, ytrans_o1 = soss_solver.transform_coords(*transform,
-                                                            xref_o1, yref_o1)
-        xtrans_o2, ytrans_o2 = soss_solver.transform_coords(*transform,
-                                                            xref_o2, yref_o2)
-        labels=['Extracted Centroids', 'Reference Centroids',
-                'Transformed Centroids']
-        plotting.do_centroid_plot(deepframe, [xdat_o1, xref_o1, xtrans_o1],
-                                  [ydat_o1, yref_o1, ytrans_o1],
-                                  [xdat_o2, xref_o2, xtrans_o2],
-                                  [ydat_o2, yref_o2, ytrans_o2],
-                                  [xdat_o3], [ydat_o3], labels=labels)
-
-    return transform
-
-
 def get_trace_centroids(deepframe, subarray):
     # TODO: save output
     dimy, dimx = np.shape(deepframe)
@@ -298,3 +256,38 @@ def get_dn2e(datafile):
     dn2e = gain_factor * (ngroup - 1) * frame_time
 
     return dn2e
+
+
+def unpack_input_directory(indir, filetag='', process_f277w=False):
+    if indir[-1] != '/':
+        indir += '/'
+    all_files = glob.glob(indir + '*')
+    clear_segments = []
+    f277w_segments = []
+    for file in all_files:
+        try:
+            header = fits.getheader(file, 0)
+        except(OSError, IsADirectoryError):
+            continue
+        if header['FILTER'] == 'CLEAR':
+            if filetag in file:
+                clear_segments.append(file)
+        elif header['FILTER'] == 'F277W' and process_f277w is True:
+            if filetag in file:
+                f277w_segments.append(file)
+        else:
+            continue
+    # Ensure that segments are packed in chronological order
+    for filestack in [clear_segments, f277w_segments]:
+        filestack = np.array(filestack)
+        if len(filestack) > 1:
+            segment_numbers = []
+            for file in filestack:
+                seg_no = fits.getheader(file, 0)['EXSEGNUM']
+                segment_numbers.append(seg_no)
+            correct_order = np.argsort(segment_numbers)
+            filestack = filestack[correct_order]
+        else:
+            continue
+
+    return clear_segments, f277w_segments

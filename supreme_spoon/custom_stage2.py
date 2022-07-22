@@ -248,3 +248,12 @@ def make_tracemask(datafiles, output_dir, mask_width=30, save_results=True,
         hdu.writeto(output_dir + fileroot + '_tracemask.fits', overwrite=True)
 
     return deepframe, tracemask
+
+
+def run_stage2(iteration):
+    return
+
+
+# TODO: Add main to just run stage 2
+if __name__ == "__main__":
+    run_stage2()

@@ -9,11 +9,13 @@ Custom JWST DMS pipeline steps for Stage 1 (detector level processing).
 """
 
 from astropy.io import fits
+import glob
 import numpy as np
 from tqdm import tqdm
 import warnings
 
 from jwst import datamodels
+from jwst.pipeline import calwebb_detector1
 
 from supreme_spoon import utils
 
@@ -234,3 +236,212 @@ def oneoverfstep(datafiles, output_dir=None, save_results=True,
         datamodel.close()
 
     return corrected_rampmodels
+
+
+def run_stage1(results, iteration, save_results=True, outlier_maps=None,
+               trace_mask=None, force_redo=False):
+    # ============== DMS Stage 1 ==============
+    # Detector level processing.
+    # Documentation: https://jwst-pipeline.readthedocs.io/en/latest/jwst/pipeline/calwebb_detector1.html
+    utils.verify_path('pipeline_outputs_directory')
+    utils.verify_path('pipeline_outputs_directory/Stage1')
+    utils.verify_path('pipeline_outputs_directory/Stage1/FirstPass')
+    utils.verify_path('pipeline_outputs_directory/Stage1/SecondPass')
+    if iteration == 1:
+        outdir = 'pipeline_outputs_directory/Stage1/FirstPass/'
+    else:
+        outdir = 'pipeline_outputs_directory/Stage1/SecondPass/'
+
+    all_files = glob.glob(outdir + '*')
+    results = np.atleast_1d(results)
+    # Get file root
+    fileroots = []
+    for file in results:
+        if isinstance(file, str):
+            data = datamodels.open(file)
+        else:
+            data = file
+        filename_split = data.meta.filename.split('_')
+        fileroot = ''
+        for chunk in filename_split[:-1]:
+            fileroot += chunk + '_'
+        fileroots.append(fileroot)
+
+    # ===== Group Scale Step =====
+    # Default DMS step.
+    step_tag = 'groupscalestep.fits'
+    new_results = []
+    for i, segment in enumerate(results):
+        expected_file = fileroots[i] + step_tag
+        if expected_file in all_files and force_redo is False:
+            print('Output file {} already exists.'.format(expected_file))
+            print('Skipping Group Scale Step.')
+            res = outdir + expected_file
+        else:
+            step = calwebb_detector1.group_scale_step.GroupScaleStep()
+            res = step.call(segment, output_dir=outdir,
+                            save_results=save_results)
+        new_results.append(res)
+    results = new_results
+
+    # ===== Data Quality Initialization Step =====
+    # Default DMS step.
+    step_tag = 'dqinitstep.fits'
+    new_results = []
+    for i, segment in enumerate(results):
+        expected_file = fileroots[i] + step_tag
+        if expected_file in all_files and force_redo is False:
+            print('Output file {} already exists.'.format(expected_file))
+            print('Skipping Data Quality Initialization Step.')
+            res = outdir + expected_file
+        else:
+            step = calwebb_detector1.dq_init_step.DQInitStep()
+            res = step.call(segment, output_dir=outdir,
+                            save_results=save_results)
+        new_results.append(res)
+    results = new_results
+
+    # ===== Saturation Detection Step =====
+    # Default DMS step.
+    step_tag = 'saturationstep.fits'
+    new_results = []
+    for i, segment in enumerate(results):
+        expected_file = fileroots[i] + step_tag
+        if expected_file in all_files and force_redo is False:
+            print('Output file {} already exists.'.format(expected_file))
+            print('Skipping Saturation Detection Step.')
+            res = outdir + expected_file
+        else:
+            step = calwebb_detector1.saturation_step.SaturationStep()
+            res = step.call(segment, output_dir=outdir,
+                            save_results=save_results)
+        new_results.append(res)
+    results = new_results
+
+    # ===== 1/f Noise Correction Step =====
+    # Custom DMS step.
+    # On the second iteration, include bad pixel and trace masks to
+    # improve the 1/f noise estimation.
+    step_tag = 'oneoverfstep.fits'
+    do_step = 1
+    for i in range(len(results)):
+        expected_file = fileroots[i] + step_tag
+        if expected_file not in all_files:
+            do_step *= 0
+    if do_step == 1 and force_redo is False:
+        print('Output files already exists.')
+        print('Skipping 1/f Correction Step.')
+    else:
+        results = oneoverfstep(results, output_dir=outdir,
+                               save_results=save_results,
+                               outlier_maps=outlier_maps,
+                               trace_mask=trace_mask)
+
+    # ===== Superbias Subtraction Step =====
+    # Default DMS step.
+    step_tag = 'superbiasstep.fits'
+    new_results = []
+    for i, segment in enumerate(results):
+        expected_file = fileroots[i] + step_tag
+        if expected_file in all_files and force_redo is False:
+            print('Output file {} already exists.'.format(expected_file))
+            print('Skipping Superbias Subtraction Step.')
+            res = outdir + expected_file
+        else:
+            step = calwebb_detector1.superbias_step.SuperBiasStep()
+            res = step.call(segment, output_dir=outdir,
+                            save_results=save_results)
+        new_results.append(res)
+    results = new_results
+    # Hack to fix file names
+    results = utils.fix_filenames(results, 'oneoverfstep_', outdir)
+
+    # ===== Linearity Correction Step =====
+    # Default DMS step.
+    step_tag = 'linearitystep.fits'
+    new_results = []
+    for i, segment in enumerate(results):
+        expected_file = fileroots[i] + step_tag
+        if expected_file in all_files and force_redo is False:
+            print('Output file {} already exists.'.format(expected_file))
+            print('Skipping Linearity Correction Step.')
+            res = outdir + expected_file
+        else:
+            step = calwebb_detector1.linearity_step.LinearityStep()
+            res = step.call(segment, output_dir=outdir,
+                            save_results=save_results)
+        new_results.append(res)
+    results = new_results
+
+    # ===== Jump Detection Step =====
+    # Default DMS step.
+    step_tag = 'jumpstep.fits'
+    new_results = []
+    for i, segment in enumerate(results):
+        expected_file = fileroots[i] + step_tag
+        if expected_file in all_files and force_redo is False:
+            print('Output file {} already exists.'.format(expected_file))
+            print('Skipping Jump Detection Step.')
+            res = outdir + expected_file
+        else:
+            step = calwebb_detector1.jump_step.JumpStep()
+            res = step.call(segment, maximum_cores='quarter',
+                            rejection_threshold=5, output_dir=outdir,
+                            save_results=save_results)
+        new_results.append(res)
+    results = new_results
+
+    # ===== Ramp Fit Step =====
+    # Default DMS step.
+    step_tag = 'rampfitstep.fits'
+    new_results = []
+    for i, segment in enumerate(results):
+        expected_file = fileroots[i] + step_tag
+        if expected_file in all_files and force_redo is False:
+            print('Output file {} already exists.'.format(expected_file))
+            print('Skipping Ramp Fit Step.')
+            res = outdir + expected_file
+        else:
+            step = calwebb_detector1.ramp_fit_step.RampFitStep()
+            res = step.call(segment, output_dir=outdir,
+                            save_results=save_results)[1]
+            # Store pixel flags in seperate files to be used for 1/f noise
+            # correction.
+            hdu = fits.PrimaryHDU(res.dq)
+            outfile = outdir + fileroots[i] + 'dqpixelflags.fits'
+            hdu.writeto(outfile, overwrite=True)
+        new_results.append(res)
+    results = new_results
+    # Hack to fix file names
+    results = utils.fix_filenames(results, '1_', outdir)
+
+    # ===== Gain Scale Correcton Step =====
+    # Default DMS step.
+    step_tag = 'gainscalestep.fits'
+    new_results = []
+    for i, segment in enumerate(results):
+        expected_file = fileroots[i] + step_tag
+        if expected_file in all_files and force_redo is False:
+            print('Output file {} already exists.'.format(expected_file))
+            print('Skipping Gain Scale Correction Step.')
+            res = outdir + expected_file
+        else:
+            step = calwebb_detector1.gain_scale_step.GainScaleStep()
+            res = step.call(segment, output_dir=outdir,
+                            save_results=save_results)
+        new_results.append(res)
+    results = new_results
+
+    return results
+
+
+if __name__ == "__main__":
+    indir = 'DMS_uncal/'
+    input_files = utils.unpack_input_directory(indir, filetag='uncal',
+                                               process_f277w=False)
+    outlier_maps = None
+    trace_mask = None
+    stage1_results = run_stage1(input_files, iteration=1, save_results=True,
+                                outlier_maps=outlier_maps,
+                                trace_mask=trace_mask,
+                                force_redo=False)

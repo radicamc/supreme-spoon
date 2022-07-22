@@ -8,12 +8,12 @@ Created on Wed Jul 20 11:12 2022
 Script to run JWST DMS with custom reduction steps.
 """
 
+# TODO: make mains for each step
 import os
 os.environ['CRDS_PATH'] = './crds_cache'
 os.environ['CRDS_SERVER_URL'] = 'https://jwst-crds.stsci.edu'
 
 from astropy.io import fits
-import glob
 import numpy as np
 import warnings
 
@@ -40,35 +40,9 @@ print('\n\nStarting Custom JWST DMS - SUPREME-SPOON\n')
 if uncal_indir[-1] != '/':
     uncal_indir += '/'
 
-all_files = glob.glob(uncal_indir + '*')
-clear_segments = []
-f277w_segments = []
-for file in all_files:
-    try:
-        header = fits.getheader(file, 0)
-    except(OSError, IsADirectoryError):
-        print('Skipping {}'.format(file))
-        continue
-    if header['FILTER'] == 'CLEAR':
-        clear_segments.append(file)
-    elif header['FILTER'] == 'F277W' and process_f277w is True:
-        f277w_segments.append(file)
-    else:
-        print('Skipping {}'.format(file))
-        continue
-# Ensure that segments are packed in chronological order
-for filestack in [clear_segments, f277w_segments]:
-    filestack = np.array(filestack)
-    if len(filestack) > 1:
-        segment_numbers = []
-        for file in filestack:
-            seg_no = fits.getheader(file, 0)['EXSEGNUM']
-            segment_numbers.append(seg_no)
-        correct_order = np.argsort(segment_numbers)
-        filestack = filestack[correct_order]
-    else:
-        continue
-
+res = utils.unpack_input_directory(uncal_indir, filetag='uncal',
+                                   process_f277w=process_f277w)
+clear_segments, f277w_segments = res
 all_exposures = {'CLEAR': clear_segments}
 print('\nIdentified {} CLEAR exposure segment(s):'.format(len(clear_segments)))
 for file in clear_segments:
@@ -292,16 +266,17 @@ for filter in all_exposures.keys():
 
         # ===== 1D Extraction Step =====
         # Custom/default DMS step.
-        transform = utils.determine_soss_transform(deepframe, results[0],
-                                                   show_plots=show_plots)
+        transform = custom_stage3.get_soss_transform(deepframe, results[0],
+                                                     show_plots=show_plots)
         new_results = []
         for segment in results:
             step = calwebb_spec2.extract_1d_step.Extract1dStep()
             res = step.call(segment, output_dir=outdir,
                             save_results=save_results,
-                            soss_transform=[0, 0, 0], soss_atoca=False,
-                            subtract_background=False, soss_bad_pix='masking',
-                            soss_width=25, soss_modelname=None)
+                            soss_transform=[transform[0], transform[1], transform[2]],
+                            soss_atoca=False, subtract_background=False,
+                            soss_bad_pix='masking', soss_width=25,
+                            soss_modelname=None)
             new_results.append(res)
         results = new_results
         # Hack to fix file names
