@@ -17,7 +17,7 @@ import warnings
 from jwst import datamodels
 from jwst.pipeline import calwebb_detector1
 
-from supreme_spoon import utils
+import utils
 
 
 def oneoverfstep(datafiles, output_dir=None, save_results=True,
@@ -239,7 +239,7 @@ def oneoverfstep(datafiles, output_dir=None, save_results=True,
 
 
 def run_stage1(results, iteration, save_results=True, outlier_maps=None,
-               trace_mask=None, force_redo=False, **kwargs):
+               trace_mask=None, force_redo=False, rejection_threshold=5):
     # ============== DMS Stage 1 ==============
     # Detector level processing.
     # Documentation: https://jwst-pipeline.readthedocs.io/en/latest/jwst/pipeline/calwebb_detector1.html
@@ -272,15 +272,15 @@ def run_stage1(results, iteration, save_results=True, outlier_maps=None,
     step_tag = 'groupscalestep.fits'
     new_results = []
     for i, segment in enumerate(results):
-        expected_file = fileroots[i] + step_tag
+        expected_file = outdir + fileroots[i] + step_tag
         if expected_file in all_files and force_redo is False:
             print('Output file {} already exists.'.format(expected_file))
-            print('Skipping Group Scale Step.')
-            res = outdir + expected_file
+            print('Skipping Group Scale Step.\n')
+            res = expected_file
         else:
             step = calwebb_detector1.group_scale_step.GroupScaleStep()
             res = step.call(segment, output_dir=outdir,
-                            save_results=save_results, **kwargs)
+                            save_results=save_results)
         new_results.append(res)
     results = new_results
 
@@ -289,15 +289,15 @@ def run_stage1(results, iteration, save_results=True, outlier_maps=None,
     step_tag = 'dqinitstep.fits'
     new_results = []
     for i, segment in enumerate(results):
-        expected_file = fileroots[i] + step_tag
+        expected_file = outdir + fileroots[i] + step_tag
         if expected_file in all_files and force_redo is False:
             print('Output file {} already exists.'.format(expected_file))
-            print('Skipping Data Quality Initialization Step.')
-            res = outdir + expected_file
+            print('Skipping Data Quality Initialization Step.\n')
+            res = expected_file
         else:
             step = calwebb_detector1.dq_init_step.DQInitStep()
             res = step.call(segment, output_dir=outdir,
-                            save_results=save_results, **kwargs)
+                            save_results=save_results)
         new_results.append(res)
     results = new_results
 
@@ -306,15 +306,15 @@ def run_stage1(results, iteration, save_results=True, outlier_maps=None,
     step_tag = 'saturationstep.fits'
     new_results = []
     for i, segment in enumerate(results):
-        expected_file = fileroots[i] + step_tag
+        expected_file = outdir + fileroots[i] + step_tag
         if expected_file in all_files and force_redo is False:
             print('Output file {} already exists.'.format(expected_file))
-            print('Skipping Saturation Detection Step.')
-            res = outdir + expected_file
+            print('Skipping Saturation Detection Step.\n')
+            res = expected_file
         else:
             step = calwebb_detector1.saturation_step.SaturationStep()
             res = step.call(segment, output_dir=outdir,
-                            save_results=save_results, **kwargs)
+                            save_results=save_results)
         new_results.append(res)
     results = new_results
 
@@ -326,35 +326,35 @@ def run_stage1(results, iteration, save_results=True, outlier_maps=None,
     do_step = 1
     new_results = []
     for i in range(len(results)):
-        expected_file = fileroots[i] + step_tag
+        expected_file = outdir + fileroots[i] + step_tag
         if expected_file not in all_files:
             do_step *= 0
         else:
             new_results.append(outdir + expected_file)
     if do_step == 1 and force_redo is False:
         print('Output files already exist.')
-        print('Skipping 1/f Correction Step.')
+        print('Skipping 1/f Correction Step.\n')
         results = new_results
     else:
         results = oneoverfstep(results, output_dir=outdir,
                                save_results=save_results,
                                outlier_maps=outlier_maps,
-                               trace_mask=trace_mask, **kwargs)
+                               trace_mask=trace_mask)
 
     # ===== Superbias Subtraction Step =====
     # Default DMS step.
     step_tag = 'superbiasstep.fits'
     new_results = []
     for i, segment in enumerate(results):
-        expected_file = fileroots[i] + step_tag
+        expected_file = outdir + fileroots[i] + step_tag
         if expected_file in all_files and force_redo is False:
             print('Output file {} already exists.'.format(expected_file))
-            print('Skipping Superbias Subtraction Step.')
-            res = outdir + expected_file
+            print('Skipping Superbias Subtraction Step.\n')
+            res = expected_file
         else:
             step = calwebb_detector1.superbias_step.SuperBiasStep()
             res = step.call(segment, output_dir=outdir,
-                            save_results=save_results, **kwargs)
+                            save_results=save_results)
         new_results.append(res)
     results = new_results
     # Hack to fix file names
@@ -365,15 +365,15 @@ def run_stage1(results, iteration, save_results=True, outlier_maps=None,
     step_tag = 'linearitystep.fits'
     new_results = []
     for i, segment in enumerate(results):
-        expected_file = fileroots[i] + step_tag
+        expected_file = outdir + fileroots[i] + step_tag
         if expected_file in all_files and force_redo is False:
             print('Output file {} already exists.'.format(expected_file))
-            print('Skipping Linearity Correction Step.')
-            res = outdir + expected_file
+            print('Skipping Linearity Correction Step.\n')
+            res = expected_file
         else:
             step = calwebb_detector1.linearity_step.LinearityStep()
             res = step.call(segment, output_dir=outdir,
-                            save_results=save_results, **kwargs)
+                            save_results=save_results)
         new_results.append(res)
     results = new_results
 
@@ -382,16 +382,16 @@ def run_stage1(results, iteration, save_results=True, outlier_maps=None,
     step_tag = 'jumpstep.fits'
     new_results = []
     for i, segment in enumerate(results):
-        expected_file = fileroots[i] + step_tag
+        expected_file = outdir + fileroots[i] + step_tag
         if expected_file in all_files and force_redo is False:
             print('Output file {} already exists.'.format(expected_file))
-            print('Skipping Jump Detection Step.')
-            res = outdir + expected_file
+            print('Skipping Jump Detection Step.\n')
+            res = expected_file
         else:
             step = calwebb_detector1.jump_step.JumpStep()
             res = step.call(segment, maximum_cores='quarter',
-                            output_dir=outdir, save_results=save_results,
-                            **kwargs)
+                            rejection_threshold=rejection_threshold,
+                            output_dir=outdir, save_results=save_results)
         new_results.append(res)
     results = new_results
 
@@ -400,15 +400,15 @@ def run_stage1(results, iteration, save_results=True, outlier_maps=None,
     step_tag = 'rampfitstep.fits'
     new_results = []
     for i, segment in enumerate(results):
-        expected_file = fileroots[i] + step_tag
+        expected_file = outdir + fileroots[i] + step_tag
         if expected_file in all_files and force_redo is False:
             print('Output file {} already exists.'.format(expected_file))
-            print('Skipping Ramp Fit Step.')
-            res = outdir + expected_file
+            print('Skipping Ramp Fit Step.\n')
+            res = expected_file
         else:
             step = calwebb_detector1.ramp_fit_step.RampFitStep()
             res = step.call(segment, output_dir=outdir,
-                            save_results=save_results, **kwargs)[1]
+                            save_results=save_results)[1]
             # Store pixel flags in seperate files to be used for 1/f noise
             # correction.
             hdu = fits.PrimaryHDU(res.dq)
@@ -424,15 +424,15 @@ def run_stage1(results, iteration, save_results=True, outlier_maps=None,
     step_tag = 'gainscalestep.fits'
     new_results = []
     for i, segment in enumerate(results):
-        expected_file = fileroots[i] + step_tag
+        expected_file = outdir + fileroots[i] + step_tag
         if expected_file in all_files and force_redo is False:
             print('Output file {} already exists.'.format(expected_file))
-            print('Skipping Gain Scale Correction Step.')
-            res = outdir + expected_file
+            print('Skipping Gain Scale Correction Step.\n')
+            res = expected_file
         else:
             step = calwebb_detector1.gain_scale_step.GainScaleStep()
             res = step.call(segment, output_dir=outdir,
-                            save_results=save_results, **kwargs)
+                            save_results=save_results)
         new_results.append(res)
     results = new_results
 
@@ -445,8 +445,17 @@ if __name__ == "__main__":
                                                process_f277w=False)
     outlier_maps = None
     trace_mask = None
-    kwargs = {'rejection_threshold': 5}
-    stage1_results = run_stage1(input_files, iteration=1, save_results=True,
-                                outlier_maps=outlier_maps,
-                                trace_mask=trace_mask,
-                                force_redo=False, **kwargs)
+
+    clear_segments, f277w_segments = input_files[0], input_files[1]
+    all_exposures = {'CLEAR': clear_segments}
+    print('\nIdentified {} CLEAR exposure segment(s):'.format(len(clear_segments)))
+    for file in clear_segments:
+        print(' ' + file)
+    if len(f277w_segments) != 0:
+        all_exposures['F277W'] = f277w_segments
+        print('and {} F277W exposre segment(s):'.format(len(f277w_segments)))
+        for file in f277w_segments:
+            print(' ' + file)
+    stage1_results = run_stage1(all_exposures['CLEAR'], iteration=1,
+                                save_results=True, outlier_maps=outlier_maps,
+                                trace_mask=trace_mask, force_redo=False)

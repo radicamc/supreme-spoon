@@ -25,7 +25,7 @@ path.insert(1, applesoss_path)
 
 from APPLESOSS.edgetrigger_centroids import get_soss_centroids
 
-from supreme_spoon import plotting
+#from supreme_spoon import plotting
 
 
 def get_interp_box(data, box_size, i, j, dimx, dimy):
@@ -278,16 +278,21 @@ def unpack_input_directory(indir, filetag='', process_f277w=False):
         else:
             continue
     # Ensure that segments are packed in chronological order
-    for filestack in [clear_segments, f277w_segments]:
-        filestack = np.array(filestack)
-        if len(filestack) > 1:
-            segment_numbers = []
-            for file in filestack:
-                seg_no = fits.getheader(file, 0)['EXSEGNUM']
-                segment_numbers.append(seg_no)
-            correct_order = np.argsort(segment_numbers)
-            filestack = filestack[correct_order]
-        else:
-            continue
+    if len(clear_segments) > 1:
+        clear_segments = np.array(clear_segments)
+        segment_numbers = []
+        for file in clear_segments:
+            seg_no = fits.getheader(file, 0)['EXSEGNUM']
+            segment_numbers.append(seg_no)
+        correct_order = np.argsort(segment_numbers)
+        clear_segments = clear_segments[correct_order]
+    if len(f277w_segments) > 1:
+        f277w_segments = np.array(f277w_segments)
+        segment_numbers = []
+        for file in f277w_segments:
+            seg_no = fits.getheader(file, 0)['EXSEGNUM']
+            segment_numbers.append(seg_no)
+        correct_order = np.argsort(segment_numbers)
+        f277w_segments = f277w_segments[correct_order]
 
     return clear_segments, f277w_segments

@@ -9,6 +9,7 @@ Custom JWST DMS pipeline steps for Stage 3 (1D spectral extraction).
 """
 
 from astropy.io import fits
+import glob
 import numpy as np
 import warnings
 
@@ -149,7 +150,50 @@ def get_soss_transform(deepframe, datafile, show_plots=False):
     return transform
 
 
-def run_stage3():
+def run_stage3(results, save_results=True, show_plots=False, **kwargs):
+    # ============== DMS Stage 3 ==============
+    # 1D spectral extraction.
+    utils.verify_path('pipeline_outputs_directory')
+    utils.verify_path('pipeline_outputs_directory/Stage3')
+    outdir = 'pipeline_outputs_directory/Stage3/'
+
+    all_files = glob.glob(outdir + '*')
+    results = np.atleast_1d(results)
+    # Get file root
+    fileroots = []
+    for file in results:
+        if isinstance(file, str):
+            data = datamodels.open(file)
+        else:
+            data = file
+        filename_split = data.meta.filename.split('_')
+        fileroot = ''
+        for chunk in filename_split[:-1]:
+            fileroot += chunk + '_'
+        fileroots.append(fileroot)
+
+        # ===== 1D Extraction Step =====
+        # Custom/default DMS step.
+        transform = get_soss_transform(deepframe, results[0],
+                                       show_plots=show_plots)
+        new_results = []
+        for segment in results:
+            step = calwebb_spec2.extract_1d_step.Extract1dStep()
+            res = step.call(segment, output_dir=outdir,
+                            save_results=save_results,
+                            soss_transform=[transform[0], transform[1],
+                                            transform[2]],
+                            soss_atoca=False, subtract_background=False,
+                            soss_bad_pix='masking', soss_width=25,
+                            soss_modelname=None)
+            new_results.append(res)
+        results = new_results
+        # Hack to fix file names
+        results = utils.fix_filenames(results, 'badpixstep_', outdir)
+
+
+
+
     return
 
 

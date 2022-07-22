@@ -132,6 +132,8 @@ def badpixstep(datafiles, thresh=3, box_size=5, max_iter=2, output_dir=None,
 
     # Ensure that the bad pixels mask remains zeros or ones.
     badpix_mask = np.where(badpix_mask == 0, 0, 1)
+    # Generate a final corrected deep frame.
+    deepframe = utils.make_deepstack(newdata)[0]
 
     if save_results is True:
         current_int = 0
@@ -148,7 +150,12 @@ def badpixstep(datafiles, thresh=3, box_size=5, max_iter=2, output_dir=None,
         hdu.writeto(output_dir + fileroot_noseg + 'badpixmap.fits',
                     overwrite=True)
 
-    return newdata, badpix_mask
+        # Save deep frame.
+        hdu = fits.PrimaryHDU(deepframe)
+        hdu.writeto(output_dir + fileroot_noseg + 'deepframe.fits',
+                    overwrite=True)
+
+    return newdata, badpix_mask, deepframe
 
 
 def backgroundstep(datafiles, background_model, subtract_column_median=False,
@@ -254,7 +261,7 @@ def tracemaskstep(datafiles, output_dir, mask_width=30, save_results=True,
 
 
 def run_stage2(results, iteration, background_model=None, save_results=True,
-               force_redo=False, show_plots=False, **kwargs):
+               force_redo=False, show_plots=False, max_iter=2, mask_width=30):
     # ============== DMS Stage 2 ==============
     # Spectroscopic processing.
     # Documentation: https://jwst-pipeline.readthedocs.io/en/latest/jwst/pipeline/calwebb_spec2.html
@@ -287,15 +294,15 @@ def run_stage2(results, iteration, background_model=None, save_results=True,
     step_tag = 'assignwcsstep.fits'
     new_results = []
     for i, segment in enumerate(results):
-        expected_file = fileroots[i] + step_tag
+        expected_file = outdir + fileroots[i] + step_tag
         if expected_file in all_files and force_redo is False:
             print('Output file {} already exists.'.format(expected_file))
             print('Skipping Assign WCS Step.')
-            res = outdir + expected_file
+            res = expected_file
         else:
             step = calwebb_spec2.assign_wcs_step.AssignWcsStep()
             res = step.call(segment, output_dir=outdir,
-                            save_results=save_results, **kwargs)
+                            save_results=save_results)
         new_results.append(res)
     results = new_results
 
@@ -304,15 +311,15 @@ def run_stage2(results, iteration, background_model=None, save_results=True,
     step_tag = 'sourcetypestep.fits'
     new_results = []
     for i, segment in enumerate(results):
-        expected_file = fileroots[i] + step_tag
+        expected_file = outdir + fileroots[i] + step_tag
         if expected_file in all_files and force_redo is False:
             print('Output file {} already exists.'.format(expected_file))
             print('Skipping Source Type Determination Step.')
-            res = outdir + expected_file
+            res = expected_file
         else:
             step = calwebb_spec2.srctype_step.SourceTypeStep()
             res = step.call(segment, output_dir=outdir,
-                            save_results=save_results, **kwargs)
+                            save_results=save_results)
         new_results.append(res)
     results = new_results
 
@@ -321,15 +328,15 @@ def run_stage2(results, iteration, background_model=None, save_results=True,
     step_tag = 'flatfieldstep.fits'
     new_results = []
     for i, segment in enumerate(results):
-        expected_file = fileroots[i] + step_tag
+        expected_file = outdir + fileroots[i] + step_tag
         if expected_file in all_files and force_redo is False:
             print('Output file {} already exists.'.format(expected_file))
             print('Skipping Flat Field Correction Step.')
-            res = outdir + expected_file
+            res = expected_file
         else:
             step = calwebb_spec2.flat_field_step.FlatFieldStep()
             res = step.call(segment, output_dir=outdir,
-                            save_results=save_results, **kwargs)
+                            save_results=save_results)
         new_results.append(res)
     results = new_results
 
@@ -339,11 +346,11 @@ def run_stage2(results, iteration, background_model=None, save_results=True,
     do_step = 1
     new_results = []
     for i in range(len(results)):
-        expected_file = fileroots[i] + step_tag
+        expected_file = outdir + fileroots[i] + step_tag
         if expected_file not in all_files:
             do_step *= 0
         else:
-            new_results.append(outdir + expected_file)
+            new_results.append(expected_file)
     if do_step == 1 and force_redo is False:
         print('Output files already exist.')
         print('Skipping Background Subtraction Step.')
@@ -357,7 +364,7 @@ def run_stage2(results, iteration, background_model=None, save_results=True,
             results = backgroundstep(results, background_model,
                                      output_dir=outdir,
                                      save_results=save_results,
-                                     show_plots=show_plots, **kwargs)
+                                     show_plots=show_plots)
 
     # ===== Trace Mask Creation Step =====
     # Custom DMS step.
@@ -367,48 +374,64 @@ def run_stage2(results, iteration, background_model=None, save_results=True,
     if expected_file in all_files and force_redo is False:
         print('Output file {} already exists.'.format(expected_file))
         print('Skipping Trace Mask Creation Step.')
-        tracemask = outdir + expected_file
+        tracemask = expected_file
     else:
         res = tracemaskstep(results, output_dir=outdir,
                             save_results=save_results, show_plots=show_plots,
-                            **kwargs)
+                            mask_width=mask_width)
         tracemask = res[1]
 
     # ===== Bad Pixel Correction Step =====
     # Custom DMS step.
-    step_tag = 'badpixstep.fits'
-    do_step = 1
-    new_results = []
-    for i in range(len(results)):
-        expected_file = fileroots[i] + step_tag
-        if expected_file not in all_files:
-            do_step *= 0
+    if iteration == 2:
+        step_tag = 'badpixstep.fits'
+        do_step = 1
+        new_results = []
+        for i in range(len(results)):
+            expected_file = outdir + fileroots[i] + step_tag
+            if expected_file not in all_files:
+                do_step *= 0
+            else:
+                existing_data = datamodels.open(expected_file)
+                new_results.append(existing_data)
+        if do_step == 1 and force_redo is False:
+            print('Output files already exist.')
+            print('Skipping Bad Pixel Correction Step.')
+            results = new_results
+            existing_deep = fileroots[0].split('_')[0] + '_' + 'deepframe.fits'
+            deepframe = fits.getdata(outdir + existing_deep, 0)
         else:
-            new_results.append(outdir + expected_file)
-    if do_step == 1 and force_redo is False:
-        print('Output files already exist.')
-        print('Skipping Bad Pixel Correction Step.')
-        results = new_results
-    else:
-        if iteration == 2:
             with warnings.catch_warnings():
                 warnings.simplefilter('ignore')
-                results = badpixstep(results, output_dir=outdir,
-                                     save_results=save_results, **kwargs)[0]
+                res = badpixstep(results, output_dir=outdir,
+                                 save_results=save_results, max_iter=max_iter)
+                results, deepframe = res[0], res[2]
+    else:
+        deepframe = None
 
-    return results, tracemask
+    return results, tracemask, deepframe
 
 
 if __name__ == "__main__":
     indir = 'pipeline_outputs_directory/Stage1/FirstPass/'
     input_files = utils.unpack_input_directory(indir, filetag='gainscalestep',
                                                process_f277w=False)
-    kwargs = {'max_iter': 2,
-              'mask_width': 30}
     background_file = 'model_background256.npy'
     background_model = np.load(background_file)
+
+    clear_segments, f277w_segments = input_files[0], input_files[1]
+    all_exposures = {'CLEAR': clear_segments}
+    print('\nIdentified {} CLEAR exposure segment(s):'.format(
+        len(clear_segments)))
+    for file in clear_segments:
+        print(' ' + file)
+    if len(f277w_segments) != 0:
+        all_exposures['F277W'] = f277w_segments
+        print('and {} F277W exposre segment(s):'.format(len(f277w_segments)))
+        for file in f277w_segments:
+            print(' ' + file)
+
     result = run_stage2(input_files, iteration=1,
                         background_model=background_model,
-                        save_results=True, force_redo=False, show_plots=False,
-                        **kwargs)
-    stage2_results, trace_mask = result
+                        save_results=True, force_redo=False, show_plots=False)
+    stage2_results, trace_mask, deepframe = result
