@@ -261,18 +261,19 @@ def tracemaskstep(datafiles, output_dir, mask_width=30, save_results=True,
 
 
 def run_stage2(results, iteration, background_model=None, save_results=True,
-               force_redo=False, show_plots=False, max_iter=2, mask_width=30):
+               force_redo=False, show_plots=False, max_iter=2, mask_width=30,
+               root_dir='./'):
     # ============== DMS Stage 2 ==============
     # Spectroscopic processing.
     # Documentation: https://jwst-pipeline.readthedocs.io/en/latest/jwst/pipeline/calwebb_spec2.html
-    utils.verify_path('pipeline_outputs_directory')
-    utils.verify_path('pipeline_outputs_directory/Stage2')
+    utils.verify_path(root_dir + 'pipeline_outputs_directory')
+    utils.verify_path(root_dir + 'pipeline_outputs_directory/Stage2')
     if iteration == 1:
-        utils.verify_path('pipeline_outputs_directory/Stage2/FirstPass')
-        outdir = 'pipeline_outputs_directory/Stage2/FirstPass/'
+        outdir = root_dir + 'pipeline_outputs_directory/Stage2/FirstPass/'
+        utils.verify_path(outdir)
     else:
-        utils.verify_path('pipeline_outputs_directory/Stage2/SecondPass')
-        outdir = 'pipeline_outputs_directory/Stage2/SecondPass/'
+        outdir = root_dir + 'pipeline_outputs_directory/Stage2/SecondPass/'
+        utils.verify_path(outdir)
 
     all_files = glob.glob(outdir + '*')
     results = np.atleast_1d(results)
@@ -413,10 +414,11 @@ def run_stage2(results, iteration, background_model=None, save_results=True,
 
 
 if __name__ == "__main__":
-    indir = 'pipeline_outputs_directory/Stage1/FirstPass/'
+    root_dir = '/home/radica/jwst/ERO/WASP-96b/'
+    indir = root_dir + 'pipeline_outputs_directory/Stage1/FirstPass/'
     input_files = utils.unpack_input_directory(indir, filetag='gainscalestep',
                                                process_f277w=False)
-    background_file = 'model_background256.npy'
+    background_file = root_dir + 'model_background256.npy'
     background_model = np.load(background_file)
 
     clear_segments, f277w_segments = input_files[0], input_files[1]
@@ -433,5 +435,6 @@ if __name__ == "__main__":
 
     result = run_stage2(input_files, iteration=1,
                         background_model=background_model,
-                        save_results=True, force_redo=False, show_plots=False)
+                        save_results=True, force_redo=False, show_plots=False,
+                        root_dir=root_dir)
     stage2_results, trace_mask, deepframe = result

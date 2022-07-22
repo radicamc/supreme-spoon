@@ -239,18 +239,22 @@ def oneoverfstep(datafiles, output_dir=None, save_results=True,
 
 
 def run_stage1(results, iteration, save_results=True, outlier_maps=None,
-               trace_mask=None, force_redo=False, rejection_threshold=5):
+               trace_mask=None, force_redo=False, rejection_threshold=5,
+               root_dir = './'):
     # ============== DMS Stage 1 ==============
     # Detector level processing.
     # Documentation: https://jwst-pipeline.readthedocs.io/en/latest/jwst/pipeline/calwebb_detector1.html
-    utils.verify_path('pipeline_outputs_directory')
-    utils.verify_path('pipeline_outputs_directory/Stage1')
+    print('\n\n**Starting supreme-SPOON Stage 1**')
+    print('Detector level processing\n\n')
+
+    utils.verify_path(root_dir + 'pipeline_outputs_directory')
+    utils.verify_path(root_dir + 'pipeline_outputs_directory/Stage1')
     if iteration == 1:
-        utils.verify_path('pipeline_outputs_directory/Stage1/FirstPass')
-        outdir = 'pipeline_outputs_directory/Stage1/FirstPass/'
+        outdir = root_dir + 'pipeline_outputs_directory/Stage1/FirstPass/'
+        utils.verify_path(outdir)
     else:
-        utils.verify_path('pipeline_outputs_directory/Stage1/SecondPass')
-        outdir = 'pipeline_outputs_directory/Stage1/SecondPass/'
+        outdir = root_dir + 'pipeline_outputs_directory/Stage1/SecondPass/'
+        utils.verify_path(outdir)
 
     all_files = glob.glob(outdir + '*')
     results = np.atleast_1d(results)
@@ -440,7 +444,8 @@ def run_stage1(results, iteration, save_results=True, outlier_maps=None,
 
 
 if __name__ == "__main__":
-    indir = 'DMS_uncal/'
+    root_dir = '/home/radica/jwst/ERO/WASP-96b/'
+    indir = root_dir + 'DMS_uncal/'
     input_files = utils.unpack_input_directory(indir, filetag='uncal',
                                                process_f277w=False)
     outlier_maps = None
@@ -458,4 +463,5 @@ if __name__ == "__main__":
             print(' ' + file)
     stage1_results = run_stage1(all_exposures['CLEAR'], iteration=1,
                                 save_results=True, outlier_maps=outlier_maps,
-                                trace_mask=trace_mask, force_redo=False)
+                                trace_mask=trace_mask, force_redo=False,
+                                root_dir=root_dir)
