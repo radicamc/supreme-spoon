@@ -20,7 +20,7 @@ import warnings
 from jwst import datamodels
 
 from sys import path
-applesoss_path = '/users/michaelradica/Documents/GitHub/APPLESOSS/'
+applesoss_path = '/home/radica/GitHub/APPLESOSS/'
 path.insert(1, applesoss_path)
 
 from APPLESOSS.edgetrigger_centroids import get_soss_centroids
