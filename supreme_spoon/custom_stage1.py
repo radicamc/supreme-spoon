@@ -314,10 +314,11 @@ def run_stage1(results, save_results=True, outlier_maps=None, trace_mask=None,
             step = calwebb_detector1.superbias_step.SuperBiasStep()
             res = step.call(segment, output_dir=outdir,
                             save_results=save_results)
+            # Hack to fix file name
+            res = utils.fix_filenames(res, '_oneoverfstep_', outdir)
         new_results.append(res)
     results = new_results
-    # Hack to fix file names
-    results = utils.fix_filenames(results, '_oneoverfstep_', outdir)
+
 
     # ===== Linearity Correction Step =====
     # Default DMS step.
@@ -368,6 +369,8 @@ def run_stage1(results, save_results=True, outlier_maps=None, trace_mask=None,
             step = calwebb_detector1.ramp_fit_step.RampFitStep()
             res = step.call(segment, output_dir=outdir,
                             save_results=save_results)[1]
+            # Hack to fix file names
+            res = utils.fix_filenames(res, '_1_', outdir)
             # Store pixel flags in seperate files to be used for 1/f noise
             # correction.
             hdu = fits.PrimaryHDU(res.dq)
@@ -375,8 +378,7 @@ def run_stage1(results, save_results=True, outlier_maps=None, trace_mask=None,
             hdu.writeto(outfile, overwrite=True)
         new_results.append(res)
     results = new_results
-    # Hack to fix file names
-    results = utils.fix_filenames(results, '_1_', outdir)
+
 
     # ===== Gain Scale Correcton Step =====
     # Default DMS step.

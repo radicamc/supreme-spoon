@@ -109,6 +109,7 @@ def make_time_axis(filepath):
 
 
 def fix_filenames(old_files, to_remove, outdir):
+    old_files = np.atleast_1d(old_files)
     # Hack to fix file names
     new_files = []
     for file in old_files:
