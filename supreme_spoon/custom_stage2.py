@@ -80,7 +80,7 @@ def badpixstep(datafiles, thresh=3, box_size=5, max_iter=2, output_dir=None,
 
         # Generate the deepstack.
         print(' Generating a deep stack using all integrations...')
-        deepframe = utils.make_deepstack(newdata)[0]
+        deepframe = utils.make_deepstack(newdata)
         badpix = np.zeros_like(deepframe)
         count = 0
         nint, dimy, dimx = np.shape(newdata)
@@ -136,7 +136,7 @@ def badpixstep(datafiles, thresh=3, box_size=5, max_iter=2, output_dir=None,
     # Ensure that the bad pixels mask remains zeros or ones.
     badpix_mask = np.where(badpix_mask == 0, 0, 1)
     # Generate a final corrected deep frame.
-    deepframe = utils.make_deepstack(newdata)[0]
+    deepframe = utils.make_deepstack(newdata)
 
     if save_results is True:
         current_int = 0
