@@ -223,7 +223,7 @@ if __name__ == "__main__":
     root_dir = '/home/radica/jwst/ERO/WASP-96b/'
     indir = root_dir + 'pipeline_outputs_directory/Stage2/'
     input_filetag = 'badpixstep'
-    deepframe_file = indir + 'jw02734002001_deepframe.fits'
+    deepframe_file = indir + 'jw02734002001_04101_00001_nis_deepframe.fits'
     # ==========================================
 
     import os
