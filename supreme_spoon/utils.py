@@ -257,14 +257,14 @@ def get_default_header():
                    'Pipeline': 'Supreme Spoon',
                    'Author': 'MCR',
                    'Contents': None,
-                   'Extraction Method': 'Box Extraction'}
+                   'Method': 'Box Extraction'}
     header_comments = {'Target_Name': 'Name of the target',
                        'Instrument': 'Instrument used to acquire the data',
                        'Date': 'UTC date file created',
                        'Pipeline': 'Pipeline that produced this file',
                        'Author': 'File author',
                        'Contents': 'Description of file contents',
-                       'Extraction Method': 'Type of 1D extraction'}
+                       'Method': 'Type of 1D extraction'}
 
     return header_dict, header_comments
 

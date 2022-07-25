@@ -188,7 +188,7 @@ def run_stage3(results, deepframe, save_results=True, show_plots=False,
                                    show_plots=show_plots,
                                    save_results=save_results,
                                    output_dir=outdir)
-    step_tag = 'extract1dstep'
+    step_tag = 'extract1dstep.fits'
     new_results = []
     for i, segment in enumerate(results):
         expected_file = outdir + fileroots[i] + step_tag
