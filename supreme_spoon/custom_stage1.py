@@ -375,8 +375,6 @@ def run_stage1(results, save_results=True, outlier_maps=None, trace_mask=None,
             hdu.writeto(outfile, overwrite=True)
         new_results.append(res)
     results = new_results
-    # Hack to fix file names
-    results = utils.fix_filenames(results, '1_', outdir)
 
     # ===== Gain Scale Correcton Step =====
     # Default DMS step.
