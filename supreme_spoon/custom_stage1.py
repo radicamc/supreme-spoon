@@ -339,7 +339,7 @@ def run_stage1(results, save_results=True, outlier_maps=None, trace_mask=None,
 
     # ===== Jump Detection Step =====
     # Default DMS step.
-    step_tag = 'jumpstep.fits'
+    step_tag = 'jump.fits'
     new_results = []
     for i, segment in enumerate(results):
         expected_file = outdir + fileroots[i] + step_tag
