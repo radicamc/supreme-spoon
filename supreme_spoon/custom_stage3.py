@@ -185,7 +185,9 @@ def run_stage3(results, deepframe, save_results=True, show_plots=False,
     # ===== 1D Extraction Step =====
     # Custom/default DMS step.
     transform = get_soss_transform(deepframe, results[0],
-                                   show_plots=show_plots)
+                                   show_plots=show_plots,
+                                   save_results=save_results,
+                                   output_dir=outdir)
     step_tag = 'extract1dstep'
     new_results = []
     for i, segment in enumerate(results):
