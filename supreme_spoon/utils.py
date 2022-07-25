@@ -118,7 +118,7 @@ def fix_filenames(old_files, to_remove, outdir):
         old_filename = file.meta.filename
 
         split = old_filename.split(to_remove)
-        new_filename = split[0] + split[1]
+        new_filename = split[0] + '_' + split[1]
         file.write(outdir + new_filename)
 
         new_files.append(outdir + new_filename)

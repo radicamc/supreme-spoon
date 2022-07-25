@@ -206,7 +206,7 @@ def run_stage3(results, deepframe, save_results=True, show_plots=False,
         new_results.append(res)
     results = new_results
     # Hack to fix file names
-    results = utils.fix_filenames(results, 'badpixstep_', outdir)
+    results = utils.fix_filenames(results, '_badpixstep_', outdir)
 
     # ===== Lightcurve Construction Step =====
     # Custom DMS step.

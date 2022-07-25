@@ -317,7 +317,7 @@ def run_stage1(results, save_results=True, outlier_maps=None, trace_mask=None,
         new_results.append(res)
     results = new_results
     # Hack to fix file names
-    results = utils.fix_filenames(results, 'oneoverfstep_', outdir)
+    results = utils.fix_filenames(results, '_oneoverfstep_', outdir)
 
     # ===== Linearity Correction Step =====
     # Default DMS step.
@@ -375,6 +375,8 @@ def run_stage1(results, save_results=True, outlier_maps=None, trace_mask=None,
             hdu.writeto(outfile, overwrite=True)
         new_results.append(res)
     results = new_results
+    # Hack to fix file names
+    results = utils.fix_filenames(results, '_1_', outdir)
 
     # ===== Gain Scale Correcton Step =====
     # Default DMS step.
