@@ -42,7 +42,11 @@ def badpixstep(datafiles, thresh=3, box_size=5, max_iter=2, output_dir=None,
         currentfile = datamodels.open(file)
         data.append(currentfile)
         # Hack to get filename root.
-        filename_split = file.split('/')[-1].split('_')
+        if isinstance(file, str):
+            filename = file
+        else:
+            filename = file.meta.filename
+        filename_split = filename.split('/')[-1].split('_')
         fileroot = ''
         for seg, segment in enumerate(filename_split):
             if seg == len(filename_split) - 1:
