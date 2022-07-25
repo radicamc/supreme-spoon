@@ -8,7 +8,6 @@ Created on Wed Jul 20 11:12 2022
 Script to run JWST DMS with custom reduction steps.
 """
 
-# TODO: make mains for each step
 import os
 os.environ['CRDS_PATH'] = './crds_cache'
 os.environ['CRDS_SERVER_URL'] = 'https://jwst-crds.stsci.edu'

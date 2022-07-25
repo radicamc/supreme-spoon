@@ -22,7 +22,7 @@ from supreme_spoon import plotting
 
 
 def construct_lightcurves(datafiles, output_dir, save_results=True,
-                          show_plots=False, planet_name=None):
+                          show_plots=False):
     datafiles = np.atleast_1d(datafiles)
     dn2e = utils.get_dn2e(datafiles[0])
 
@@ -71,43 +71,40 @@ def construct_lightcurves(datafiles, output_dir, save_results=True,
     flux_o1_clip = nflux_o1_clip * norm_factor_o1
     flux_o2_clip = nflux_o2_clip * norm_factor_o2
 
-    if save_results is True:
-        # Save full res stellar spectra
-        filename = output_dir + planet_name[:-1] + '_spectra_fullres.fits'
-        header_dict, header_comments = utils.get_default_header()
-        header_dict['Target_Name'] = planet_name[:-1]
-        utils.write_spectra_to_file(filename, wave2d_o1, flux_o1_clip, ferr_o1,
-                                    wave2d_o2, flux_o2_clip, ferr_o2, t,
-                                    header_dict, header_comments)
+    # Get useful info from header
+    if isinstance(datafiles[0], str):
+        filename = datafiles[0]
+    else:
+        filename = output_dir + datamodels.open(datafiles[0]).meta.filename
+    old_header = fits.getheader(filename, 0)
+    target_name = old_header['TARGNAME']
+    # Save full res stellar spectra
+    filename = output_dir + target_name + '_spectra_fullres.fits'
+    header_dict, header_comments = utils.get_default_header()
+    header_dict['Target_Name'] = target_name
+    header_dict['Contents'] = 'Full resolution stellar spectra'
+    stellar_spectra = utils.pack_spectra(filename, wave2d_o1, flux_o1_clip,
+                                         ferr_o1, wave2d_o2, flux_o2_clip,
+                                         ferr_o2, t, header_dict,
+                                         header_comments,
+                                         save_results=save_results)
 
-        # Save full res lightcurves
-        filename = output_dir + planet_name + '_lightcurves_fullres.fits'
-        header_dict, header_comments = utils.get_default_header()
-        header_dict['Target_Name'] = planet_name
-        utils.write_spectra_to_file(filename, wave2d_o1, nflux_o1_clip,
-                                    nferr_o1, wave2d_o2, nflux_o2_clip,
-                                    nferr_o2, t, header_dict,
-                                    header_comments)
+    # Save full res lightcurves
+    filename = output_dir + target_name + '_lightcurves_fullres.fits'
+    header_dict, header_comments = utils.get_default_header()
+    header_dict['Target_Name'] = target_name
+    header_dict['Contents'] = 'Normalized light curves'
+    lightcurves = utils.pack_spectra(filename, wave2d_o1, nflux_o1_clip,
+                                     nferr_o1, wave2d_o2, nflux_o2_clip,
+                                     nferr_o2, t, header_dict,
+                                     header_comments,
+                                     save_results=save_results)
 
-    stellar_spectra = {'Wave 2D Order 1': wave2d_o1,
-                       'Flux Order 1': flux_o1_clip,
-                       'Flux Error Order 1': ferr_o1,
-                       'Wave 2D Order 2': wave2d_o2,
-                       'Flux Order 2': flux_o2_clip,
-                       'Flux Error Order 2': ferr_o2,
-                       'Time': t}
-    normalized_lightcurves = {'Wave 2D Order 1': wave2d_o1,
-                              'Flux Order 1': nflux_o1_clip,
-                              'Flux Error Order 1': nferr_o1,
-                              'Wave 2D Order 2': wave2d_o2,
-                              'Flux Order 2': nflux_o2_clip,
-                              'Flux Error Order 2': nferr_o2,
-                              'Time': t}
-
-    return normalized_lightcurves, stellar_spectra
+    return lightcurves, stellar_spectra
 
 
-def get_soss_transform(deepframe, datafile, show_plots=False):
+def get_soss_transform(deepframe, datafile, show_plots=False,
+                       save_results=True, output_dir=None):
 
     step = calwebb_spec2.extract_1d_step.Extract1dStep()
     spectrace_ref = step.get_reference_file(datafile, 'spectrace')
@@ -128,34 +125,47 @@ def get_soss_transform(deepframe, datafile, show_plots=False):
                                                 guess_transform=(0, 0, 0))
     print('Determined a transform of:\nx = {}\ny = {}\ntheta = {}'.format(*transform))
 
-    if show_plots is True:
-        cen_o1, cen_o2, cen_o3 = utils.get_trace_centroids(deepframe,
-                                                           'SUBSTRIP256')
-        xdat_o1, ydat_o1 = cen_o1
-        xdat_o2, ydat_o2 = cen_o2
-        xdat_o3, ydat_o3 = cen_o3
+    if show_plots is True or save_results is True:
+        if isinstance(datafile, str):
+            datafile = datamodels.open(datafile)
+        save_filename = datafile.meta.filename.split('_')[0]
+        cens = utils.get_trace_centroids(deepframe, 'SUBSTRIP256',
+                                         output_dir=output_dir,
+                                         save_results=save_results,
+                                         save_filename=save_filename)
+
+        xdat_o1, ydat_o1 = cens[0]
+        xdat_o2, ydat_o2 = cens[1]
+        xdat_o3, ydat_o3 = cens[2]
 
         xtrans_o1, ytrans_o1 = soss_solver.transform_coords(*transform,
                                                             xref_o1, yref_o1)
         xtrans_o2, ytrans_o2 = soss_solver.transform_coords(*transform,
                                                             xref_o2, yref_o2)
-        labels=['Extracted Centroids', 'Reference Centroids',
-                'Transformed Centroids']
-        plotting.do_centroid_plot(deepframe, [xdat_o1, xref_o1, xtrans_o1],
-                                  [ydat_o1, yref_o1, ytrans_o1],
-                                  [xdat_o2, xref_o2, xtrans_o2],
-                                  [ydat_o2, yref_o2, ytrans_o2],
-                                  [xdat_o3], [ydat_o3], labels=labels)
+        labels = ['Extracted Centroids', 'Reference Centroids',
+                  'Transformed Centroids']
+        if show_plots is True:
+            plotting.do_centroid_plot(deepframe, [xdat_o1, xref_o1, xtrans_o1],
+                                      [ydat_o1, yref_o1, ytrans_o1],
+                                      [xdat_o2, xref_o2, xtrans_o2],
+                                      [ydat_o2, yref_o2, ytrans_o2],
+                                      [xdat_o3], [ydat_o3], labels=labels)
+        else:
+            pass
 
     return transform
 
 
-def run_stage3(results, save_results=True, show_plots=False, **kwargs):
+def run_stage3(results, deepframe, save_results=True, show_plots=False,
+               root_dir='./', force_redo=False):
     # ============== DMS Stage 3 ==============
     # 1D spectral extraction.
-    utils.verify_path('pipeline_outputs_directory')
-    utils.verify_path('pipeline_outputs_directory/Stage3')
-    outdir = 'pipeline_outputs_directory/Stage3/'
+    print('\n\n**Starting supreme-SPOON Stage 3**')
+    print('1D spectral extraction\n\n')
+
+    utils.verify_path(root_dir + 'pipeline_outputs_directory')
+    outdir = root_dir + 'pipeline_outputs_directory/Stage3/'
+    utils.verify_path(outdir)
 
     all_files = glob.glob(outdir + '*')
     results = np.atleast_1d(results)
@@ -172,12 +182,19 @@ def run_stage3(results, save_results=True, show_plots=False, **kwargs):
             fileroot += chunk + '_'
         fileroots.append(fileroot)
 
-        # ===== 1D Extraction Step =====
-        # Custom/default DMS step.
-        transform = get_soss_transform(deepframe, results[0],
-                                       show_plots=show_plots)
-        new_results = []
-        for segment in results:
+    # ===== 1D Extraction Step =====
+    # Custom/default DMS step.
+    transform = get_soss_transform(deepframe, results[0],
+                                   show_plots=show_plots)
+    step_tag = 'extract1dstep'
+    new_results = []
+    for i, segment in enumerate(results):
+        expected_file = outdir + fileroots[i] + step_tag
+        if expected_file in all_files and force_redo is False:
+            print('Output file {} already exists.'.format(expected_file))
+            print('Skipping 1D Extraction Step.')
+            res = expected_file
+        else:
             step = calwebb_spec2.extract_1d_step.Extract1dStep()
             res = step.call(segment, output_dir=outdir,
                             save_results=save_results,
@@ -186,66 +203,43 @@ def run_stage3(results, save_results=True, show_plots=False, **kwargs):
                             soss_atoca=False, subtract_background=False,
                             soss_bad_pix='masking', soss_width=25,
                             soss_modelname=None)
-            new_results.append(res)
-        results = new_results
-        # Hack to fix file names
-        results = utils.fix_filenames(results, 'badpixstep_', outdir)
+        new_results.append(res)
+    results = new_results
+    # Hack to fix file names
+    results = utils.fix_filenames(results, 'badpixstep_', outdir)
+
+    # ===== Lightcurve Construction Step =====
+    # Custom DMS step.
+    res = construct_lightcurves(results, output_dir=outdir,
+                                save_results=save_results,
+                                show_plots=show_plots)
+    normalized_lightcurves, stellar_spectra = res
+
+    return normalized_lightcurves, stellar_spectra
 
 
-
-
-    return
-
-
-# TODO: Add main to just run stage 3
 if __name__ == "__main__":
-    # ===== User Input =====
-    show_plots = False
-    save_results = True
-    planet_name = 'WASP-96b'
-    # ======================
+    # =============== User Input ===============
+    root_dir = '/home/radica/jwst/ERO/WASP-96b/'
+    indir = root_dir + 'pipeline_outputs_directory/Stage2/'
+    input_filetag = 'badpixstep'
+    deepframe_file = indir + 'jw02734002001_deepframe.fits'
+    # ==========================================
 
-    run_stage3()
+    import os
+    os.environ['CRDS_PATH'] = root_dir + 'crds_cache'
+    os.environ['CRDS_SERVER_URL'] = 'https://jwst-crds.stsci.edu'
 
-    # stage2_indir = 'pipeline_outputs_directory/Stage2/SecondPass/'
-    # utils.verify_path('pipeline_outputs_directory/Stage3')
-    # outdir = 'pipeline_outputs_directory/Stage3/'
-    # res = utils.unpack_input_directory(stage2_indir, filetag='badpixstep',
-    #                                    process_f277w=False)
-    # clear_segments = res[0]
-    # all_exposures = {'CLEAR': clear_segments}
-    # print('\nIdentified {} CLEAR exposure segment(s):'.format(len(clear_segments)))
-    # for file in clear_segments:
-    #     print(' ' + file)
-    #
-    # for i, file in enumerate(clear_segments):
-    #     data = fits.getdata(file, 1)
-    #     if i == 0:
-    #         cube = data
-    #     else:
-    #         cube = np.concatenate([data, cube], axis=0)
-    # deepframe = np.nanmedian(cube, axis=0)
-    #
-    # # ===== 1D Extraction Step =====
-    # transform = get_soss_transform(deepframe, clear_segments[0],
-    #                                show_plots=show_plots)
-    # results = []
-    # for segment in clear_segments:
-    #     step = calwebb_spec2.extract_1d_step.Extract1dStep()
-    #     res = step.call(segment, output_dir=outdir, save_results=save_results,
-    #                     soss_transform=[transform[0], transform[1],
-    #                                     transform[2]],
-    #                     soss_atoca=False, subtract_background=False,
-    #                     soss_bad_pix='masking', soss_width=25,
-    #                     soss_modelname=None)
-    #     results.append(res)
-    # # Hack to fix file names
-    # results = utils.fix_filenames(results, 'badpixstep_', outdir)
-    #
-    # # ===== Construct Lightcurves =====
-    # # Custom DMS step.
-    # res = construct_lightcurves(results, output_dir=outdir,
-    #                             save_results=save_results,
-    #                             show_plots=show_plots,
-    #                             planet_name=planet_name)
-    # normalized_lightcurves, stellar_spectra = res
+    clear_segments = utils.unpack_input_directory(indir, filetag=input_filetag,
+                                                  process_f277w=False)[0]
+    deepframe = fits.getdata(deepframe_file, 0)
+
+    all_exposures = {'CLEAR': clear_segments}
+    print('\nIdentified {} CLEAR exposure segment(s):'.format(len(clear_segments)))
+    for file in clear_segments:
+        print(' ' + file)
+
+    res = run_stage3(all_exposures['CLEAR'], deepframe=deepframe,
+                     save_results=True, show_plots=False, root_dir=root_dir,
+                     force_redo=False)
+    normalized_lightcurves, stellar_spectra = res

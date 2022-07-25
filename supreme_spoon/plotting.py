@@ -170,6 +170,7 @@ def do_tracemask_plot(tracemask, **kwargs):
     plt.show()
 
 
+# TODO: some bug here in how centroids are looped over and plotted
 def do_centroid_plot(deepstack, x1, y1, x2, y2, x3, y3, labels=None):
     x1, y1 = np.atleast_2d(x1), np.atleast_2d(y1)
     x2, y2 = np.atleast_2d(x2), np.atleast_2d(y2)

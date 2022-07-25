@@ -15,6 +15,7 @@ from datetime import datetime
 import glob
 import numpy as np
 import os
+import pandas as pd
 import warnings
 
 from jwst import datamodels
@@ -67,17 +68,11 @@ def do_replacement(frame, badpix_map, box_size=5):
     return frame_out
 
 
-def make_deepstack(cube, return_rms=False):
+def make_deepstack(cube):
     """Make deepstack of a TSO.
     """
-
     deepstack = bn.nanmedian(cube, axis=0)
-    if return_rms is True:
-        rms = bn.nanstd(cube, axis=0)
-    else:
-        rms = None
-
-    return deepstack, rms
+    return deepstack
 
 
 def unpack_spectra(datafile, quantities=('WAVELENGTH', 'FLUX', 'FLUX_ERROR')):
@@ -140,8 +135,8 @@ def verify_path(path):
         os.mkdir(path)
 
 
-def get_trace_centroids(deepframe, subarray):
-    # TODO: save output
+def get_trace_centroids(deepframe, subarray, output_dir=None,
+                        save_results=True, save_filename=None):
     dimy, dimx = np.shape(deepframe)
     with warnings.catch_warnings():
         warnings.filterwarnings('ignore')
@@ -165,13 +160,33 @@ def get_trace_centroids(deepframe, subarray):
     x3 = np.arange(np.max(np.floor(X3[ii3]).astype(int)))
     y3 = np.interp(x3, X3[ii3], Y3[ii3])
 
+    if save_results is True:
+        yy2 = np.ones_like(x1) * np.nan
+        yy2[:len(y2)] = y2
+        yy3 = np.ones_like(x1) * np.nan
+        yy3[:len(y3)] = y3
+
+        centroids_dict = {'xcen o1': x1, 'ycen o1': y1,
+                          'xcen o2': x1, 'ycen o2': yy2,
+                          'xcen o3': x1, 'ycen o3': yy3}
+        df = pd.DataFrame(data=centroids_dict)
+        outfile_name = output_dir + save_filename + '_centroids.csv'
+        outfile = open(outfile_name, 'a')
+        outfile.write('# File Contents: Edgetrigger trace centroids\n')
+        outfile.write('# File Creation Date: {}\n'.format(datetime.utcnow().replace(microsecond=0).isoformat()))
+        outfile.write('# File Author: MCR\n')
+        df.to_csv(outfile, index=False)
+        outfile.close()
+        print('Centroids saved to {}'.format(outfile_name))
+
     cen_o1, cen_o2, cen_o3 = [x1, y1], [x2, y2], [x3, y3]
 
     return cen_o1, cen_o2, cen_o3
 
 
-def write_spectra_to_file(filename, w1, f1, e1, w2, f2, e2, t,
-                          header_dict=None, header_comments=None):
+# TODO: reformat
+def pack_spectra(filename, w1, f1, e1, w2, f2, e2, t, header_dict=None,
+                 header_comments=None, save_results=True):
     hdr = fits.Header()
     if header_dict is not None:
         for key in header_dict:
@@ -207,8 +222,16 @@ def write_spectra_to_file(filename, w1, f1, e1, w2, f2, e2, t,
     hdr['EXTNAME'] = "Time"
     hdr['UNITS'] = "BJD"
     hdu8 = fits.ImageHDU(t, header=hdr)
-    hdul = fits.HDUList([hdu1, hdu2, hdu3, hdu4, hdu5, hdu6, hdu7, hdu8])
-    hdul.writeto(filename, overwrite=True)
+    if save_results is True:
+        hdul = fits.HDUList([hdu1, hdu2, hdu3, hdu4, hdu5, hdu6, hdu7, hdu8])
+        hdul.writeto(filename, overwrite=True)
+
+    param_dict = {'Wave 2D Order 1': w1, 'Flux Order 1': f1,
+                  'Flux Error Order 1': e1, 'Wave 2D Order 2': w2,
+                  'Flux Order 2': f2, 'Flux Error Order 2': e2,
+                  'Time': t}
+
+    return param_dict
 
 
 def sigma_clip_lightcurves(flux, ferr, thresh=5):
@@ -232,7 +255,7 @@ def get_default_header():
                    'Pipeline': 'Supreme Spoon',
                    'Date': datetime.utcnow().replace(microsecond=0).isoformat(),
                    'Author': 'MCR',
-                   'Contents': 'Full resolution 1D stellar spectra'}
+                   'Contents': None}
     header_comments = {'Target_Name': 'Name of the target',
                        'Instrument': 'Instrument used to acquire the data',
                        'Pipeline': 'Pipeline that produced this file',

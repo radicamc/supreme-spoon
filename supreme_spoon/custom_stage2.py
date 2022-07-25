@@ -15,7 +15,6 @@ from tqdm import tqdm
 import warnings
 
 from jwst import datamodels
-from jwst.extract_1d.soss_extract import soss_boxextract
 from jwst.pipeline import calwebb_spec2
 
 from supreme_spoon import utils
@@ -204,76 +203,18 @@ def backgroundstep(datafiles, background_model, subtract_column_median=False,
     return results
 
 
-def tracemaskstep(datafiles, output_dir, mask_width=30, save_results=True,
-                  show_plots=False):
-
-    datafiles = np.atleast_1d(datafiles)
-
-    for i, file in enumerate(datafiles):
-        if isinstance(file, str):
-            currentfile = datamodels.open(file)
-        else:
-            currentfile = file
-
-        if i == 0:
-            cube = currentfile.data
-            fileroot = currentfile.meta.filename.split('_')[0]
-        else:
-            cube = np.concatenate([cube, currentfile.data], axis=0)
-        currentfile.close()
-
-    deepframe = utils.make_deepstack(cube)[0]
-
-    # Get orders 1 to 3 centroids
-    dimy, dimx = np.shape(deepframe)
-    if dimy == 256:
-        subarray = 'SUBSTRIP256'
-    else:
-        raise NotImplementedError
-
-    cen_o1, cen_o2, cen_o3 = utils.get_trace_centroids(deepframe, subarray)
-    x1, y1 = cen_o1
-    x2, y2 = cen_o2
-    x3, y3 = cen_o3
-
-    if show_plots is True:
-        plotting.do_centroid_plot(deepframe, x1, y1, x2, y2, x3, y3)
-
-    weights1 = soss_boxextract.get_box_weights(y1, mask_width, (dimy, dimx),
-                                               cols=x1.astype(int))
-    weights2 = soss_boxextract.get_box_weights(y2, mask_width, (dimy, dimx),
-                                               cols=x2.astype(int))
-    weights3 = soss_boxextract.get_box_weights(y3, mask_width, (dimy, dimx),
-                                               cols=x3.astype(int))
-    weights1 = np.where(weights1 == 0, 0, 1)
-    weights2 = np.where(weights2 == 0, 0, 1)
-    weights3 = np.where(weights3 == 0, 0, 1)
-
-    tracemask = weights1 | weights2 | weights3
-    if show_plots is True:
-        plotting.do_tracemask_plot(tracemask)
-
-    if save_results is True:
-        hdu = fits.PrimaryHDU(tracemask)
-        hdu.writeto(output_dir + fileroot + '_tracemask.fits', overwrite=True)
-
-    return deepframe, tracemask
-
-
-def run_stage2(results, iteration, background_model=None, save_results=True,
+def run_stage2(results, background_model=None, save_results=True,
                force_redo=False, show_plots=False, max_iter=2, mask_width=30,
                root_dir='./'):
     # ============== DMS Stage 2 ==============
     # Spectroscopic processing.
     # Documentation: https://jwst-pipeline.readthedocs.io/en/latest/jwst/pipeline/calwebb_spec2.html
+    print('\n\n**Starting supreme-SPOON Stage 2**')
+    print('Spectroscopic processing\n\n')
+
     utils.verify_path(root_dir + 'pipeline_outputs_directory')
     utils.verify_path(root_dir + 'pipeline_outputs_directory/Stage2')
-    if iteration == 1:
-        outdir = root_dir + 'pipeline_outputs_directory/Stage2/FirstPass/'
-        utils.verify_path(outdir)
-    else:
-        outdir = root_dir + 'pipeline_outputs_directory/Stage2/SecondPass/'
-        utils.verify_path(outdir)
+    outdir = root_dir + 'pipeline_outputs_directory/Stage2/'
 
     all_files = glob.glob(outdir + '*')
     results = np.atleast_1d(results)
@@ -367,57 +308,41 @@ def run_stage2(results, iteration, background_model=None, save_results=True,
                                      save_results=save_results,
                                      show_plots=show_plots)
 
-    # ===== Trace Mask Creation Step =====
-    # Custom DMS step.
-    step_tag = 'tracemask.fits'
-    abs_root = fileroots[0].split('/')[0]
-    expected_file = abs_root + '_' + step_tag
-    if expected_file in all_files and force_redo is False:
-        print('Output file {} already exists.'.format(expected_file))
-        print('Skipping Trace Mask Creation Step.')
-        tracemask = expected_file
-    else:
-        res = tracemaskstep(results, output_dir=outdir,
-                            save_results=save_results, show_plots=show_plots,
-                            mask_width=mask_width)
-        tracemask = res[1]
-
     # ===== Bad Pixel Correction Step =====
     # Custom DMS step.
-    if iteration == 2:
-        step_tag = 'badpixstep.fits'
-        do_step = 1
-        new_results = []
-        for i in range(len(results)):
-            expected_file = outdir + fileroots[i] + step_tag
-            if expected_file not in all_files:
-                do_step *= 0
-            else:
-                existing_data = datamodels.open(expected_file)
-                new_results.append(existing_data)
-        if do_step == 1 and force_redo is False:
-            print('Output files already exist.')
-            print('Skipping Bad Pixel Correction Step.')
-            results = new_results
-            existing_deep = fileroots[0].split('_')[0] + '_' + 'deepframe.fits'
-            deepframe = fits.getdata(outdir + existing_deep, 0)
+    step_tag = 'badpixstep.fits'
+    do_step = 1
+    new_results = []
+    for i in range(len(results)):
+        expected_file = outdir + fileroots[i] + step_tag
+        if expected_file not in all_files:
+            do_step *= 0
         else:
-            with warnings.catch_warnings():
-                warnings.simplefilter('ignore')
-                res = badpixstep(results, output_dir=outdir,
-                                 save_results=save_results, max_iter=max_iter)
-                results, deepframe = res[0], res[2]
+            existing_data = datamodels.open(expected_file)
+            new_results.append(existing_data)
+    if do_step == 1 and force_redo is False:
+        print('Output files already exist.')
+        print('Skipping Bad Pixel Correction Step.')
+        results = new_results
+        existing_deep = fileroots[0].split('_')[0] + '_' + 'deepframe.fits'
+        deepframe = fits.getdata(outdir + existing_deep, 0)
     else:
-        deepframe = None
+        with warnings.catch_warnings():
+            warnings.simplefilter('ignore')
+            res = badpixstep(results, output_dir=outdir,
+                             save_results=save_results, max_iter=max_iter)
+            results, deepframe = res[0], res[2]
 
-    return results, tracemask, deepframe
+    return results, deepframe
 
 
 if __name__ == "__main__":
+    # =============== User Input ===============
     root_dir = '/home/radica/jwst/ERO/WASP-96b/'
-    indir = root_dir + 'pipeline_outputs_directory/Stage1/FirstPass/'
+    indir = root_dir + 'pipeline_outputs_directory/Stage1/'
     input_filetag = 'gainscalestep'
     background_file = root_dir + 'model_background256.npy'
+    # ==========================================
 
     import os
     os.environ['CRDS_PATH'] = root_dir + 'crds_cache'
@@ -429,8 +354,7 @@ if __name__ == "__main__":
 
     clear_segments, f277w_segments = input_files[0], input_files[1]
     all_exposures = {'CLEAR': clear_segments}
-    print('\nIdentified {} CLEAR exposure segment(s):'.format(
-        len(clear_segments)))
+    print('\nIdentified {} CLEAR exposure segment(s):'.format(len(clear_segments)))
     for file in clear_segments:
         print(' ' + file)
     if len(f277w_segments) != 0:
@@ -439,8 +363,8 @@ if __name__ == "__main__":
         for file in f277w_segments:
             print(' ' + file)
 
-    result = run_stage2(input_files, iteration=1,
+    result = run_stage2(all_exposures['CLEAR'],
                         background_model=background_model,
                         save_results=True, force_redo=False, show_plots=False,
                         root_dir=root_dir)
-    stage2_results, trace_mask, deepframe = result
+    stage2_results, deepframe = result

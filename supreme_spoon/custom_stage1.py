@@ -7,9 +7,6 @@ Created on Thurs Jul 21 17:30 2022
 
 Custom JWST DMS pipeline steps for Stage 1 (detector level processing).
 """
-# import os
-# os.environ['CRDS_PATH'] = root_dir + 'crds_cache'
-# os.environ['CRDS_SERVER_URL'] = 'https://jwst-crds.stsci.edu'
 
 from astropy.io import fits
 import glob
@@ -20,7 +17,7 @@ import warnings
 from jwst import datamodels
 from jwst.pipeline import calwebb_detector1
 
-import utils
+from supreme_spoon import utils
 
 
 def oneoverfstep(datafiles, output_dir=None, save_results=True,
@@ -88,26 +85,10 @@ def oneoverfstep(datafiles, output_dir=None, save_results=True,
         else:
             cube = np.concatenate([cube, currentfile.data], axis=0)
 
-    # Get total file root, with no segment info.
-    working_name = fileroots[0]
-    if 'seg' in working_name:
-        parts = working_name.split('seg')
-        part1, part2 = parts[0][:-1], parts[1][3:]
-        fileroot_noseg = part1+part2
-    else:
-        fileroot_noseg = fileroots[0]
-
     # Generate the deep stack and rms of it. Both 3D (ngroup, dimy, dimx).
     print('Generating a deep stack for each frame using all integrations...')
-    deepstack, rms = utils.make_deepstack(cube, return_rms=True)
+    deepstack = utils.make_deepstack(cube)
     # Save these to disk if requested.
-    if save_results is True:
-        hdu = fits.PrimaryHDU(deepstack)
-        hdu.writeto(output_dir+fileroot_noseg+'oneoverfstep_deepstack.fits',
-                    overwrite=True)
-        hdu = fits.PrimaryHDU(rms)
-        hdu.writeto(output_dir+fileroot_noseg+'oneoverfstep_rms.fits',
-                    overwrite=True)
 
     corrected_rampmodels = []
     for n, datamodel in enumerate(data):
@@ -127,11 +108,6 @@ def oneoverfstep(datafiles, output_dir=None, save_results=True,
         else:
             dq = np.ones_like(datamodel.data)
 
-        # Weighted average to determine the 1/f DC level
-        with warnings.catch_warnings():
-            warnings.simplefilter('ignore', category=RuntimeWarning)
-            w = 1 / rms
-
         # Read in the outlier map -- a (nints, dimy, dimx) 3D cube
         if outlier_maps is None:
             msg = ' No outlier maps passed, ignoring outliers.'
@@ -142,7 +118,8 @@ def oneoverfstep(datafiles, output_dir=None, save_results=True,
             outliers = fits.getdata(outlier_maps[n])
             # If the outlier map is 2D (dimy, dimx) extend to int dimension.
             if np.ndim(outliers) == 2:
-                outliers = np.repeat(outliers, nint).reshape(dimy, dimx, nint)
+                outliers = np.repeat(outliers, nint).reshape(
+                    (dimy, dimx, nint))
                 outliers = outliers.transpose(2, 0, 1)
 
         # Read in the trace mask -- a (dimy, dimx) data frame.
@@ -159,7 +136,7 @@ def oneoverfstep(datafiles, output_dir=None, save_results=True,
         outliers = np.where(outliers == 0, 1, np.nan)
         # Same thing with the trace mask.
         tracemask = np.where(tracemask == 0, 1, np.nan)
-        tracemask = np.repeat(tracemask, nint).reshape(dimy, dimx, nint)
+        tracemask = np.repeat(tracemask, nint).reshape((dimy, dimx, nint))
         tracemask = tracemask.transpose(2, 0, 1)
         # Combine the two masks.
         outliers = (outliers + tracemask) // 2
@@ -177,43 +154,21 @@ def oneoverfstep(datafiles, output_dir=None, save_results=True,
                 # Apply the outlier mask.
                 sub_m[i, g, :, :] *= current_outlier
                 # Make sure to not subtract an overall bias
-                sub[i, g, :, :] -= np.nanmedian(sub[i, g, :, :])
-                sub_m[i, g, :, :] -= np.nanmedian(sub[i, g, :, :])
-            if datamodel.meta.subarray.name == 'SUBSTRIP256':
-                with warnings.catch_warnings():
-                    warnings.simplefilter('ignore', category=RuntimeWarning)
-                    dc = np.nansum(w * sub_m[i], axis=1)
-                    dc /= np.nansum(w * current_outlier, axis=1)
-                # make sure no NaN will corrupt the whole column
-                dc = np.where(np.isfinite(dc), dc, 0)
-                # dc is 2D - expand to the 3rd (columns) dimension
-                dc3d = np.repeat(dc, 256).reshape((ngroup, 2048, 256))
-                dcmap[i, :, :, :] = dc3d.swapaxes(1, 2)
-                subcorr[i, :, :, :] = sub[i, :, :, :] - dcmap[i, :, :, :]
-            elif datamodel.meta.subarray.name == 'SUBSTRIP96':
-                with warnings.catch_warnings():
-                    warnings.simplefilter('ignore', category=RuntimeWarning)
-                    dc = np.nansum(w * sub_m[i], axis=1)
-                    dc /= np.nansum(w * current_outlier, axis=1)
-                # make sure no NaN will corrupt the whole column
-                dc = np.where(np.isfinite(dc), dc, 0)
-                # dc is 2D - expand to the 3rd (columns) dimension
-                dc3d = np.repeat(dc, 256).reshape((ngroup, 2048, 256))
-                dcmap[i, :, :, :] = dc3d.swapaxes(1, 2)
-                subcorr[i, :, :, :] = sub[i, :, :, :] - dcmap[i, :, :, :]
-            elif datamodel.meta.subarray.name == 'FULL':
-                for amp in range(4):
-                    yo = amp*512
+                submed = np.nanmedian(sub[i, g, :, :])
+                sub[i, g, :, :] -= submed
+                sub_m[i, g, :, :] -= submed
+                if datamodel.meta.subarray.name == 'SUBSTRIP256':
                     with warnings.catch_warnings():
-                        warnings.simplefilter('ignore', category=RuntimeWarning)
-                        dc = np.nansum(w[:, :, yo:yo+512, :] * sub_m[:, :, yo:yo+512, :], axis=1)
-                        dc /= (np.nansum(w[:, :, yo:yo+512, :] * current_outlier, axis=1))
-                    # make sure no NaN will corrupt the whole column
-                    dc = np.where(np.isfinite(dc), dc, 0)
-                    # dc is 2D - expand to the 3rd (columns) dimension
-                    dc3d = np.repeat(dc, 512).reshape((ngroup, 2048, 512))
-                    dcmap[i, :, yo:yo+512, :] = dc3d.swapaxes(1, 2)
-                    subcorr[i, :, yo:yo+512, :] = sub[i, :, yo:yo+512, :] - dcmap[i, :, yo:yo+512, :]
+                        warnings.simplefilter('ignore',
+                                              category=RuntimeWarning)
+                        dc = np.nanmedian(sub_m[i, g], axis=0)
+                    # dc is 1D (columns) - expand to 2D
+                    dc2d = np.repeat(dc, 256).reshape((2048, 256)).transpose(1,
+                                                                             0)
+                    dcmap[i, g, :, :] = dc2d
+                    subcorr[i, g, :, :] = sub[i, g, :, :] - dcmap[i, g, :, :]
+                else:
+                    raise NotImplementedError
 
         # Make sure no NaNs are in the DC map
         dcmap = np.where(np.isfinite(dcmap), dcmap, 0)
@@ -225,25 +180,27 @@ def oneoverfstep(datafiles, output_dir=None, save_results=True,
         # Save results to disk if requested.
         if save_results is True:
             hdu = fits.PrimaryHDU(sub)
-            hdu.writeto(output_dir+fileroots[n]+'oneoverfstep_diffim.fits',
+            hdu.writeto(output_dir + fileroots[n] + 'oneoverfstep_diffim.fits',
                         overwrite=True)
             hdu = fits.PrimaryHDU(subcorr)
-            hdu.writeto(output_dir+fileroots[n]+'oneoverfstep_diffimcorr.fits',
-                        overwrite=True)
+            hdu.writeto(
+                output_dir + fileroots[n] + 'oneoverfstep_diffimcorr.fits',
+                overwrite=True)
             hdu = fits.PrimaryHDU(dcmap)
-            hdu.writeto(output_dir+fileroots[n]+'oneoverfstep_noisemap.fits',
-                        overwrite=True)
+            hdu.writeto(
+                output_dir + fileroots[n] + 'oneoverfstep_noisemap.fits',
+                overwrite=True)
             corrected_rampmodels.append(rampmodel_corr)
-            rampmodel_corr.write(output_dir+fileroots[n]+'oneoverfstep.fits')
+            rampmodel_corr.write(
+                output_dir + fileroots[n] + 'oneoverfstep.fits')
 
         datamodel.close()
 
     return corrected_rampmodels
 
 
-def run_stage1(results, iteration, save_results=True, outlier_maps=None,
-               trace_mask=None, force_redo=False, rejection_threshold=5,
-               root_dir = './'):
+def run_stage1(results, save_results=True, outlier_maps=None, trace_mask=None,
+               force_redo=False, rejection_threshold=5, root_dir = './'):
     # ============== DMS Stage 1 ==============
     # Detector level processing.
     # Documentation: https://jwst-pipeline.readthedocs.io/en/latest/jwst/pipeline/calwebb_detector1.html
@@ -252,12 +209,7 @@ def run_stage1(results, iteration, save_results=True, outlier_maps=None,
 
     utils.verify_path(root_dir + 'pipeline_outputs_directory')
     utils.verify_path(root_dir + 'pipeline_outputs_directory/Stage1')
-    if iteration == 1:
-        outdir = root_dir + 'pipeline_outputs_directory/Stage1/FirstPass/'
-        utils.verify_path(outdir)
-    else:
-        outdir = root_dir + 'pipeline_outputs_directory/Stage1/SecondPass/'
-        utils.verify_path(outdir)
+    outdir = root_dir + 'pipeline_outputs_directory/Stage1/'
 
     all_files = glob.glob(outdir + '*')
     results = np.atleast_1d(results)
@@ -447,11 +399,13 @@ def run_stage1(results, iteration, save_results=True, outlier_maps=None,
 
 
 if __name__ == "__main__":
+    # =============== User Input ===============
     root_dir = '/home/radica/jwst/ERO/WASP-96b/'
     indir = root_dir + 'DMS_uncal/'
     input_filetag = 'uncal'
     outlier_maps = None
     trace_mask = None
+    # ==========================================
 
     import os
     os.environ['CRDS_PATH'] = root_dir + 'crds_cache'
@@ -470,7 +424,7 @@ if __name__ == "__main__":
         print('and {} F277W exposre segment(s):'.format(len(f277w_segments)))
         for file in f277w_segments:
             print(' ' + file)
-    stage1_results = run_stage1(all_exposures['CLEAR'], iteration=1,
-                                save_results=True, outlier_maps=outlier_maps,
+    stage1_results = run_stage1(all_exposures['CLEAR'], save_results=True,
+                                outlier_maps=outlier_maps,
                                 trace_mask=trace_mask, force_redo=False,
                                 root_dir=root_dir)
