@@ -208,7 +208,6 @@ def run_stage3(results, deepframe, save_results=True, show_plots=False,
         new_results.append(res)
     results = new_results
 
-
     # ===== Lightcurve Construction Step =====
     # Custom DMS step.
     res = construct_lightcurves(results, output_dir=outdir,

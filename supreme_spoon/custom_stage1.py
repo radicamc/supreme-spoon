@@ -258,7 +258,7 @@ def tracemaskstep(datafiles, output_dir, mask_width=30, save_results=True,
 
 
 def run_stage1(results, save_results=True, outlier_maps=None, trace_mask=None,
-               force_redo=False, rejection_threshold=5, root_dir = './'):
+               force_redo=False, rejection_threshold=5, root_dir='./'):
     # ============== DMS Stage 1 ==============
     # Detector level processing.
     # Documentation: https://jwst-pipeline.readthedocs.io/en/latest/jwst/pipeline/calwebb_detector1.html
@@ -376,7 +376,6 @@ def run_stage1(results, save_results=True, outlier_maps=None, trace_mask=None,
             res = utils.fix_filenames(res, '_oneoverfstep_', outdir)
         new_results.append(res)
     results = new_results
-
 
     # ===== Linearity Correction Step =====
     # Default DMS step.

@@ -293,13 +293,16 @@ def unpack_input_directory(indir, filetag='', process_f277w=False):
             header = fits.getheader(file, 0)
         except(OSError, IsADirectoryError):
             continue
-        if header['FILTER'] == 'CLEAR':
-            if filetag in file:
-                clear_segments.append(file)
-        elif header['FILTER'] == 'F277W' and process_f277w is True:
-            if filetag in file:
-                f277w_segments.append(file)
-        else:
+        try:
+            if header['FILTER'] == 'CLEAR':
+                if filetag in file:
+                    clear_segments.append(file)
+            elif header['FILTER'] == 'F277W' and process_f277w is True:
+                if filetag in file:
+                    f277w_segments.append(file)
+            else:
+                continue
+        except KeyError:
             continue
     # Ensure that segments are packed in chronological order
     if len(clear_segments) > 1:
