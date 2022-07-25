@@ -16,8 +16,10 @@ import warnings
 
 from jwst import datamodels
 from jwst.pipeline import calwebb_detector1
+from jwst.extract_1d.soss_extract import soss_boxextract
 
 from supreme_spoon import utils
+from supreme_spoon import plotting
 
 
 def oneoverfstep(datafiles, output_dir=None, save_results=True,
@@ -199,6 +201,62 @@ def oneoverfstep(datafiles, output_dir=None, save_results=True,
     return corrected_rampmodels
 
 
+def tracemaskstep(datafiles, output_dir, mask_width=30, save_results=True,
+                  show_plots=False):
+
+    datafiles = np.atleast_1d(datafiles)
+
+    for i, file in enumerate(datafiles):
+        if isinstance(file, str):
+            currentfile = datamodels.open(file)
+        else:
+            currentfile = file
+
+        if i == 0:
+            cube = currentfile.data
+            fileroot = currentfile.meta.filename.split('_')[0]
+        else:
+            cube = np.concatenate([cube, currentfile.data], axis=0)
+        currentfile.close()
+
+    deepframe = utils.make_deepstack(cube)
+
+    # Get orders 1 to 3 centroids
+    dimy, dimx = np.shape(deepframe)
+    if dimy == 256:
+        subarray = 'SUBSTRIP256'
+    else:
+        raise NotImplementedError
+
+    cen_o1, cen_o2, cen_o3 = utils.get_trace_centroids(deepframe, subarray)
+    x1, y1 = cen_o1
+    x2, y2 = cen_o2
+    x3, y3 = cen_o3
+
+    if show_plots is True:
+        plotting.do_centroid_plot(deepframe, x1, y1, x2, y2, x3, y3)
+
+    weights1 = soss_boxextract.get_box_weights(y1, mask_width, (dimy, dimx),
+                                               cols=x1.astype(int))
+    weights2 = soss_boxextract.get_box_weights(y2, mask_width, (dimy, dimx),
+                                               cols=x2.astype(int))
+    weights3 = soss_boxextract.get_box_weights(y3, mask_width, (dimy, dimx),
+                                               cols=x3.astype(int))
+    weights1 = np.where(weights1 == 0, 0, 1)
+    weights2 = np.where(weights2 == 0, 0, 1)
+    weights3 = np.where(weights3 == 0, 0, 1)
+
+    tracemask = weights1 | weights2 | weights3
+    if show_plots is True:
+        plotting.do_tracemask_plot(tracemask)
+
+    if save_results is True:
+        hdu = fits.PrimaryHDU(tracemask)
+        hdu.writeto(output_dir + fileroot + '_tracemask.fits', overwrite=True)
+
+    return deepframe, tracemask
+
+
 def run_stage1(results, save_results=True, outlier_maps=None, trace_mask=None,
                force_redo=False, rejection_threshold=5, root_dir = './'):
     # ============== DMS Stage 1 ==============
@@ -369,16 +427,15 @@ def run_stage1(results, save_results=True, outlier_maps=None, trace_mask=None,
             step = calwebb_detector1.ramp_fit_step.RampFitStep()
             res = step.call(segment, output_dir=outdir,
                             save_results=save_results)[1]
-            # Hack to fix file names
-            res = utils.fix_filenames(res, '_1_', outdir)
             # Store pixel flags in seperate files to be used for 1/f noise
             # correction.
             hdu = fits.PrimaryHDU(res.dq)
             outfile = outdir + fileroots[i] + 'dqpixelflags.fits'
             hdu.writeto(outfile, overwrite=True)
+            # Hack to fix file names
+            res = utils.fix_filenames(res, '_1_', outdir)
         new_results.append(res)
     results = new_results
-
 
     # ===== Gain Scale Correcton Step =====
     # Default DMS step.
