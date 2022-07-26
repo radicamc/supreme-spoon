@@ -78,8 +78,9 @@ def construct_lightcurves(datafiles, output_dir, save_results=True,
         filename = output_dir + datamodels.open(datafiles[0]).meta.filename
     old_header = fits.getheader(filename, 0)
     target_name = old_header['TARGNAME']
+    extract_method = filename.split('.fits')[0].split('_')[-1]
     # Save full res stellar spectra
-    filename = output_dir + target_name + '_spectra_fullres.fits'
+    filename = output_dir + target_name + '_' + extract_method + '_spectra_fullres.fits'
     header_dict, header_comments = utils.get_default_header()
     header_dict['Target'] = target_name
     header_dict['Contents'] = 'Full resolution stellar spectra'
@@ -90,7 +91,7 @@ def construct_lightcurves(datafiles, output_dir, save_results=True,
                                          save_results=save_results)
 
     # Save full res lightcurves
-    filename = output_dir + target_name + '_lightcurves_fullres.fits'
+    filename = output_dir + target_name + '_' + extract_method + '_lightcurves_fullres.fits'
     header_dict, header_comments = utils.get_default_header()
     header_dict['Target'] = target_name
     header_dict['Contents'] = 'Normalized light curves'
@@ -157,7 +158,8 @@ def get_soss_transform(deepframe, datafile, show_plots=False,
 
 
 def run_stage3(results, deepframe, save_results=True, show_plots=False,
-               root_dir='./', force_redo=False):
+               root_dir='./', force_redo=False, extract_method='box',
+               specprofile=None):
     # ============== DMS Stage 3 ==============
     # 1D spectral extraction.
     print('\n\n**Starting supreme-SPOON Stage 3**')
@@ -188,7 +190,7 @@ def run_stage3(results, deepframe, save_results=True, show_plots=False,
                                    show_plots=show_plots,
                                    save_results=save_results,
                                    output_dir=outdir)
-    step_tag = 'extract1dstep.fits'
+    step_tag = 'extract1dstep_{}.fits'.format(extract_method)
     new_results = []
     for i, segment in enumerate(results):
         expected_file = outdir + fileroots[i] + step_tag
@@ -197,16 +199,26 @@ def run_stage3(results, deepframe, save_results=True, show_plots=False,
             print('Skipping 1D Extraction Step.')
             res = expected_file
         else:
+            if extract_method == 'atoca':
+                soss_atoca = True
+                soss_modelname = fileroots[i]
+                soss_bad_pix = 'model'
+            else:
+                soss_atoca = False
+                soss_modelname = None
+                soss_bad_pix = 'masking'
             step = calwebb_spec2.extract_1d_step.Extract1dStep()
             res = step.call(segment, output_dir=outdir,
                             save_results=save_results,
                             soss_transform=[transform[0], transform[1],
                                             transform[2]],
-                            soss_atoca=False, subtract_background=False,
-                            soss_bad_pix='masking', soss_width=25,
-                            soss_modelname=None)
+                            soss_atoca=soss_atoca, subtract_background=False,
+                            soss_bad_pix=soss_bad_pix, soss_width=25,
+                            soss_modelname=soss_modelname,
+                            override_specprofile=specprofile)
             # Hack to fix file names
-            res = utils.fix_filenames(res, '_badpixstep_', outdir)
+            res = utils.fix_filenames(res, '_badpixstep_', outdir,
+                                      to_add=extract_method)
         new_results.append(res)
     results = new_results
 
@@ -226,6 +238,8 @@ if __name__ == "__main__":
     indir = root_dir + 'pipeline_outputs_directory/Stage2/'
     input_filetag = 'badpixstep'
     deepframe_file = indir + 'jw02734002001_04101_00001_nis_deepframe.fits'
+    extract_method = 'box'
+    specprofile = None
     # ==========================================
 
     import os
@@ -243,5 +257,6 @@ if __name__ == "__main__":
 
     res = run_stage3(all_exposures['CLEAR'], deepframe=deepframe,
                      save_results=True, show_plots=False, root_dir=root_dir,
-                     force_redo=False)
+                     force_redo=False, extract_method=extract_method,
+                     specprofile=specprofile)
     normalized_lightcurves, stellar_spectra = res

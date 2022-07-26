@@ -57,9 +57,8 @@ def plot_2dlightcurves(flux1, flux2, wave1, wave2, savename=None, **kwargs):
     plt.show()
 
 
-def do_lightcurve_plot(t, data, error, model, sigma, scatter, uperr=None,
-                       lerr=None, outpdf=None,
-                       title=None, nfit=8):
+def do_lightcurve_plot(t, data, error, model, scatter, outpdf=None, title=None,
+                       nfit=8):
     def gaus(x, m, s):
         return np.exp(-0.5 * (x - m) ** 2 / s ** 2) / np.sqrt(
             2 * np.pi * s ** 2)
@@ -78,7 +77,7 @@ def do_lightcurve_plot(t, data, error, model, sigma, scatter, uperr=None,
     ax1.set_ylabel('Relative Flux', fontsize=14)
     ax1.set_xlim(np.min(t), np.max(t))
     ax1.xaxis.set_major_formatter(plt.NullFormatter())
-    chi2_v = chi2(data * 1e6, model * 1e6, sigma) / (len(t) - nfit)
+    chi2_v = chi2(data * 1e6, model * 1e6, scatter) / (len(t) - nfit)
     ax1.text(t[2], np.min(model), r'$\chi_\nu^2 = {:.2f}$'.format(chi2_v),
              fontsize=14)
 
@@ -93,21 +92,21 @@ def do_lightcurve_plot(t, data, error, model, sigma, scatter, uperr=None,
     xpos = np.percentile(t, 1)
     plt.text(xpos, np.max((data - model) * 1e6),
              r'{:.2f}$\,$ppm'.format(scatter))
-    ax2.fill_between(t, -sigma, sigma, color='black', alpha=0.1)
+    ax2.fill_between(t, -scatter, scatter, color='black', alpha=0.1)
     ax2.set_xlim(np.min(t), np.max(t))
     ax2.set_ylabel('Residuals\n(ppm)', fontsize=16)
     ax2.set_xlabel('Time [BJD]', fontsize=16)
 
     # Histogram of residuals
     ax3 = plt.subplot(gs[3])
-    res = (data - model) * 1e6 / sigma
+    res = (data - model) * 1e6 / scatter
     bins = np.linspace(-10, 10, 41) + 0.25
     hist = ax3.hist(res, edgecolor='grey', color='lightgrey', bins=bins)
     area = np.sum(hist[0] * np.diff(bins))
     ax3.plot(np.linspace(-15, 15, 500),
              gaus(np.linspace(-15, 15, 500), 0, 1) * area, c='black')
     ax3.set_ylabel('Counts', fontsize=16)
-    ax3.set_xlabel('Residuals (sigma)', fontsize=16)
+    ax3.set_xlabel('Residuals/Scatter', fontsize=16)
 
     ii = np.where(hist[0] != 0)
     start = hist[1][np.min(ii)] - 1
