@@ -326,3 +326,14 @@ def unpack_input_directory(indir, filetag='', process_f277w=False):
         f277w_segments = f277w_segments[correct_order]
 
     return clear_segments, f277w_segments
+
+
+def remove_nans(datamodel):
+    if isinstance(datamodel, str):
+        datamodel = datamodels.open(datamodel)
+    modelout = datamodel.copy()
+    ind = (~np.isfinite(datamodel.data)) | (~np.isfinite(datamodel.err))
+    modelout.data[ind] = 0
+    modelout.err[ind] = np.nanmedian(datamodel.err) * 10
+    modelout.dq[ind] += 1
+    return modelout

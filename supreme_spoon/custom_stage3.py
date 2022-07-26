@@ -203,6 +203,7 @@ def run_stage3(results, deepframe, save_results=True, show_plots=False,
                 soss_atoca = True
                 soss_modelname = fileroots[i]
                 soss_bad_pix = 'model'
+                segment = utils.remove_nans(segment)
             else:
                 soss_atoca = False
                 soss_modelname = None
