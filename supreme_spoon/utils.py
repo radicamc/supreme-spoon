@@ -330,7 +330,9 @@ def unpack_input_directory(indir, filetag='', process_f277w=False):
 
 def remove_nans(datamodel):
     if isinstance(datamodel, str):
-        datamodel = datamodels.open(datamodel)
+        with warnings.catch_warnings():
+            warnings.filterwarnings('ignore')
+            datamodel = datamodels.open(datamodel)
     modelout = datamodel.copy()
     ind = (~np.isfinite(datamodel.data)) | (~np.isfinite(datamodel.err))
     modelout.data[ind] = 0

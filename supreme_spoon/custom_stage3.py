@@ -119,9 +119,11 @@ def specprofilestep(deepframe, save_results=True, output_dir='./'):
 def get_soss_transform(deepframe, datafile, show_plots=False,
                        save_results=True, output_dir=None):
 
-    step = calwebb_spec2.extract_1d_step.Extract1dStep()
-    spectrace_ref = step.get_reference_file(datafile, 'spectrace')
-    spec_trace = datamodels.SpecTraceModel(spectrace_ref)
+    with warnings.catch_warnings():
+        warnings.filterwarnings('ignore')
+        step = calwebb_spec2.extract_1d_step.Extract1dStep()
+        spectrace_ref = step.get_reference_file(datafile, 'spectrace')
+        spec_trace = datamodels.SpecTraceModel(spectrace_ref)
 
     xref_o1 = spec_trace.trace[0].data['X']
     yref_o1 = spec_trace.trace[0].data['Y']
@@ -140,7 +142,9 @@ def get_soss_transform(deepframe, datafile, show_plots=False,
 
     if show_plots is True or save_results is True:
         if isinstance(datafile, str):
-            datafile = datamodels.open(datafile)
+            with warnings.catch_warnings():
+                warnings.filterwarnings('ignore')
+                datafile = datamodels.open(datafile)
         save_filename = datafile.meta.filename.split('_')[0]
         cens = utils.get_trace_centroids(deepframe, 'SUBSTRIP256',
                                          output_dir=output_dir,
@@ -250,7 +254,7 @@ def run_stage3(results, deepframe, out_frames, save_results=True,
                             print('No completed segments to create soss_estimate.')
                             raise err
 
-                    print('Initial flux estimate failed, trying again with soss_estimate.')
+                    print('\nInitial flux estimate failed, trying again with soss_estimate.\n')
                     res = step.call(segment, output_dir=outdir,
                                     save_results=save_results,
                                     soss_transform=[transform[0], transform[1],
