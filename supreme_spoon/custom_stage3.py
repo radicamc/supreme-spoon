@@ -238,8 +238,8 @@ if __name__ == "__main__":
     indir = root_dir + 'pipeline_outputs_directory/Stage2/'
     input_filetag = 'badpixstep'
     deepframe_file = indir + 'jw02734002001_04101_00001_nis_deepframe.fits'
-    extract_method = 'box'
-    specprofile = None
+    extract_method = 'atoca'
+    specprofile = root_dir + 'pipeline_outputs_directory/Stage3/APPLESOSS_ref_2D_profile_SUBSTRIP256_os1_pad0.fits'
     # ==========================================
 
     import os
