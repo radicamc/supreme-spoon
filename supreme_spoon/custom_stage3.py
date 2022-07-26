@@ -17,6 +17,11 @@ from jwst import datamodels
 from jwst.extract_1d.soss_extract import soss_solver
 from jwst.pipeline import calwebb_spec2
 
+from sys import path
+applesoss_path = '/home/radica/GitHub/APPLESOSS/'
+path.insert(1, applesoss_path)
+from APPLESOSS import applesoss
+
 from supreme_spoon import utils
 from supreme_spoon import plotting
 
@@ -104,6 +109,21 @@ def construct_lightcurves(datafiles, output_dir, save_results=True,
     return lightcurves, stellar_spectra
 
 
+def specprofilestep(deepframe, save_results=True, output_dir='./'):
+
+    print('Starting Spectral Profile Construction Step')
+    spat_prof = applesoss.EmpiricalProfile(deepframe)
+    spat_prof.build_empirical_profile(verbose=1, wave_increment=0.1)
+
+    if save_results is True:
+        filename = spat_prof.write_specprofile_reference('SUBSTRIP256',
+                                                         output_dir=output_dir)
+    else:
+        filename = None
+
+    return spat_prof, filename
+
+
 def get_soss_transform(deepframe, datafile, show_plots=False,
                        save_results=True, output_dir=None):
 
@@ -158,8 +178,7 @@ def get_soss_transform(deepframe, datafile, show_plots=False,
 
 
 def run_stage3(results, deepframe, save_results=True, show_plots=False,
-               root_dir='./', force_redo=False, extract_method='box',
-               specprofile=None):
+               root_dir='./', force_redo=False, extract_method='box'):
     # ============== DMS Stage 3 ==============
     # 1D spectral extraction.
     print('\n\n**Starting supreme-SPOON Stage 3**')
@@ -183,6 +202,15 @@ def run_stage3(results, deepframe, save_results=True, show_plots=False,
         for chunk in filename_split[:-1]:
             fileroot += chunk + '_'
         fileroots.append(fileroot)
+
+    # ===== SpecProfile Construction Step =====
+    # Custom DMS step
+    if extract_method == 'atoca':
+        specprofile = specprofilestep(deepframe, save_results=save_results,
+                                      output_dir=outdir)[1]
+        specprofile = outdir + specprofile
+    else:
+        specprofile = None
 
     # ===== 1D Extraction Step =====
     # Custom/default DMS step.
@@ -240,7 +268,6 @@ if __name__ == "__main__":
     input_filetag = 'badpixstep'
     deepframe_file = indir + 'jw02734002001_04101_00001_nis_deepframe.fits'
     extract_method = 'atoca'
-    specprofile = root_dir + 'pipeline_outputs_directory/Stage3/APPLESOSS_ref_2D_profile_SUBSTRIP256_os1_pad0.fits'
     # ==========================================
 
     import os
@@ -258,6 +285,5 @@ if __name__ == "__main__":
 
     res = run_stage3(all_exposures['CLEAR'], deepframe=deepframe,
                      save_results=True, show_plots=False, root_dir=root_dir,
-                     force_redo=False, extract_method=extract_method,
-                     specprofile=specprofile)
+                     force_redo=False, extract_method=extract_method)
     normalized_lightcurves, stellar_spectra = res
