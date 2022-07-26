@@ -12,6 +12,7 @@ from astropy.io import fits
 import glob
 import numpy as np
 import warnings
+warnings.filterwarnings('ignore', message=" Unable to locate schema file for 'tag:stsci.edu:jwst_pipeline/niriss-soss-0.7.0': 'http://stsci.edu/schemas/jwst_pipeline/niriss-soss-0.7.0'")
 
 from jwst import datamodels
 from jwst.extract_1d.soss_extract import soss_solver
@@ -231,7 +232,7 @@ def run_stage3(results, deepframe, save_results=True, show_plots=False,
                 soss_atoca = True
                 soss_modelname = fileroots[i][:-1]
                 soss_bad_pix = 'model'
-                #segment = utils.remove_nans(segment)
+                segment = utils.remove_nans(segment)
             else:
                 soss_atoca = False
                 soss_modelname = None

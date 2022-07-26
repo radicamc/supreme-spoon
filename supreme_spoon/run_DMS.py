@@ -28,7 +28,7 @@ trace_mask = root_dir + 'OLD_pipeline_outputs_directory/Stage2/jw02734002001_tra
 background_file = root_dir + 'model_background256.npy'  # Background model
 
 # Stage 3 Input Files
-specprofile = None  # Specprofile reference file for atoca
+specprofile = root_dir + 'pipeline_outputs_directory/Stage3/APPLESOSS_ref_2D_profile_SUBSTRIP256_os1_pad0.fits'  # Specprofile reference file for atoca
 
 # Other Parameters
 save_results = True  # Save results of each intermediate step to file
