@@ -337,3 +337,15 @@ def remove_nans(datamodel):
     modelout.err[ind] = np.nanmedian(datamodel.err) * 10
     modelout.dq[ind] += 1
     return modelout
+
+
+def get_soss_estimate(atoca_spectra, output_dir):
+    atoca_spec = datamodels.open(atoca_spectra)
+
+    for spec in atoca_spec.spec:
+        if spec.meta.soss_extract1d.type == 'OBSERVATION':
+            estimate = datamodels.SpecModel(spec_table=spec.spec_table)
+            break
+    estimate_filename = estimate.save(output_dir + 'soss_estimate.fits')
+
+    return estimate_filename

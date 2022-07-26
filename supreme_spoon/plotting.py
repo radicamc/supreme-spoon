@@ -57,6 +57,7 @@ def plot_2dlightcurves(flux1, flux2, wave1, wave2, savename=None, **kwargs):
     plt.show()
 
 
+# TODO: put error bars on lightcurve
 def do_lightcurve_plot(t, data, error, model, scatter, outpdf=None, title=None,
                        nfit=8):
     def gaus(x, m, s):

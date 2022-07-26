@@ -8,6 +8,7 @@ Created on Thurs Jul 21 18:07 2022
 Custom JWST DMS pipeline steps for Stage 4 (lightcurve fitting).
 """
 
+# TODO: input NaNs in fit results for skipping bins so that the fit results arrays are same lengths as wave bins
 import numpy as np
 
 
@@ -124,7 +125,22 @@ def bin_at_resolution(wavelengths, depths, R=100, method='median'):
 
                 oncall = False
 
-    return wout, dout, derrout
+    lw = np.concatenate([wout[:, None], np.roll(wout, 1)[:, None]], axis=1)
+    up = np.concatenate([wout[:, None], np.roll(wout, -1)[:, None]], axis=1)
+
+    uperr = (np.mean(up, axis=1) - wout)[:-1]
+    uperr = np.insert(uperr, -1, uperr[-1])
+
+    lwerr = (wout - np.mean(lw, axis=1))[1:]
+    lwerr = np.insert(lwerr, 0, lwerr[0])
+
+    werrout = [lwerr, uperr]
+
+    return wout, werrout, dout, derrout
+
+
+def save_transmissions_spectrum(fitres_o1, fitres_o2, output_dir):
+    return
 
 
 def run_stage4():

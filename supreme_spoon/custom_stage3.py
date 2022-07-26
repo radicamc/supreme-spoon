@@ -26,7 +26,6 @@ from supreme_spoon import utils
 from supreme_spoon import plotting
 
 
-# TODO: only return spectra and not lightcurves
 def construct_lightcurves(datafiles, output_dir, out_frames,
                           save_results=True, show_plots=False):
     datafiles = np.atleast_1d(datafiles)
@@ -172,7 +171,7 @@ def get_soss_transform(deepframe, datafile, show_plots=False,
 
 def run_stage3(results, deepframe, out_frames, save_results=True,
                show_plots=False, root_dir='./', force_redo=False,
-               extract_method='box', specprofile=None):
+               extract_method='box', specprofile=None, soss_estimate=None):
     # ============== DMS Stage 3 ==============
     # 1D spectral extraction.
     print('\n\n**Starting supreme-SPOON Stage 3**')
@@ -230,14 +229,40 @@ def run_stage3(results, deepframe, out_frames, save_results=True,
                 soss_modelname = None
                 soss_bad_pix = 'masking'
             step = calwebb_spec2.extract_1d_step.Extract1dStep()
-            res = step.call(segment, output_dir=outdir,
-                            save_results=save_results,
-                            soss_transform=[transform[0], transform[1],
-                                            transform[2]],
-                            soss_atoca=soss_atoca, subtract_background=False,
-                            soss_bad_pix=soss_bad_pix, soss_width=25,
-                            soss_modelname=soss_modelname,
-                            override_specprofile=specprofile)
+            try:
+                res = step.call(segment, output_dir=outdir,
+                                save_results=save_results,
+                                soss_transform=[transform[0], transform[1],
+                                                transform[2]],
+                                soss_atoca=soss_atoca,
+                                subtract_background=False,
+                                soss_bad_pix=soss_bad_pix, soss_width=25,
+                                soss_modelname=soss_modelname,
+                                override_specprofile=specprofile)
+            except Exception as err:
+                if str(err) == '(m>k) failed for hidden m: fpcurf0:m=0':
+                    if soss_estimate is None:
+                        if i != 0:
+                            atoca_spectra = outdir + fileroots[i-1] + 'AtocaSpectra.fits'
+                            soss_estimate = utils.get_soss_estimate(atoca_spectra,
+                                                                    output_dir=outdir)
+                        else:
+                            print('No completed segments to create soss_estimate.')
+                            raise err
+
+                    print('Initial flux estimate failed, trying again with soss_estimate.')
+                    res = step.call(segment, output_dir=outdir,
+                                    save_results=save_results,
+                                    soss_transform=[transform[0], transform[1],
+                                                    transform[2]],
+                                    soss_atoca=soss_atoca,
+                                    subtract_background=False,
+                                    soss_bad_pix=soss_bad_pix, soss_width=25,
+                                    soss_modelname=soss_modelname,
+                                    override_specprofile=specprofile,
+                                    soss_estimate=soss_estimate)
+                else:
+                    raise err
             # Hack to fix file names
             res = utils.fix_filenames(res, '_badpixstep_', outdir,
                                       to_add=extract_method)
@@ -263,6 +288,7 @@ if __name__ == "__main__":
     extract_method = 'atoca'
     specprofile = root_dir + 'pipeline_outputs_directory/Stage3/APPLESOSS_ref_2D_profile_SUBSTRIP256_os1_pad0.fits'
     out_frames = [90, -40]
+    soss_estimate = None
     # ==========================================
 
     import os
@@ -283,4 +309,5 @@ if __name__ == "__main__":
                                  root_dir=root_dir, force_redo=False,
                                  extract_method=extract_method,
                                  specprofile=specprofile,
-                                 out_frames=out_frames)
+                                 out_frames=out_frames,
+                                 soss_estimate=soss_estimate)

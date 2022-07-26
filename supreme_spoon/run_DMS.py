@@ -29,6 +29,7 @@ background_file = root_dir + 'model_background256.npy'  # Background model
 
 # Stage 3 Input Files
 specprofile = root_dir + 'pipeline_outputs_directory/Stage3/APPLESOSS_ref_2D_profile_SUBSTRIP256_os1_pad0.fits'  # Specprofile reference file for atoca
+soss_estimate = None
 
 # Other Parameters
 save_results = True  # Save results of each intermediate step to file
@@ -85,7 +86,8 @@ stage3_results = custom_stage3.run_stage3(stage2_results,
                                           force_redo=force_redo,
                                           extract_method=extract_method,
                                           specprofile=specprofile,
-                                          out_frames=out_frames)
+                                          out_frames=out_frames,
+                                          soss_estimate=soss_estimate)
 normalized_lightcurves, stellar_spectra = stage3_results
 
 print('Done')
