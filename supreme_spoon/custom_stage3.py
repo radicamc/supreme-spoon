@@ -178,7 +178,8 @@ def get_soss_transform(deepframe, datafile, show_plots=False,
 
 
 def run_stage3(results, deepframe, save_results=True, show_plots=False,
-               root_dir='./', force_redo=False, extract_method='box'):
+               root_dir='./', force_redo=False, extract_method='box',
+               specprofile=None):
     # ============== DMS Stage 3 ==============
     # 1D spectral extraction.
     print('\n\n**Starting supreme-SPOON Stage 3**')
@@ -206,11 +207,10 @@ def run_stage3(results, deepframe, save_results=True, show_plots=False,
     # ===== SpecProfile Construction Step =====
     # Custom DMS step
     if extract_method == 'atoca':
-        specprofile = specprofilestep(deepframe, save_results=save_results,
-                                      output_dir=outdir)[1]
-        specprofile = outdir + specprofile
-    else:
-        specprofile = None
+        if specprofile is None:
+            specprofile = specprofilestep(deepframe, save_results=save_results,
+                                          output_dir=outdir)[1]
+            specprofile = outdir + specprofile
 
     # ===== 1D Extraction Step =====
     # Custom/default DMS step.
@@ -229,7 +229,7 @@ def run_stage3(results, deepframe, save_results=True, show_plots=False,
         else:
             if extract_method == 'atoca':
                 soss_atoca = True
-                soss_modelname = fileroots[i]
+                soss_modelname = fileroots[i][:-1]
                 soss_bad_pix = 'model'
                 segment = utils.remove_nans(segment)
             else:
@@ -268,6 +268,7 @@ if __name__ == "__main__":
     input_filetag = 'badpixstep'
     deepframe_file = indir + 'jw02734002001_04101_00001_nis_deepframe.fits'
     extract_method = 'atoca'
+    specprofile = root_dir + 'pipeline_outputs_directory/Stage3/APPLESOSS_ref_2D_profile_SUBSTRIP256_os1_pad0.fits'
     # ==========================================
 
     import os
@@ -285,5 +286,6 @@ if __name__ == "__main__":
 
     res = run_stage3(all_exposures['CLEAR'], deepframe=deepframe,
                      save_results=True, show_plots=False, root_dir=root_dir,
-                     force_redo=False, extract_method=extract_method)
+                     force_redo=False, extract_method=extract_method,
+                     specprofile=specprofile)
     normalized_lightcurves, stellar_spectra = res
