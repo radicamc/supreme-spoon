@@ -8,10 +8,6 @@ Created on Wed Jul 20 11:12 2022
 Script to run JWST DMS with custom reduction steps.
 """
 
-import os
-os.environ['CRDS_PATH'] = './crds_cache'
-os.environ['CRDS_SERVER_URL'] = 'https://jwst-crds.stsci.edu'
-
 import numpy as np
 
 from supreme_spoon import custom_stage1, custom_stage2, custom_stage3
@@ -22,8 +18,11 @@ from supreme_spoon import utils
 root_dir = '/home/radica/jwst/ERO/WASP-96b/'  # Root file directory
 uncal_indir = root_dir + 'DMS_uncal/'  # Uncalibrated data file directory
 input_filetag = 'uncal'  # Uncalibrated file tag
-outlier_maps = None  # Outliers to mask in 1/f correction
-trace_mask = None  # Trace pixels to mask in 1/f correction
+outlier_maps = [
+    root_dir + 'OLD_pipeline_outputs_directory/Stage1/jw02734002001_04101_00001-seg001_nis_1_dqpixelflags.fits',
+    root_dir + 'OLD_pipeline_outputs_directory/Stage1/jw02734002001_04101_00001-seg002_nis_1_dqpixelflags.fits',
+    root_dir + 'OLD_pipeline_outputs_directory/Stage1/jw02734002001_04101_00001-seg003_nis_1_dqpixelflags.fits']
+trace_mask = root_dir + 'OLD_pipeline_outputs_directory/Stage2/jw02734002001_tracemask.fits'
 
 # Stage 2 Input Files
 background_file = root_dir + 'model_background256.npy'  # Background model
@@ -34,6 +33,10 @@ show_plots = False  # Show plots
 process_f277w = False  # Process F277W exposures in addition to CLEAR
 force_redo = False  # Force redo of steps which have already been completed
 # ======================================================
+
+import os
+os.environ['CRDS_PATH'] = root_dir + 'crds_cache'
+os.environ['CRDS_SERVER_URL'] = 'https://jwst-crds.stsci.edu'
 
 # Unpack data file from input directory
 input_files = utils.unpack_input_directory(uncal_indir, filetag=input_filetag,

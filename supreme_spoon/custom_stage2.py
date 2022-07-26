@@ -138,16 +138,17 @@ def badpixstep(datafiles, thresh=3, box_size=5, max_iter=2, output_dir=None,
     # Generate a final corrected deep frame.
     deepframe = utils.make_deepstack(newdata)
 
-    if save_results is True:
-        current_int = 0
-        # Save interpolated data.
-        for n, file in enumerate(data):
-            currentdata = file.data
-            nints = np.shape(currentdata)[0]
-            file.data = newdata[current_int:(current_int + nints)]
+    current_int = 0
+    # Save interpolated data.
+    for n, file in enumerate(data):
+        currentdata = file.data
+        nints = np.shape(currentdata)[0]
+        file.data = newdata[current_int:(current_int + nints)]
+        current_int += nints
+        if save_results is True:
             file.write(output_dir + fileroots[n] + 'badpixstep.fits')
-            current_int += nints
 
+    if save_results is True:
         # Save bad pixel mask.
         hdu = fits.PrimaryHDU(badpix_mask)
         hdu.writeto(output_dir + fileroot_noseg + 'badpixmap.fits',
@@ -158,11 +159,13 @@ def badpixstep(datafiles, thresh=3, box_size=5, max_iter=2, output_dir=None,
         hdu.writeto(output_dir + fileroot_noseg + 'deepframe.fits',
                     overwrite=True)
 
-    return newdata, badpix_mask, deepframe
+    return data, badpix_mask, deepframe
 
 
 def backgroundstep(datafiles, background_model, subtract_column_median=False,
                    output_dir=None, save_results=True, show_plots=False):
+
+    print('Starting custom background subtraction step.')
     # Output directory formatting.
     if output_dir is not None:
         if output_dir[-1] != '/':
@@ -201,7 +204,7 @@ def backgroundstep(datafiles, background_model, subtract_column_median=False,
             plotting.do_backgroundsubtraction_plot(currentfile.data,
                                                    background_model,
                                                    scale_mod, scale_dat)
-        results.append(currentfile.data)
+        results.append(currentfile)
         currentfile.close()
 
     return results
@@ -328,7 +331,15 @@ def run_stage2(results, background_model=None, save_results=True,
         print('Output files already exist.')
         print('Skipping Bad Pixel Correction Step.')
         results = new_results
-        existing_deep = fileroots[0].split('_')[0] + '_' + 'deepframe.fits'
+        # Get total file root, with no segment info.
+        working_name = fileroots[0]
+        if 'seg' in working_name:
+            parts = working_name.split('seg')
+            part1, part2 = parts[0][:-1], parts[1][3:]
+            fileroot_noseg = part1 + part2
+        else:
+            fileroot_noseg = fileroots[0]
+        existing_deep = fileroot_noseg + 'deepframe.fits'
         deepframe = fits.getdata(outdir + existing_deep, 0)
     else:
         with warnings.catch_warnings():

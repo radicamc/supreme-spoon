@@ -155,10 +155,6 @@ def oneoverfstep(datafiles, output_dir=None, save_results=True,
                 current_outlier = (outliers[i, :, :] + dq[i, g, :, :]) // 2
                 # Apply the outlier mask.
                 sub_m[i, g, :, :] *= current_outlier
-                # Make sure to not subtract an overall bias
-                submed = np.nanmedian(sub[i, g, :, :])
-                sub[i, g, :, :] -= submed
-                sub_m[i, g, :, :] -= submed
                 if datamodel.meta.subarray.name == 'SUBSTRIP256':
                     with warnings.catch_warnings():
                         warnings.simplefilter('ignore',
@@ -461,8 +457,10 @@ if __name__ == "__main__":
     root_dir = '/home/radica/jwst/ERO/WASP-96b/'
     indir = root_dir + 'DMS_uncal/'
     input_filetag = 'uncal'
-    outlier_maps = None
-    trace_mask = None
+    outlier_maps = ['OLD_pipeline_outputs_directory/Stage1/jw02734002001_04101_00001-seg001_nis_1_dqpixelflags.fits',
+                   'OLD_pipeline_outputs_directory/Stage1/jw02734002001_04101_00001-seg002_nis_1_dqpixelflags.fits',
+                   'OLD_pipeline_outputs_directory/Stage1/jw02734002001_04101_00001-seg003_nis_1_dqpixelflags.fits']
+    trace_mask = 'OLD_pipeline_outputs_directory/Stage2/jw02734002001_tracemask.fits'
     # ==========================================
 
     import os
@@ -482,6 +480,7 @@ if __name__ == "__main__":
         print('and {} F277W exposre segment(s):'.format(len(f277w_segments)))
         for file in f277w_segments:
             print(' ' + file)
+
     stage1_results = run_stage1(all_exposures['CLEAR'], save_results=True,
                                 outlier_maps=outlier_maps,
                                 trace_mask=trace_mask, force_redo=False,

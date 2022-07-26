@@ -251,15 +251,15 @@ def sigma_clip_lightcurves(flux, ferr, thresh=5):
 
 
 def get_default_header():
-    header_dict = {'Target_Name': None,
-                   'Instrument': 'NIRISS/SOSS',
+    header_dict = {'Target': None,
+                   'Inst': 'NIRISS/SOSS',
                    'Date': datetime.utcnow().replace(microsecond=0).isoformat(),
                    'Pipeline': 'Supreme Spoon',
                    'Author': 'MCR',
                    'Contents': None,
                    'Method': 'Box Extraction'}
-    header_comments = {'Target_Name': 'Name of the target',
-                       'Instrument': 'Instrument used to acquire the data',
+    header_comments = {'Target': 'Name of the target',
+                       'Inst': 'Instrument used to acquire the data',
                        'Date': 'UTC date file created',
                        'Pipeline': 'Pipeline that produced this file',
                        'Author': 'File author',

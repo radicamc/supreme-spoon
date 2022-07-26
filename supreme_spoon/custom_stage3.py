@@ -81,7 +81,7 @@ def construct_lightcurves(datafiles, output_dir, save_results=True,
     # Save full res stellar spectra
     filename = output_dir + target_name + '_spectra_fullres.fits'
     header_dict, header_comments = utils.get_default_header()
-    header_dict['Target_Name'] = target_name
+    header_dict['Target'] = target_name
     header_dict['Contents'] = 'Full resolution stellar spectra'
     stellar_spectra = utils.pack_spectra(filename, wave2d_o1, flux_o1_clip,
                                          ferr_o1, wave2d_o2, flux_o2_clip,
@@ -92,7 +92,7 @@ def construct_lightcurves(datafiles, output_dir, save_results=True,
     # Save full res lightcurves
     filename = output_dir + target_name + '_lightcurves_fullres.fits'
     header_dict, header_comments = utils.get_default_header()
-    header_dict['Target_Name'] = target_name
+    header_dict['Target'] = target_name
     header_dict['Contents'] = 'Normalized light curves'
     lightcurves = utils.pack_spectra(filename, wave2d_o1, nflux_o1_clip,
                                      nferr_o1, wave2d_o2, nflux_o2_clip,
