@@ -12,7 +12,6 @@ from astropy.io import fits
 import glob
 import numpy as np
 import warnings
-warnings.filterwarnings('ignore', message=" Unable to locate schema file for 'tag:stsci.edu:jwst_pipeline/niriss-soss-0.7.0': 'http://stsci.edu/schemas/jwst_pipeline/niriss-soss-0.7.0'")
 
 from jwst import datamodels
 from jwst.extract_1d.soss_extract import soss_solver
@@ -27,8 +26,9 @@ from supreme_spoon import utils
 from supreme_spoon import plotting
 
 
-def construct_lightcurves(datafiles, output_dir, save_results=True,
-                          show_plots=False):
+# TODO: only return spectra and not lightcurves
+def construct_lightcurves(datafiles, output_dir, out_frames,
+                          save_results=True, show_plots=False):
     datafiles = np.atleast_1d(datafiles)
     dn2e = utils.get_dn2e(datafiles[0])
 
@@ -51,7 +51,9 @@ def construct_lightcurves(datafiles, output_dir, save_results=True,
 
     wave1d_o1, wave1d_o2 = wave2d_o1[0], wave2d_o2[0]
     t = utils.make_time_axis(file)
-    out_trans = np.concatenate([np.arange(90), np.arange(40) - 40])
+    out_frames = np.abs(out_frames)
+    out_trans = np.concatenate([np.arange(out_frames[0]),
+                                np.arange(out_frames[1]) - out_frames[1]])
 
     with warnings.catch_warnings():
         warnings.filterwarnings('ignore')
@@ -90,24 +92,14 @@ def construct_lightcurves(datafiles, output_dir, save_results=True,
     header_dict, header_comments = utils.get_default_header()
     header_dict['Target'] = target_name
     header_dict['Contents'] = 'Full resolution stellar spectra'
+    header_dict['Method'] = extract_method
     stellar_spectra = utils.pack_spectra(filename, wave2d_o1, flux_o1_clip,
                                          ferr_o1, wave2d_o2, flux_o2_clip,
                                          ferr_o2, t, header_dict,
                                          header_comments,
                                          save_results=save_results)
 
-    # Save full res lightcurves
-    filename = output_dir + target_name + '_' + extract_method + '_lightcurves_fullres.fits'
-    header_dict, header_comments = utils.get_default_header()
-    header_dict['Target'] = target_name
-    header_dict['Contents'] = 'Normalized light curves'
-    lightcurves = utils.pack_spectra(filename, wave2d_o1, nflux_o1_clip,
-                                     nferr_o1, wave2d_o2, nflux_o2_clip,
-                                     nferr_o2, t, header_dict,
-                                     header_comments,
-                                     save_results=save_results)
-
-    return lightcurves, stellar_spectra
+    return stellar_spectra
 
 
 def specprofilestep(deepframe, save_results=True, output_dir='./'):
@@ -178,9 +170,9 @@ def get_soss_transform(deepframe, datafile, show_plots=False,
     return transform
 
 
-def run_stage3(results, deepframe, save_results=True, show_plots=False,
-               root_dir='./', force_redo=False, extract_method='box',
-               specprofile=None):
+def run_stage3(results, deepframe, out_frames, save_results=True,
+               show_plots=False, root_dir='./', force_redo=False,
+               extract_method='box', specprofile=None):
     # ============== DMS Stage 3 ==============
     # 1D spectral extraction.
     print('\n\n**Starting supreme-SPOON Stage 3**')
@@ -254,12 +246,12 @@ def run_stage3(results, deepframe, save_results=True, show_plots=False,
 
     # ===== Lightcurve Construction Step =====
     # Custom DMS step.
-    res = construct_lightcurves(results, output_dir=outdir,
-                                save_results=save_results,
-                                show_plots=show_plots)
-    normalized_lightcurves, stellar_spectra = res
+    stellar_spectra = construct_lightcurves(results, out_frames=out_frames,
+                                            output_dir=outdir,
+                                            save_results=save_results,
+                                            show_plots=show_plots)
 
-    return normalized_lightcurves, stellar_spectra
+    return stellar_spectra
 
 
 if __name__ == "__main__":
@@ -270,6 +262,7 @@ if __name__ == "__main__":
     deepframe_file = indir + 'jw02734002001_04101_00001_nis_deepframe.fits'
     extract_method = 'atoca'
     specprofile = root_dir + 'pipeline_outputs_directory/Stage3/APPLESOSS_ref_2D_profile_SUBSTRIP256_os1_pad0.fits'
+    out_frames = [90, -40]
     # ==========================================
 
     import os
@@ -285,8 +278,9 @@ if __name__ == "__main__":
     for file in clear_segments:
         print(' ' + file)
 
-    res = run_stage3(all_exposures['CLEAR'], deepframe=deepframe,
-                     save_results=True, show_plots=False, root_dir=root_dir,
-                     force_redo=False, extract_method=extract_method,
-                     specprofile=specprofile)
-    normalized_lightcurves, stellar_spectra = res
+    stellar_spectra = run_stage3(all_exposures['CLEAR'], deepframe=deepframe,
+                                 save_results=True, show_plots=False,
+                                 root_dir=root_dir, force_redo=False,
+                                 extract_method=extract_method,
+                                 specprofile=specprofile,
+                                 out_frames=out_frames)

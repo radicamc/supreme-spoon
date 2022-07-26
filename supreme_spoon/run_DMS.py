@@ -36,6 +36,7 @@ show_plots = False  # Show plots
 process_f277w = False  # Process F277W exposures in addition to CLEAR
 force_redo = False  # Force redo of steps which have already been completed
 extract_method = 'box'  # Extraction method, box or atoca
+out_frames = [90, -40]
 # ======================================================
 
 import os
@@ -83,7 +84,8 @@ stage3_results = custom_stage3.run_stage3(stage2_results,
                                           root_dir=root_dir,
                                           force_redo=force_redo,
                                           extract_method=extract_method,
-                                          specprofile=specprofile)
+                                          specprofile=specprofile,
+                                          out_frames=out_frames)
 normalized_lightcurves, stellar_spectra = stage3_results
 
 print('Done')
