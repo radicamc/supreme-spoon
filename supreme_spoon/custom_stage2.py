@@ -162,8 +162,8 @@ def badpixstep(datafiles, thresh=3, box_size=5, max_iter=2, output_dir=None,
     return data, badpix_mask, deepframe
 
 
-def backgroundstep(datafiles, background_model, subtract_column_median=False,
-                   output_dir=None, save_results=True, show_plots=False):
+def backgroundstep(datafiles, background_model, output_dir=None,
+                   save_results=True, show_plots=False):
 
     print('Starting custom background subtraction step.')
     # Output directory formatting.
@@ -172,25 +172,34 @@ def backgroundstep(datafiles, background_model, subtract_column_median=False,
             output_dir += '/'
 
     datafiles = np.atleast_1d(datafiles)
-    results = []
-    for file in datafiles:
+    opened_datafiles = []
+    for i, file in enumerate(datafiles):
         if isinstance(file, str):
             currentfile = datamodels.open(file)
         else:
             currentfile = file
+        opened_datafiles.append(currentfile)
+        # To create the deepstack, join all segments together.
+        if i == 0:
+            cube = currentfile.data
+        else:
+            cube = np.concatenate([cube, currentfile.data], axis=0)
+    datafiles = opened_datafiles
+    deepstack = utils.make_deepstack(cube)
 
+    # Do model scaling
+    scale_mod = np.nanmedian(background_model[210:250, 500:800])
+    scale_dat = np.nanmedian(deepstack[210:250, 500:800])
+    model_scaled = background_model / scale_mod * scale_dat
+
+    results = []
+    for currentfile in datafiles:
         old_filename = currentfile.meta.filename
         to_remove = old_filename.split('_')[-1]
         fileroot = old_filename.split(to_remove)[0]
 
-        scale_mod = np.nanmedian(background_model[:, :500])
-        scale_dat = np.nanmedian(currentfile.data[:, 200:, :500], axis=(1, 2))
-        model_scaled = background_model / scale_mod * scale_dat[:, None, None]
         data_backsub = currentfile.data - model_scaled
 
-        if subtract_column_median is True:
-            # Placeholder for median subtraction
-            pass
         currentfile.data = data_backsub
 
         if save_results is True:
