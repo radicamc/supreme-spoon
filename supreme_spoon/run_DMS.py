@@ -88,6 +88,6 @@ stage3_results = custom_stage3.run_stage3(stage2_results,
                                           specprofile=specprofile,
                                           out_frames=out_frames,
                                           soss_estimate=soss_estimate)
-normalized_lightcurves, stellar_spectra = stage3_results
+stellar_spectra = stage3_results
 
 print('Done')
