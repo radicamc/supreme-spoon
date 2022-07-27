@@ -28,6 +28,7 @@ from supreme_spoon import plotting
 
 def construct_lightcurves(datafiles, output_dir, out_frames,
                           save_results=True, show_plots=False):
+    print('Constructing stellar spectra')
     datafiles = np.atleast_1d(datafiles)
     dn2e = utils.get_dn2e(datafiles[0])
 
@@ -119,6 +120,7 @@ def specprofilestep(deepframe, save_results=True, output_dir='./'):
 def get_soss_transform(deepframe, datafile, show_plots=False,
                        save_results=True, output_dir=None):
 
+    print('Solving the SOSS transform')
     with warnings.catch_warnings():
         warnings.filterwarnings('ignore')
         step = calwebb_spec2.extract_1d_step.Extract1dStep()
