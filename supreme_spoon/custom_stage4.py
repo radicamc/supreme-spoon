@@ -57,7 +57,7 @@ def create_wave_axis(R, wave_min, wave_max):
     return wave_ax
 
 
-def bin_at_resolution(wavelengths, depths, R=100, method='median'):
+def bin_at_resolution(wavelengths, depths, R=100):
     """FROM Néstor Espinoza
     Function that bins input wavelengths and transit depths (or any other observable, like flux) to a given
     resolution `R`. Useful for binning transit depths down to a target resolution on a transit spectrum.

@@ -17,7 +17,8 @@ import numpy as np
 import warnings
 
 
-def plot_2dlightcurves(flux1, flux2, wave1, wave2, savename=None, **kwargs):
+def plot_2dlightcurves(wave1, flux1, wave2=None, flux2=None, outpdf=None,
+                       title='', **kwargs):
     with warnings.catch_warnings():
         warnings.filterwarnings('ignore')
 
@@ -26,38 +27,53 @@ def plot_2dlightcurves(flux1, flux2, wave1, wave2, savename=None, **kwargs):
         if 'vmin' not in kwargs:
             kwargs['vmin'] = np.nanpercentile(flux1, 5)
 
+        if title != '':
+            title = ': ' + title
+
         fig = plt.figure(figsize=(12, 5), facecolor='white')
         gs = GridSpec(1, 2, width_ratios=[1, 1])
 
         ax1 = fig.add_subplot(gs[0, 0])
-        ax1.imshow(flux1.T, aspect='auto', origin='lower',
-                   extent=(0, flux1.shape[0]-1, wave1[0], wave1[-1]), **kwargs)
+        pp = ax1.imshow(flux1.T, aspect='auto', origin='lower',
+                        extent=(0, flux1.shape[0]-1, wave1[0], wave1[-1]),
+                        **kwargs)
+        if wave2 is None:
+            cax = ax1.inset_axes([1.05, 0.005, 0.03, 0.99],
+                                 transform=ax1.transAxes)
+            cb = fig.colorbar(pp, ax=ax1, cax=cax)
+            cb.set_label('Normalized Flux', labelpad=15, rotation=270,
+                         fontsize=16)
         ax1.set_ylabel('Wavelength [µm]', fontsize=16)
         ax1.set_xlabel('Integration Number', fontsize=16)
-        plt.title('Order 1', fontsize=18)
+        plt.title('Order 1' + title, fontsize=18)
         plt.xticks(fontsize=12)
         plt.yticks(fontsize=12)
 
-        ax2 = fig.add_subplot(gs[0, 1])
-        pp = ax2.imshow(flux2.T, aspect='auto', origin='lower',
-                        extent=(0, flux2.shape[0]-1, wave2[0], wave2[-1]), **kwargs)
-        cax = ax2.inset_axes([1.05, 0.005, 0.03, 0.99],
-                             transform=ax2.transAxes)
-        cb = fig.colorbar(pp, ax=ax2, cax=cax)
-        cb.set_label('Normalized Flux', labelpad=15, rotation=270, fontsize=16)
-        ax2.set_xlabel('Integration Number', fontsize=16)
-        plt.title('Order 2', fontsize=18)
-        plt.xticks(fontsize=12)
-        plt.yticks(fontsize=12)
+        if wave2 is not None:
+            ax2 = fig.add_subplot(gs[0, 1])
+            pp = ax2.imshow(flux2.T, aspect='auto', origin='lower',
+                            extent=(0, flux2.shape[0]-1, wave2[0], wave2[-1]), **kwargs)
+            cax = ax2.inset_axes([1.05, 0.005, 0.03, 0.99],
+                                 transform=ax2.transAxes)
+            cb = fig.colorbar(pp, ax=ax2, cax=cax)
+            cb.set_label('Normalized Flux', labelpad=15, rotation=270, fontsize=16)
+            ax2.set_xlabel('Integration Number', fontsize=16)
+            plt.title('Order 2' + title, fontsize=18)
+            plt.xticks(fontsize=12)
+            plt.yticks(fontsize=12)
 
-        gs.update(wspace=0.1)
+            gs.update(wspace=0.1)
 
-    if savename is not None:
-        plt.savefig(savename, format='pdf')
-    plt.show()
+    if outpdf is not None:
+        if isinstance(outpdf, matplotlib.backends.backend_pdf.PdfPages):
+            outpdf.savefig(fig)
+        else:
+            fig.savefig(outpdf)
+        plt.close()
+    else:
+        plt.show()
 
 
-# TODO: put error bars on lightcurve
 def do_lightcurve_plot(t, data, error, model, scatter, outpdf=None, title=None,
                        nfit=8):
     def gaus(x, m, s):

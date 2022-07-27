@@ -16,6 +16,7 @@ import glob
 import numpy as np
 import os
 import pandas as pd
+import pickle as pk
 import warnings
 
 from jwst import datamodels
@@ -351,3 +352,38 @@ def get_soss_estimate(atoca_spectra, output_dir):
     estimate_filename = estimate.save(output_dir + 'soss_estimate.fits')
 
     return estimate_filename
+
+
+def gen_ldprior_from_nestor(filename, wave):
+    aa = open(filename, "rb")
+    nestor_priors = pk.load(aa)
+    aa.close()
+
+    lw = np.concatenate([wave[:, None], np.roll(wave, 1)[:, None]], axis=1)
+    up = np.concatenate([wave[:, None], np.roll(wave, -1)[:, None]], axis=1)
+
+    uperr = (np.mean(up, axis=1) - wave)[:-1]
+    uperr = np.insert(uperr, -1, uperr[-1])
+
+    lwerr = (wave - np.mean(lw, axis=1))[1:]
+    lwerr = np.insert(lwerr, 0, lwerr[0])
+    bins_low = wave - lwerr
+    bins_up = wave + uperr
+
+    prior_q1, prior_q2 = [], []
+    for bin_low, bin_up in zip(bins_low, bins_up):
+        current_q1, current_q2 = [], []
+        for key in nestor_priors.keys():
+            nwave = float(key.split('_')[-1])
+            if nwave >= bin_low and nwave < bin_up:
+                current_q1.append(
+                    nestor_priors[key]['q1_SOSS']['hyperparameters'][0])
+                current_q2.append(
+                    nestor_priors[key]['q2_SOSS']['hyperparameters'][0])
+
+        current_q1 = np.array(current_q1)
+        current_q2 = np.array(current_q2)
+        prior_q1.append(np.mean(current_q1))
+        prior_q2.append(np.mean(current_q2))
+
+    return prior_q1, prior_q2
