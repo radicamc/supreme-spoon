@@ -269,7 +269,7 @@ def run_stage3(results, deepframe, out_frames, save_results=True,
                     raise err
             # Hack to fix file names
             res = utils.fix_filenames(res, '_badpixstep_', outdir,
-                                      to_add=extract_method)
+                                      to_add=extract_method)[0]
         new_results.append(res)
     results = new_results
 
