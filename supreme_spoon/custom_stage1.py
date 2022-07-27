@@ -369,7 +369,7 @@ def run_stage1(results, save_results=True, outlier_maps=None, trace_mask=None,
             res = step.call(segment, output_dir=outdir,
                             save_results=save_results)
             # Hack to fix file name
-            res = utils.fix_filenames(res, '_oneoverfstep_', outdir)
+            res = utils.fix_filenames(res, '_oneoverfstep_', outdir)[0]
         new_results.append(res)
     results = new_results
 
@@ -428,7 +428,7 @@ def run_stage1(results, save_results=True, outlier_maps=None, trace_mask=None,
             outfile = outdir + fileroots[i] + 'dqpixelflags.fits'
             hdu.writeto(outfile, overwrite=True)
             # Hack to fix file names
-            res = utils.fix_filenames(res, '_1_', outdir)
+            res = utils.fix_filenames(res, '_1_', outdir)[0]
         new_results.append(res)
     results = new_results
 
