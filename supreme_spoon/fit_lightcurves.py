@@ -19,7 +19,7 @@ from supreme_spoon import plotting, utils
 # =============== User Input ===============
 outdir = 'pipeline_outputs_directory/Stage4/'
 orders = [1, 2]
-suffix = 'atoca'
+suffix = 'box_R300'
 out_frames = [90, -40]
 
 # Fitting priors
@@ -33,8 +33,8 @@ hyperps = [3.42525650, 2459751.821681146, [0., 1], 0.748,
            [0., 1.], [0., 1.], 0.0, 90., 8.82,
            1.0, 0, [1e-1, 1e4], (9.1164330491e-05, 1.87579835e-05)]
 
-nestorprior_o1 = 'nestor_priors_order1.pkl'
-nestorprior_o2 = 'nestor_priors_order2.pkl'
+nestorprior_o1 = None
+nestorprior_o2 = None
 # ==========================================
 
 if suffix != '':
@@ -86,9 +86,11 @@ for order in orders:
         priors[param]['hyperparameters'] = hyperp
 
     if order == 1 and nestorprior_o1 is not None:
-        prior_q1, prior_q2 = utils.gen_ldprior_from_nestor(nestorprior_o1, wave)
+        print("Porting in Néstor's priors")
+        prior_q1, prior_q2 = utils.gen_ldprior_from_nestor(nestorprior_o1, wave[0])
     if order == 2 and nestorprior_o2 is not None:
-        prior_q1, prior_q2 = utils.gen_ldprior_from_nestor(nestorprior_o2, wave)
+        print("Porting in Néstor's priors")
+        prior_q1, prior_q2 = utils.gen_ldprior_from_nestor(nestorprior_o2, wave[0])
 
     # Fit each light curve
     outdict = {}
