@@ -144,7 +144,7 @@ for order in orders:
             scatter = np.median(results.posteriors['posterior_samples']['sigma_w_SOSS'])
             plotting.do_lightcurve_plot(t=dataset.times_lc['SOSS'],
                                         data=dataset.data_lc['SOSS'],
-                                        error=scatter, model=transit_model,
+                                        error=scatter/1e6, model=transit_model,
                                         scatter=scatter, outpdf=outpdf, nfit=5,
                                         title='bin {0} | {1:.3f}µm'.format(i, wave[0, i]))
 
