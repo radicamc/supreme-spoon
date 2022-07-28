@@ -65,12 +65,15 @@ for order in orders:
 
     print('\nFitting order {}\n'.format(order))
     # Unpack wave, flux and error
-    wave = fits.getdata(outdir + 'lightcurves{}.fits'.format(suffix),
-                        1 + 3 * (order - 1))
+    wave_low = fits.getdata(outdir + 'lightcurves{}.fits'.format(suffix),
+                            1 + 3 * (order - 1))
+    wave_up = fits.getdata(outdir + 'lightcurves{}.fits'.format(suffix),
+                           2 + 3 * (order - 1))
+    wave = np.nanmedian([wave_low, wave_up], axis=0)
     flux = fits.getdata(outdir + 'lightcurves{}.fits'.format(suffix),
-                        2 + 3 * (order - 1))
+                        3 + 3 * (order - 1))
     err = fits.getdata(outdir + 'lightcurves{}.fits'.format(suffix),
-                       3 + 3 * (order - 1))
+                       4 + 3 * (order - 1))
     nints, nbins = np.shape(flux)
 
     # Set up light curve plots

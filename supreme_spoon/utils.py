@@ -190,8 +190,9 @@ def get_trace_centroids(deepframe, subarray, output_dir=None,
 
 
 # TODO: reformat
-def pack_spectra(filename, w1, f1, e1, w2, f2, e2, t, header_dict=None,
-                 header_comments=None, save_results=True):
+def pack_spectra(filename, wl1, wu1, f1, e1, wl2, wu2, f2, e2, t,
+                 header_dict=None, header_comments=None, save_results=True):
+
     hdr = fits.Header()
     if header_dict is not None:
         for key in header_dict:
@@ -199,42 +200,60 @@ def pack_spectra(filename, w1, f1, e1, w2, f2, e2, t, header_dict=None,
             if key in header_comments.keys():
                 hdr.comments[key] = header_comments[key]
     hdu1 = fits.PrimaryHDU(header=hdr)
+
     hdr = fits.Header()
-    hdr['EXTNAME'] = "Wave 2D Order 1"
+    hdr['EXTNAME'] = "Wave Low O1"
     hdr['UNITS'] = "Micron"
-    hdu2 = fits.ImageHDU(w1, header=hdr)
+    hdu2 = fits.ImageHDU(wl1, header=hdr)
+
     hdr = fits.Header()
-    hdr['EXTNAME'] = "Flux Order 1"
-    hdr['UNITS'] = "Electrons"
-    hdu3 = fits.ImageHDU(f1, header=hdr)
-    hdr = fits.Header()
-    hdr['EXTNAME'] = "Flux Error Order 1"
-    hdr['UNITS'] = "Electrons"
-    hdu4 = fits.ImageHDU(e1, header=hdr)
-    hdr = fits.Header()
-    hdr['EXTNAME'] = "Wave 2D Order 2"
+    hdr['EXTNAME'] = "Wave Up O1"
     hdr['UNITS'] = "Micron"
-    hdu5 = fits.ImageHDU(w2, header=hdr)
+    hdu3 = fits.ImageHDU(wu1, header=hdr)
+
     hdr = fits.Header()
-    hdr['EXTNAME'] = "Flux Order 2"
+    hdr['EXTNAME'] = "Flux O1"
     hdr['UNITS'] = "Electrons"
-    hdu6 = fits.ImageHDU(f2, header=hdr)
+    hdu4 = fits.ImageHDU(f1, header=hdr)
+
     hdr = fits.Header()
-    hdr['EXTNAME'] = "Flux Error Order 2"
+    hdr['EXTNAME'] = "Flux Err O1"
     hdr['UNITS'] = "Electrons"
-    hdu7 = fits.ImageHDU(e2, header=hdr)
+    hdu5 = fits.ImageHDU(e1, header=hdr)
+
+    hdr = fits.Header()
+    hdr['EXTNAME'] = "Wave Low O2"
+    hdr['UNITS'] = "Micron"
+    hdu6 = fits.ImageHDU(wl2, header=hdr)
+
+    hdr = fits.Header()
+    hdr['EXTNAME'] = "Wave Up O2"
+    hdr['UNITS'] = "Micron"
+    hdu7 = fits.ImageHDU(wu2, header=hdr)
+
+    hdr = fits.Header()
+    hdr['EXTNAME'] = "Flux O2"
+    hdr['UNITS'] = "Electrons"
+    hdu8 = fits.ImageHDU(f2, header=hdr)
+
+    hdr = fits.Header()
+    hdr['EXTNAME'] = "Flux Err O2"
+    hdr['UNITS'] = "Electrons"
+    hdu9 = fits.ImageHDU(e2, header=hdr)
+
     hdr = fits.Header()
     hdr['EXTNAME'] = "Time"
     hdr['UNITS'] = "BJD"
-    hdu8 = fits.ImageHDU(t, header=hdr)
+    hdu10 = fits.ImageHDU(t, header=hdr)
+
     if save_results is True:
-        hdul = fits.HDUList([hdu1, hdu2, hdu3, hdu4, hdu5, hdu6, hdu7, hdu8])
+        hdul = fits.HDUList([hdu1, hdu2, hdu3, hdu4, hdu5, hdu6, hdu7, hdu8,
+                             hdu9, hdu10])
         hdul.writeto(filename, overwrite=True)
 
-    param_dict = {'Wave 2D Order 1': w1, 'Flux Order 1': f1,
-                  'Flux Error Order 1': e1, 'Wave 2D Order 2': w2,
-                  'Flux Order 2': f2, 'Flux Error Order 2': e2,
-                  'Time': t}
+    param_dict = {'Wave Low O1': wl1, 'Wave Up O1': wu1, 'Flux O1': f1,
+                  'Flux Err O1': e1, 'Wave Low O2': wl2, 'Wave UP O2': wu2,
+                  'Flux O2': f2, 'Flux Err O2': e2, 'Time': t}
 
     return param_dict
 
@@ -261,14 +280,18 @@ def get_default_header():
                    'Pipeline': 'Supreme Spoon',
                    'Author': 'MCR',
                    'Contents': None,
-                   'Method': 'Box Extraction'}
+                   'Method': 'Box Extraction',
+                   'Width': 25,
+                   'Transf': [0, 0, 0]}
     header_comments = {'Target': 'Name of the target',
                        'Inst': 'Instrument used to acquire the data',
                        'Date': 'UTC date file created',
                        'Pipeline': 'Pipeline that produced this file',
                        'Author': 'File author',
                        'Contents': 'Description of file contents',
-                       'Method': 'Type of 1D extraction'}
+                       'Method': 'Type of 1D extraction',
+                       'Width': 'Box width',
+                       'Transf': 'SOSS transform [dx, dy, dtheta]'}
 
     return header_dict, header_comments
 
@@ -387,3 +410,16 @@ def gen_ldprior_from_nestor(filename, wave):
         prior_q2.append(np.mean(current_q2))
 
     return prior_q1, prior_q2
+
+
+def get_wavebin_limits(wave):
+    lw = np.concatenate([wave[:, None], np.roll(wave, 1)[:, None]], axis=1)
+    up = np.concatenate([wave[:, None], np.roll(wave, -1)[:, None]], axis=1)
+
+    uperr = (np.mean(up, axis=1) - wave)[:-1]
+    uperr = np.insert(uperr, -1, uperr[-1])
+
+    lwerr = (wave - np.mean(lw, axis=1))[1:]
+    lwerr = np.insert(lwerr, 0, lwerr[0])
+
+    return lwerr, uperr

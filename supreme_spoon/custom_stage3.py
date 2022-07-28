@@ -27,7 +27,8 @@ from supreme_spoon import plotting
 
 
 def construct_lightcurves(datafiles, output_dir, out_frames,
-                          save_results=True, show_plots=False):
+                          save_results=True, show_plots=False,
+                          extract_params=None):
     print('Constructing stellar spectra')
     datafiles = np.atleast_1d(datafiles)
     dn2e = utils.get_dn2e(datafiles[0])
@@ -93,8 +94,19 @@ def construct_lightcurves(datafiles, output_dir, out_frames,
     header_dict['Target'] = target_name
     header_dict['Contents'] = 'Full resolution stellar spectra'
     header_dict['Method'] = extract_method
-    stellar_spectra = utils.pack_spectra(filename, wave2d_o1, flux_o1_clip,
-                                         ferr_o1, wave2d_o2, flux_o2_clip,
+    header_dict['Width'] = extract_params['soss_width']
+    header_dict['Transf'] = extract_params['soss_transform']
+
+    nint = np.shape(flux_o1_clip)[1]
+    wl1, wu1 = utils.get_wavebin_limits(wave2d_o1)
+    wl2, wu2 = utils.get_wavebin_limits(wave2d_o2)
+    wl1 = np.repeat(wl1[np.newaxis, :], nint, axis=0)
+    wu1 = np.repeat(wu1[np.newaxis, :], nint, axis=0)
+    wl2 = np.repeat(wl2[np.newaxis, :], nint, axis=0)
+    wu2 = np.repeat(wu2[np.newaxis, :], nint, axis=0)
+
+    stellar_spectra = utils.pack_spectra(filename, wl1, wu1, flux_o1_clip,
+                                         ferr_o1, wl2, wu2, flux_o2_clip,
                                          ferr_o2, t, header_dict,
                                          header_comments,
                                          save_results=save_results)
@@ -177,7 +189,8 @@ def get_soss_transform(deepframe, datafile, show_plots=False,
 
 def run_stage3(results, deepframe, out_frames, save_results=True,
                show_plots=False, root_dir='./', force_redo=False,
-               extract_method='box', specprofile=None, soss_estimate=None):
+               extract_method='box', specprofile=None, soss_estimate=None,
+               soss_width=25, soss_transform=None):
     # ============== DMS Stage 3 ==============
     # 1D spectral extraction.
     print('\n\n**Starting supreme-SPOON Stage 3**')
@@ -212,12 +225,15 @@ def run_stage3(results, deepframe, out_frames, save_results=True,
 
     # ===== 1D Extraction Step =====
     # Custom/default DMS step.
-    transform = get_soss_transform(deepframe, results[0],
-                                   show_plots=show_plots,
-                                   save_results=save_results,
-                                   output_dir=outdir)
+    if soss_transform is None:
+        soss_transform = get_soss_transform(deepframe, results[0],
+                                            show_plots=show_plots,
+                                            save_results=save_results,
+                                            output_dir=outdir)
     step_tag = 'extract1dstep_{}.fits'.format(extract_method)
     new_results = []
+    extract_params = {'transform': soss_transform,
+                      'soss_width': soss_width}
     for i, segment in enumerate(results):
         expected_file = outdir + fileroots[i] + step_tag
         if expected_file in all_files and force_redo is False:
@@ -238,11 +254,13 @@ def run_stage3(results, deepframe, out_frames, save_results=True,
             try:
                 res = step.call(segment, output_dir=outdir,
                                 save_results=save_results,
-                                soss_transform=[transform[0], transform[1],
-                                                transform[2]],
+                                soss_transform=[soss_transform[0],
+                                                soss_transform[1],
+                                                soss_transform[2]],
                                 soss_atoca=soss_atoca,
                                 subtract_background=False,
-                                soss_bad_pix=soss_bad_pix, soss_width=25,
+                                soss_bad_pix=soss_bad_pix,
+                                soss_width=soss_width,
                                 soss_modelname=soss_modelname,
                                 override_specprofile=specprofile)
             except Exception as err:
@@ -259,8 +277,9 @@ def run_stage3(results, deepframe, out_frames, save_results=True,
                     print('\nInitial flux estimate failed, trying again with soss_estimate.\n')
                     res = step.call(segment, output_dir=outdir,
                                     save_results=save_results,
-                                    soss_transform=[transform[0], transform[1],
-                                                    transform[2]],
+                                    soss_transform=[soss_transform[0],
+                                                    soss_transform[1],
+                                                    soss_transform[2]],
                                     soss_atoca=soss_atoca,
                                     subtract_background=False,
                                     soss_bad_pix=soss_bad_pix, soss_width=25,
@@ -280,7 +299,8 @@ def run_stage3(results, deepframe, out_frames, save_results=True,
     stellar_spectra = construct_lightcurves(results, out_frames=out_frames,
                                             output_dir=outdir,
                                             save_results=save_results,
-                                            show_plots=show_plots)
+                                            show_plots=show_plots,
+                                            extract_params=extract_params)
 
     return stellar_spectra
 
@@ -295,6 +315,7 @@ if __name__ == "__main__":
     specprofile = root_dir + 'pipeline_outputs_directory/Stage3/APPLESOSS_ref_2D_profile_SUBSTRIP256_os1_pad0.fits'
     out_frames = [90, -40]
     soss_estimate = None
+    soss_width = 25
     # ==========================================
 
     import os
@@ -316,4 +337,5 @@ if __name__ == "__main__":
                                  extract_method=extract_method,
                                  specprofile=specprofile,
                                  out_frames=out_frames,
-                                 soss_estimate=soss_estimate)
+                                 soss_estimate=soss_estimate,
+                                 soss_width=soss_width)

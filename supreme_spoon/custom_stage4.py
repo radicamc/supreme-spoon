@@ -8,52 +8,8 @@ Created on Thurs Jul 21 18:07 2022
 Custom JWST DMS pipeline steps for Stage 4 (lightcurve fitting).
 """
 
+from tqdm import tqdm
 import numpy as np
-
-
-def do_binning(R, wave, flux, error, full_wave=None):
-    if full_wave is None:
-        full_wave = wave
-    bins = create_wave_axis(R, np.nanmin(full_wave[0]),
-                            np.nanmax(full_wave[0]))[1:-1]
-
-    ints, lcs = np.shape(full_wave)
-    binned_wave = np.zeros((ints, len(bins) + 1))
-    binned_flux = np.zeros((ints, len(bins) + 1))
-    binned_error = np.zeros((ints, len(bins) + 1))
-    for i in range(len(bins) + 1):
-        if i == 0:
-            ii = np.where(wave[0] <= bins[i])[0]
-            jj = np.where(full_wave[0] <= bins[i])[0]
-        elif i == len(bins):
-            ii = np.where(wave[0] > bins[i - 1])[0]
-            jj = np.where(full_wave[0] > bins[i - 1])[0]
-        else:
-            ii = np.where((wave[0] <= bins[i]) & (wave[0] > bins[i - 1]))[0]
-            jj = \
-            np.where((full_wave[0] <= bins[i]) & (full_wave[0] > bins[i - 1]))[
-                0]
-        binned_wave[:, i] = np.nanmean(full_wave[:, jj], axis=1)
-        if len(ii) == 0:
-            binned_flux[:, i] = np.nan
-            binned_error[:, i] = np.nan
-        else:
-            binned_flux[:, i] = np.nansum(flux[:, ii], axis=1)
-            binned_error[:, i] = np.sqrt(np.nanmean(error[:, ii] ** 2, axis=1))
-
-    return binned_wave, binned_flux, binned_error
-
-
-def create_wave_axis(R, wave_min, wave_max):
-    ww = wave_min
-    wave_ax = []
-    while ww <= wave_max:
-        wave_ax.append(ww)
-        step = ww / R
-        ww += step
-    wave_ax.append(wave_max)
-
-    return wave_ax
 
 
 def bin_at_resolution(wavelengths, depths, R=100):
@@ -136,6 +92,33 @@ def bin_at_resolution(wavelengths, depths, R=100):
     werrout = [lwerr, uperr]
 
     return wout, werrout, dout, derrout
+
+
+def bin_2d_spectra(wave2d, flux2d, R=150):
+    nints, nwave = np.shape(wave2d)
+
+    for i in tqdm(range(nints)):
+        if i == 0:
+            wc_bin, we_bin, f_bin, e_bin = bin_at_resolution(wave2d[i], flux2d[i], R=R)
+            wl_bin, wu_bin = we_bin
+        elif i == 1:
+            wc_bin_i, we_bin_i, f_bin_i, e_bin_i = bin_at_resolution(wave2d[i], flux2d[i], R=R)
+            wl_bin_i, wu_bin_i = we_bin_i
+            wc_bin = np.stack([wc_bin, wc_bin_i])
+            wl_bin = np.stack([wl_bin, wl_bin_i])
+            wu_bin = np.stack([wu_bin, wu_bin_i])
+            f_bin = np.stack([f_bin, f_bin_i])
+            e_bin = np.stack([e_bin, e_bin_i])
+        else:
+            wc_bin_i, we_bin_i, f_bin_i, e_bin_i = bin_at_resolution(wave2d[i], flux2d[i], R=R)
+            wl_bin_i, wu_bin_i = we_bin_i
+            wc_bin = np.concatenate([wc_bin, wc_bin_i[None, :]], axis=0)
+            wl_bin = np.concatenate([wl_bin, wl_bin_i[None, :]], axis=0)
+            wu_bin = np.concatenate([wu_bin, wu_bin_i[None, :]], axis=0)
+            f_bin = np.concatenate([f_bin, f_bin_i[None, :]], axis=0)
+            e_bin = np.concatenate([e_bin, e_bin_i[None, :]], axis=0)
+
+    return wc_bin, wl_bin, wu_bin, f_bin, e_bin
 
 
 def save_transmissions_spectrum(fitres_o1, fitres_o2, output_dir):
