@@ -190,7 +190,9 @@ def backgroundstep(datafiles, background_model, output_dir=None,
     # Do model scaling
     scale_mod = np.nanmedian(background_model[210:250, 500:800])
     scale_dat = np.nanmedian(deepstack[210:250, 500:800])
-    model_scaled = background_model / scale_mod * scale_dat
+    scale_factor = scale_dat / scale_mod
+    print('Determined a scale factor of {:.4f}.'.format(scale_factor))
+    model_scaled = background_model * scale_factor
 
     results = []
     for currentfile in datafiles:
