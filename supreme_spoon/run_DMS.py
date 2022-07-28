@@ -23,6 +23,7 @@ outlier_maps = [
     root_dir + 'OLD_pipeline_outputs_directory/Stage1/jw02734002001_04101_00001-seg002_nis_1_dqpixelflags.fits',
     root_dir + 'OLD_pipeline_outputs_directory/Stage1/jw02734002001_04101_00001-seg003_nis_1_dqpixelflags.fits']
 trace_mask = root_dir + 'OLD_pipeline_outputs_directory/Stage2/jw02734002001_tracemask.fits'
+trace_mask2 = None
 
 # Stage 2 Input Files
 background_file = root_dir + 'model_background256.npy'  # Background model
@@ -64,6 +65,7 @@ stage1_results = custom_stage1.run_stage1(all_exposures['CLEAR'],
                                           save_results=save_results,
                                           outlier_maps=outlier_maps,
                                           trace_mask=trace_mask,
+                                          trace_mask2=trace_mask2,
                                           force_redo=force_redo,
                                           root_dir=root_dir)
 

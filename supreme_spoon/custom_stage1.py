@@ -252,7 +252,9 @@ def tracemaskstep(deepframe, output_dir, mask_width=30, save_results=True,
         raise NotImplementedError
 
     cen_o1, cen_o2, cen_o3 = utils.get_trace_centroids(deepframe, subarray,
-                                                       save_results=save_results)
+                                                       output_dir=output_dir,
+                                                       save_results=save_results,
+                                                       save_filename=fileroot)
     x1, y1 = cen_o1
     x2, y2 = cen_o2
     x3, y3 = cen_o3
@@ -279,14 +281,15 @@ def tracemaskstep(deepframe, output_dir, mask_width=30, save_results=True,
 
     if save_results is True:
         hdu = fits.PrimaryHDU(tracemask)
-        hdu.writeto(output_dir + fileroot + '_tracemask_width{}.fits'.format(mask_width),
+        hdu.writeto(output_dir + fileroot + 'tracemask_width{}.fits'.format(mask_width),
                     overwrite=True)
 
     return tracemask
 
 
 def run_stage1(results, save_results=True, outlier_maps=None, trace_mask=None,
-               force_redo=False, rejection_threshold=5, root_dir='./'):
+               trace_mask2=None, force_redo=False, rejection_threshold=5,
+               root_dir='./'):
     # ============== DMS Stage 1 ==============
     # Detector level processing.
     # Documentation: https://jwst-pipeline.readthedocs.io/en/latest/jwst/pipeline/calwebb_detector1.html
@@ -384,7 +387,7 @@ def run_stage1(results, save_results=True, outlier_maps=None, trace_mask=None,
         results = oneoverfstep(results, output_dir=outdir,
                                save_results=save_results,
                                outlier_maps=outlier_maps,
-                               trace_mask=trace_mask)
+                               trace_mask=trace_mask, trace_mask2=trace_mask2)
 
     # ===== Superbias Subtraction Step =====
     # Default DMS step.
@@ -493,6 +496,7 @@ if __name__ == "__main__":
                    'OLD_pipeline_outputs_directory/Stage1/jw02734002001_04101_00001-seg002_nis_1_dqpixelflags.fits',
                    'OLD_pipeline_outputs_directory/Stage1/jw02734002001_04101_00001-seg003_nis_1_dqpixelflags.fits']
     trace_mask = 'OLD_pipeline_outputs_directory/Stage2/jw02734002001_tracemask.fits'
+    trace_mask2 = None
     # ==========================================
 
     import os
@@ -515,5 +519,5 @@ if __name__ == "__main__":
 
     stage1_results = run_stage1(all_exposures['CLEAR'], save_results=True,
                                 outlier_maps=outlier_maps,
-                                trace_mask=trace_mask, force_redo=False,
-                                root_dir=root_dir)
+                                trace_mask=trace_mask, trace_mask2=trace_mask2,
+                                force_redo=False, root_dir=root_dir)
