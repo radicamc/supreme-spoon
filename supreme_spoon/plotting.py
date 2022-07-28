@@ -74,8 +74,8 @@ def plot_2dlightcurves(wave1, flux1, wave2=None, flux2=None, outpdf=None,
         plt.show()
 
 
-def do_lightcurve_plot(t, data, error, model, scatter, outpdf=None, title=None,
-                       nfit=8):
+def do_lightcurve_plot(t, data, error, model, scatter, rms, outpdf=None,
+                       title=None, nfit=8):
     def gaus(x, m, s):
         return np.exp(-0.5 * (x - m) ** 2 / s ** 2) / np.sqrt(
             2 * np.pi * s ** 2)
@@ -95,7 +95,7 @@ def do_lightcurve_plot(t, data, error, model, scatter, outpdf=None, title=None,
     ax1.set_xlim(np.min(t), np.max(t))
     ax1.xaxis.set_major_formatter(plt.NullFormatter())
     chi2_v = chi2(data * 1e6, model * 1e6, scatter) / (len(t) - nfit)
-    ax1.text(t[2], np.min(model), r'$\chi_\nu^2 = {:.2f}$'.format(chi2_v),
+    ax1.text(t[2], np.min(model), r'$\chi_\nu^2 = {:.2f}$''\n'r'$\sigma={:.2f}$ppm'.format(chi2_v, rms),
              fontsize=14)
 
     if title is not None:
@@ -124,11 +124,7 @@ def do_lightcurve_plot(t, data, error, model, scatter, outpdf=None, title=None,
              gaus(np.linspace(-15, 15, 500), 0, 1) * area, c='black')
     ax3.set_ylabel('Counts', fontsize=16)
     ax3.set_xlabel('Residuals/Scatter', fontsize=16)
-
-    ii = np.where(hist[0] != 0)
-    start = hist[1][np.min(ii)] - 1
-    end = hist[1][np.max(ii)] + 2
-    ax3.set_xlim(start, end)
+    ax3.set_xlim(-5, 5)
 
     if outpdf is not None:
         if isinstance(outpdf, matplotlib.backends.backend_pdf.PdfPages):
@@ -209,3 +205,4 @@ def do_centroid_plot(deepstack, x1, y1, x2, y2, x3, y3, labels=None):
     plt.ylim(0, 255)
     plt.legend(fontsize=12)
     plt.show()
+
