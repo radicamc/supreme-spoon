@@ -163,11 +163,11 @@ for order in orders:
             models[:, i] = transit_model
             residuals[:, i] = norm_flux - transit_model
 
-    plotting.plot_2dlightcurves(wave, data, outpdf=outpdf,
+    plotting.plot_2dlightcurves(wave[0], data, outpdf=outpdf,
                                 title='Normalized Lightcurves')
-    plotting.plot_2dlightcurves(wave, models, outpdf=outpdf,
+    plotting.plot_2dlightcurves(wave[0], models, outpdf=outpdf,
                                 title='Model Lightcurves')
-    plotting.plot_2dlightcurves(wave, residuals, outpdf=outpdf,
+    plotting.plot_2dlightcurves(wave[0], residuals, outpdf=outpdf,
                                 title='Residuals')
     outdf = pd.DataFrame(data=outdict)
     outdf.to_csv(outdir + 'speclightcurve_results_order{0}{1}.csv'.format(order, suffix),
