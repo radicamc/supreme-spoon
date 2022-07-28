@@ -105,10 +105,12 @@ for order in orders:
             norm_err = np.zeros_like(err[:, i])
 
             if nestorprior_o1 is not None or nestorprior_o2 is not None:
-                priors['q1_SOSS']['distribution'] = 'truncatednormal'
-                priors['q1_SOSS']['hyperparameters'] = [prior_q1[i], 0.1, 0.0, 1.0]
-                priors['q2_SOSS']['distribution'] = 'truncatednormal'
-                priors['q2_SOSS']['hyperparameters'] = [prior_q2[i], 0.1, 0.0, 1.0]
+                if np.isfinite(prior_q1[i]):
+                    priors['q1_SOSS']['distribution'] = 'truncatednormal'
+                    priors['q1_SOSS']['hyperparameters'] = [prior_q1[i], 0.1, 0.0, 1.0]
+                if np.isfinite(prior_q2[i]):
+                    priors['q2_SOSS']['distribution'] = 'truncatednormal'
+                    priors['q2_SOSS']['hyperparameters'] = [prior_q2[i], 0.1, 0.0, 1.0]
 
             dataset = juliet.load(priors=priors, t_lc={'SOSS': t},
                                   y_lc={'SOSS': norm_flux},
