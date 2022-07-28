@@ -145,11 +145,12 @@ for order in orders:
             transit_model = results.lc.evaluate('SOSS')
             scatter = np.median(results.posteriors['posterior_samples']['sigma_w_SOSS'])
             rms = np.nanstd(norm_flux[out_trans]) * 1e6
+            nfit = len(np.where(dists != 'fixed')[0])
             plotting.do_lightcurve_plot(t=dataset.times_lc['SOSS'],
                                         data=dataset.data_lc['SOSS'],
                                         error=scatter/1e6, model=transit_model,
                                         scatter=scatter, rms=rms,
-                                        outpdf=outpdf, nfit=5,
+                                        outpdf=outpdf, nfit=nfit,
                                         title='bin {0} | {1:.3f}µm'.format(i, wave[0, i]))
 
             fit_params, posterior_names = [], []
