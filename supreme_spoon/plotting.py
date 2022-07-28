@@ -162,13 +162,12 @@ def make_corner(fit_params, results, posterior_names=None, outpdf=None,
         plt.show()
 
 
-def do_backgroundsubtraction_plot(data, model, model_scale, data_scale):
+def do_backgroundsubtraction_plot(data, model, scale_factor):
 
-    tt = data + model/model_scale*data_scale[:, None, None]
+    tt = data + model*scale_factor
     plt.plot(tt[10, 220], label='Before Subtraction', c='salmon')
     plt.plot(data[10, 220], label='After Subtraction', c='royalblue')
-    plt.plot((model/model_scale*data_scale[:, None, None])[10, 220], c='black',
-             label='Background Model')
+    plt.plot((model[220]*scale_factor), c='black', label='Background Model')
     plt.ylim(-1.5, 6.5)
     plt.xlabel('Spectral Pixel', fontsize=16)
     plt.ylabel('Counts', fontsize=16)

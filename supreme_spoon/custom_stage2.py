@@ -188,9 +188,11 @@ def backgroundstep(datafiles, background_model, output_dir=None,
     deepstack = utils.make_deepstack(cube)
 
     # Do model scaling
-    scale_mod = np.nanmedian(background_model[210:250, 500:800])
-    scale_dat = np.nanmedian(deepstack[210:250, 500:800])
-    scale_factor = scale_dat / scale_mod
+    bkg_ratio = deepstack[210:250, 500:800] / background_model[210:250, 500:800]
+    q1 = np.nanpercentile(bkg_ratio, 25)
+    q2 = np.nanpercentile(bkg_ratio, 50)
+    ii = np.where((bkg_ratio > q1) & (bkg_ratio < q2))
+    scale_factor = np.nanmedian(bkg_ratio[ii])
     print('Determined a scale factor of {:.4f}.'.format(scale_factor))
     model_scaled = background_model * scale_factor
 
@@ -214,7 +216,7 @@ def backgroundstep(datafiles, background_model, output_dir=None,
         if show_plots is True:
             plotting.do_backgroundsubtraction_plot(currentfile.data,
                                                    background_model,
-                                                   scale_mod, scale_dat)
+                                                   scale_factor)
         results.append(currentfile)
         currentfile.close()
 
