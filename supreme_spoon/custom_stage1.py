@@ -23,7 +23,8 @@ from supreme_spoon import plotting
 
 
 def oneoverfstep(datafiles, output_dir=None, save_results=True,
-                 outlier_maps=None, trace_mask=None, use_dq=True):
+                 outlier_maps=None, trace_mask=None, trace_mask2=None,
+                 use_dq=True):
     """Custom 1/f correction routine to be applied at the group level.
 
     Parameters
@@ -40,6 +41,9 @@ def oneoverfstep(datafiles, output_dir=None, save_results=True,
         3D (nints, dimy, dimx), or 2D (dimy, dimx) files.
     trace_mask : str, None
         Path to trace mask file. Should be 2D (dimy, dimx).
+    trace_mask2 : str, None
+        Path to trace mask file. Should be 3D (norder, dimy, dimx). If provided 1/f
+        will also be subtracted between trace_mask and trace_mask2.
     use_dq : bool
         If True, also mask all pixels flagged in the DQ array.
 
@@ -128,15 +132,30 @@ def oneoverfstep(datafiles, output_dir=None, save_results=True,
         if trace_mask is None:
             msg = ' No trace mask passed, ignoring the trace.'
             print(msg)
-            tracemask = np.zeros((dimy, dimx))
+            tracemask1 = np.zeros((3, dimy, dimx))
         else:
-            print(' Using trace mask {}'.format(trace_mask))
-            tracemask = fits.getdata(trace_mask)
+            if isinstance(trace_mask, str):
+                print(' Using trace mask {}'.format(trace_mask))
+                tracemask1 = fits.getdata(trace_mask)
+            else:
+                print(' Using a trace mask')
+                tracemask1 = trace_mask
+
+        if trace_mask2 is not None:
+            print(' Also subtracting a median around the trace')
+            if isinstance(trace_mask2, str):
+                tracemask2 = fits.getdata(trace_mask2)
+            else:
+                tracemask2 = trace_mask2
+            window = True
+        else:
+            window = False
 
         # The outlier map is 0 where good and >0 otherwise. As this will be
         # applied multiplicatively, replace 0s with 1s and others with NaNs.
         outliers = np.where(outliers == 0, 1, np.nan)
         # Same thing with the trace mask.
+        tracemask = tracemask1[0].astype(bool) | tracemask1[1].astype(bool) | tracemask1[2].astype(bool)
         tracemask = np.where(tracemask == 0, 1, np.nan)
         tracemask = np.repeat(tracemask, nint).reshape((dimy, dimx, nint))
         tracemask = tracemask.transpose(2, 0, 1)
@@ -144,7 +163,9 @@ def oneoverfstep(datafiles, output_dir=None, save_results=True,
         outliers = (outliers + tracemask) // 2
 
         dcmap = np.copy(datamodel.data)
+        dcmap_w = np.zeros((2, nint, ngroup, dimy, dimx))
         subcorr = np.copy(datamodel.data)
+        subcorr_w = np.copy(datamodel.data)
         sub, sub_m = np.copy(datamodel.data), np.copy(datamodel.data)
         for i in tqdm(range(nint)):
             # Create two difference images; one to be masked and one not.
@@ -161,10 +182,22 @@ def oneoverfstep(datafiles, output_dir=None, save_results=True,
                                               category=RuntimeWarning)
                         dc = np.nanmedian(sub_m[i, g], axis=0)
                     # dc is 1D (columns) - expand to 2D
-                    dc2d = np.repeat(dc, 256).reshape((2048, 256)).transpose(1,
-                                                                             0)
+                    dc2d = np.repeat(dc, 256).reshape((2048, 256)).transpose(1, 0)
                     dcmap[i, g, :, :] = dc2d
                     subcorr[i, g, :, :] = sub[i, g, :, :] - dcmap[i, g, :, :]
+
+                    if window is True:
+                        for order in [0, 1]:
+                            trace_window = tracemask2[order] - tracemask1[order]
+                            trace_window = np.where(trace_window == 0, 1, np.nan)
+                            with warnings.catch_warnings():
+                                warnings.simplefilter('ignore',
+                                                      category=RuntimeWarning)
+                                dc_w = np.nanmedian(subcorr[i, g, :, :] * trace_window, axis=0)
+                            dc2d_w = np.repeat(dc_w, 256).reshape((2048, 256)).transpose(1, 0)
+                            dcmap_w[order, i, g, :, :] = dc2d_w * tracemask2[order]
+                            subcorr_w[i, g, :, :] = subcorr[i, g, :, :] - dcmap_w[order, i, g, :, :]
+
                 else:
                     raise NotImplementedError
 
@@ -173,7 +206,12 @@ def oneoverfstep(datafiles, output_dir=None, save_results=True,
 
         # Subtract the DC map from a copy of the data model
         rampmodel_corr = datamodel.copy()
-        rampmodel_corr.data = datamodel.data - dcmap
+        corr_data = datamodel.data - dcmap
+        if window is True:
+            corr_data = corr_data - dcmap_w[0] - dcmap_w[1]
+            subcorr = np.stack([subcorr, subcorr_w])
+            dcmap = np.stack([dcmap, dcmap_w[0], dcmap_w[1]])
+        rampmodel_corr.data = corr_data
 
         # Save results to disk if requested.
         if save_results is True:
@@ -197,25 +235,14 @@ def oneoverfstep(datafiles, output_dir=None, save_results=True,
     return corrected_rampmodels
 
 
-def tracemaskstep(datafiles, output_dir, mask_width=30, save_results=True,
+def tracemaskstep(deepframe, output_dir, mask_width=30, save_results=True,
                   show_plots=False):
 
-    datafiles = np.atleast_1d(datafiles)
+    if isinstance(deepframe, str):
+        deepframe = datamodels.open(deepframe)
 
-    for i, file in enumerate(datafiles):
-        if isinstance(file, str):
-            currentfile = datamodels.open(file)
-        else:
-            currentfile = file
-
-        if i == 0:
-            cube = currentfile.data
-            fileroot = currentfile.meta.filename.split('_')[0]
-        else:
-            cube = np.concatenate([cube, currentfile.data], axis=0)
-        currentfile.close()
-
-    deepframe = utils.make_deepstack(cube)
+    fileroot = deepframe.meta.filename.split('deepframe')[0]
+    deepframe = deepframe.extra_fits.PRIMARY.data
 
     # Get orders 1 to 3 centroids
     dimy, dimx = np.shape(deepframe)
@@ -224,7 +251,8 @@ def tracemaskstep(datafiles, output_dir, mask_width=30, save_results=True,
     else:
         raise NotImplementedError
 
-    cen_o1, cen_o2, cen_o3 = utils.get_trace_centroids(deepframe, subarray)
+    cen_o1, cen_o2, cen_o3 = utils.get_trace_centroids(deepframe, subarray,
+                                                       save_results=save_results)
     x1, y1 = cen_o1
     x2, y2 = cen_o2
     x3, y3 = cen_o3
@@ -242,15 +270,19 @@ def tracemaskstep(datafiles, output_dir, mask_width=30, save_results=True,
     weights2 = np.where(weights2 == 0, 0, 1)
     weights3 = np.where(weights3 == 0, 0, 1)
 
-    tracemask = weights1 | weights2 | weights3
+    tracemask = np.zeros((3, dimy, dimx))
+    tracemask[0] = weights1
+    tracemask[1] = weights2
+    tracemask[2] = weights3
     if show_plots is True:
-        plotting.do_tracemask_plot(tracemask)
+        plotting.do_tracemask_plot(weights1 | weights2 | weights3)
 
     if save_results is True:
         hdu = fits.PrimaryHDU(tracemask)
-        hdu.writeto(output_dir + fileroot + '_tracemask.fits', overwrite=True)
+        hdu.writeto(output_dir + fileroot + '_tracemask_width{}.fits'.format(mask_width),
+                    overwrite=True)
 
-    return deepframe, tracemask
+    return tracemask
 
 
 def run_stage1(results, save_results=True, outlier_maps=None, trace_mask=None,

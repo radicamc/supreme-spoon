@@ -8,7 +8,6 @@ Created on Thurs Jul 21 18:07 2022
 Custom JWST DMS pipeline steps for Stage 4 (lightcurve fitting).
 """
 
-# TODO: input NaNs in fit results for skipping bins so that the fit results arrays are same lengths as wave bins
 import numpy as np
 
 
