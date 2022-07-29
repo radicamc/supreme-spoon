@@ -20,7 +20,13 @@ from jwst.pipeline import calwebb_spec2
 from sys import path
 applesoss_path = '/home/radica/GitHub/APPLESOSS/'
 path.insert(1, applesoss_path)
-from APPLESOSS import applesoss
+try:
+    from APPLESOSS import applesoss
+    use_applesoss = True
+except ModuleNotFoundError:
+    msg = 'APPLESOSS module not available. Some capabilities will be limited.'
+    warnings.warn(msg)
+    use_applesoss = False
 
 from supreme_spoon import utils
 from supreme_spoon import plotting
@@ -219,9 +225,15 @@ def run_stage3(results, deepframe, out_frames, save_results=True,
     # Custom DMS step
     if extract_method == 'atoca':
         if specprofile is None:
-            specprofile = specprofilestep(deepframe, save_results=save_results,
-                                          output_dir=outdir)[1]
-            specprofile = outdir + specprofile
+            if use_applesoss is True:
+                specprofile = specprofilestep(deepframe,
+                                              save_results=save_results,
+                                              output_dir=outdir)[1]
+                specprofile = outdir + specprofile
+            else:
+                msg = 'APPLESOSS module is unavailable, the default specprofile reference file will be used for extraction.\n' \
+                      'For optimal results, consider using a tailored specprofile reference'
+                print(msg)
 
     # ===== 1D Extraction Step =====
     # Custom/default DMS step.

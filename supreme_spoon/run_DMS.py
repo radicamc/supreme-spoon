@@ -15,20 +15,20 @@ from supreme_spoon import utils
 
 # ================== User Input ========================
 # Stage 1 Input Files
-root_dir = '/home/radica/jwst/ERO/WASP-96b/'  # Root file directory
+root_dir = './'  # Root file directory
 uncal_indir = root_dir + 'DMS_uncal/'  # Uncalibrated data file directory
 input_filetag = 'uncal'  # Uncalibrated file tag
-outlier_maps = [root_dir + 'OLD_pipeline_outputs_directory/Stage1/jw02734002001_04101_00001-seg001_nis_1_dqpixelflags.fits',
-                root_dir + 'OLD_pipeline_outputs_directory/Stage1/jw02734002001_04101_00001-seg002_nis_1_dqpixelflags.fits',
-                root_dir + 'OLD_pipeline_outputs_directory/Stage1/jw02734002001_04101_00001-seg003_nis_1_dqpixelflags.fits']  # Outliers to mask in 1/f correction
-trace_mask = root_dir + 'OLD_pipeline_outputs_directory/Stage2/jw02734002001_tracemask.fits'  # Trace mask for 1/f correction.
+outlier_maps = None  # Outliers to mask in 1/f correction
+trace_mask = None  # Trace mask for 1/f correction.
 trace_mask2 = None  # Slightly larger mask around the trace to refine 1/f correction.
 
 # Stage 2 Input Files
+# Using STScI background model from here:
+# https://jwst-docs.stsci.edu/jwst-calibration-pipeline-caveats/jwst-time-series-observations-pipeline-caveats/niriss-time-series-observation-pipeline-caveats#NIRISSTimeSeriesObservationPipelineCaveats-SOSSskybackground
 background_file = root_dir + 'model_background256.npy'  # Background model
 
 # Stage 3 Input Files
-specprofile = root_dir + 'pipeline_outputs_directory/Stage3/APPLESOSS_ref_2D_profile_SUBSTRIP256_os1_pad0.fits'  # Specprofile reference file for ATOCA
+specprofile = None  # Specprofile reference file for ATOCA
 soss_estimate = None  # SOSS estmate file for ATOCA
 
 # Other Parameters
@@ -37,7 +37,7 @@ show_plots = False  # Show plots
 process_f277w = False  # Process F277W exposures in addition to CLEAR
 force_redo = False  # Force redo of steps which have already been completed
 extract_method = 'box'  # Extraction method, box or atoca
-out_frames = [90, -40]  # Out of transit frames
+out_frames = [50, -50]  # Out of transit frames
 # ======================================================
 
 import os
