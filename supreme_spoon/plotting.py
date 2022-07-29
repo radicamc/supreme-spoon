@@ -74,8 +74,8 @@ def plot_2dlightcurves(wave1, flux1, wave2=None, flux2=None, outpdf=None,
         plt.show()
 
 
-def do_lightcurve_plot(t, data, error, model, scatter, rms, outpdf=None,
-                       title=None, nfit=8):
+def do_lightcurve_plot(t, data, error, model, real_errors, scatter, rms,
+                       outpdf=None, title=None, nfit=8):
     def gaus(x, m, s):
         return np.exp(-0.5 * (x - m) ** 2 / s ** 2) / np.sqrt(
             2 * np.pi * s ** 2)
@@ -94,8 +94,8 @@ def do_lightcurve_plot(t, data, error, model, scatter, rms, outpdf=None,
     ax1.set_ylabel('Relative Flux', fontsize=14)
     ax1.set_xlim(np.min(t), np.max(t))
     ax1.xaxis.set_major_formatter(plt.NullFormatter())
-    chi2_v = chi2(data * 1e6, model * 1e6, error * 1e6) / (len(t) - nfit)
-    err_mult = scatter / np.nanmean(error*1e6)
+    chi2_v = chi2(data * 1e6, model * 1e6, real_errors * 1e6) / (len(t) - nfit)
+    err_mult = scatter / np.nanmean(real_errors*1e6)
     ax1.text(t[2], np.min(model), r'$\chi_\nu^2 = {:.2f}$''\n'r'$\sigma={:.2f}$ppm''\n'r'$e={:.2f}$'.format(chi2_v, rms, err_mult),
              fontsize=14)
 
