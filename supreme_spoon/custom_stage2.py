@@ -58,8 +58,10 @@ def badpixstep(datafiles, thresh=3, box_size=5, max_iter=2, output_dir=None,
         # To create the deepstack, join all segments together.
         if i == 0:
             cube = currentfile.data
+            dq_cube = currentfile.dq
         else:
             cube = np.concatenate([cube, currentfile.data], axis=0)
+            dq_cube = np.concatenate([dq_cube, currentfile.dq], axis=0)
 
     # Get total file root, with no segment info.
     working_name = fileroots[0]
@@ -73,6 +75,7 @@ def badpixstep(datafiles, thresh=3, box_size=5, max_iter=2, output_dir=None,
         # Initialize starting loop variables.
     badpix_mask = np.zeros((256, 2048))
     newdata = np.copy(cube)
+    newdq = np.copy(dq_cube)
     it = 0
 
     while it < max_iter:
@@ -129,8 +132,10 @@ def badpixstep(datafiles, thresh=3, box_size=5, max_iter=2, output_dir=None,
         # Replace the flagged pixels in each individual integration.
         for itg in tqdm(range(nint)):
             to_replace = badpix + nanpix[itg]
-            newdata[itg] = utils.do_replacement(newdata[itg], to_replace,
-                                                box_size=box_size)
+            newdata[itg], newdq[itg] = utils.do_replacement(newdata[itg],
+                                                            to_replace,
+                                                            dq=newdq[itg],
+                                                            box_size=box_size)
         it += 1
 
     # Ensure that the bad pixels mask remains zeros or ones.
@@ -144,6 +149,7 @@ def badpixstep(datafiles, thresh=3, box_size=5, max_iter=2, output_dir=None,
         currentdata = file.data
         nints = np.shape(currentdata)[0]
         file.data = newdata[current_int:(current_int + nints)]
+        file.dq = newdq[current_int:(current_int + nints)]
         current_int += nints
         if save_results is True:
             file.write(output_dir + fileroots[n] + 'badpixstep.fits')

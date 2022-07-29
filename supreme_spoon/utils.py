@@ -49,12 +49,16 @@ def get_interp_box(data, box_size, i, j, dimx, dimy):
     return box_properties
 
 
-def do_replacement(frame, badpix_map, box_size=5):
+def do_replacement(frame, badpix_map, dq=None, box_size=5):
     """Replace flagged pixels with the median of a surrounding box.
     """
 
     dimy, dimx = np.shape(frame)
     frame_out = np.copy(frame)
+    if dq is not None:
+        dq_out = np.copy(dq)
+    else:
+        dq_out = np.zeros_like(frame)
 
     # Loop over all flagged pixels.
     for i in range(dimx):
@@ -65,8 +69,9 @@ def do_replacement(frame, badpix_map, box_size=5):
             else:
                 med = get_interp_box(frame, box_size, i, j, dimx, dimy)[0]
                 frame_out[j, i] = med
+                dq_out[j, i] = 0
 
-    return frame_out
+    return frame_out, dq_out
 
 
 def make_deepstack(cube):
