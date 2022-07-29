@@ -334,16 +334,15 @@ if __name__ == "__main__":
     os.environ['CRDS_PATH'] = root_dir + 'crds_cache'
     os.environ['CRDS_SERVER_URL'] = 'https://jwst-crds.stsci.edu'
 
-    clear_segments = utils.unpack_input_directory(indir, filetag=input_filetag,
-                                                  process_f277w=False)[0]
+    input_files = utils.unpack_input_directory(indir, filetag=input_filetag,
+                                               exposure_type='CLEAR')
     deepframe = fits.getdata(deepframe_file, 0)
 
-    all_exposures = {'CLEAR': clear_segments}
-    print('\nIdentified {} CLEAR exposure segment(s):'.format(len(clear_segments)))
-    for file in clear_segments:
+    print('\nIdentified {} CLEAR exposure segment(s):'.format(len(input_files)))
+    for file in input_files:
         print(' ' + file)
 
-    stellar_spectra = run_stage3(all_exposures['CLEAR'], deepframe=deepframe,
+    stellar_spectra = run_stage3(input_files, deepframe=deepframe,
                                  save_results=True, show_plots=False,
                                  root_dir=root_dir, force_redo=False,
                                  extract_method=extract_method,

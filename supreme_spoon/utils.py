@@ -323,47 +323,35 @@ def get_dn2e(datafile):
     return dn2e
 
 
-def unpack_input_directory(indir, filetag='', process_f277w=False):
+def unpack_input_directory(indir, filetag='', exposure_type='CLEAR'):
     if indir[-1] != '/':
         indir += '/'
     all_files = glob.glob(indir + '*')
-    clear_segments = []
-    f277w_segments = []
+    segments = []
     for file in all_files:
         try:
             header = fits.getheader(file, 0)
         except(OSError, IsADirectoryError):
             continue
         try:
-            if header['FILTER'] == 'CLEAR':
+            if header['FILTER'] == exposure_type:
                 if filetag in file:
-                    clear_segments.append(file)
-            elif header['FILTER'] == 'F277W' and process_f277w is True:
-                if filetag in file:
-                    f277w_segments.append(file)
+                    segments.append(file)
             else:
                 continue
         except KeyError:
             continue
     # Ensure that segments are packed in chronological order
-    if len(clear_segments) > 1:
-        clear_segments = np.array(clear_segments)
+    if len(segments) > 1:
+        segments = np.array(segments)
         segment_numbers = []
-        for file in clear_segments:
+        for file in segments:
             seg_no = fits.getheader(file, 0)['EXSEGNUM']
             segment_numbers.append(seg_no)
         correct_order = np.argsort(segment_numbers)
-        clear_segments = clear_segments[correct_order]
-    if len(f277w_segments) > 1:
-        f277w_segments = np.array(f277w_segments)
-        segment_numbers = []
-        for file in f277w_segments:
-            seg_no = fits.getheader(file, 0)['EXSEGNUM']
-            segment_numbers.append(seg_no)
-        correct_order = np.argsort(segment_numbers)
-        f277w_segments = f277w_segments[correct_order]
+        segments = segments[correct_order]
 
-    return clear_segments, f277w_segments
+    return segments
 
 
 def remove_nans(datamodel):
@@ -437,3 +425,13 @@ def get_wavebin_limits(wave):
     lwerr = np.insert(lwerr, 0, lwerr[0])
 
     return lwerr, uperr
+
+
+def open_filetype(datafile):
+    if isinstance(datafile, str):
+        data = datamodels.open(datafile)
+    elif isinstance(datafile, (datamodels.CubeModel, datamodels.RampModel)):
+        data = datafile
+    else:
+        raise ValueError('Invalid filetype: {}'.format(type(datafile)))
+    return data

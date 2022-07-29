@@ -376,6 +376,7 @@ if __name__ == "__main__":
     indir = root_dir + 'pipeline_outputs_directory/Stage1/'
     input_filetag = 'gainscalestep'
     background_file = root_dir + 'model_background256.npy'
+    exposure_type = 'CLEAR'  # Either CLEAR or F277W.
     # ==========================================
 
     import os
@@ -383,21 +384,16 @@ if __name__ == "__main__":
     os.environ['CRDS_SERVER_URL'] = 'https://jwst-crds.stsci.edu'
 
     input_files = utils.unpack_input_directory(indir, filetag=input_filetag,
-                                               process_f277w=False)
+                                               exposure_type=exposure_type)
+    # Unpack all files in the input directory.
+    print('\nIdentified {0} {1} exposure segments'.format(len(input_files),
+                                                          exposure_type))
+    for file in input_files:
+        print(' ' + file)
+
     background_model = np.load(background_file)
 
-    clear_segments, f277w_segments = input_files[0], input_files[1]
-    all_exposures = {'CLEAR': clear_segments}
-    print('\nIdentified {} CLEAR exposure segment(s):'.format(len(clear_segments)))
-    for file in clear_segments:
-        print(' ' + file)
-    if len(f277w_segments) != 0:
-        all_exposures['F277W'] = f277w_segments
-        print('and {} F277W exposre segment(s):'.format(len(f277w_segments)))
-        for file in f277w_segments:
-            print(' ' + file)
-
-    result = run_stage2(all_exposures['CLEAR'],
+    result = run_stage2(input_files,
                         background_model=background_model,
                         save_results=True, force_redo=False, show_plots=False,
                         root_dir=root_dir)

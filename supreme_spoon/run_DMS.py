@@ -16,54 +16,43 @@ from supreme_spoon import utils
 # ================== User Input ========================
 # Stage 1 Input Files
 root_dir = './'  # Root file directory
-uncal_indir = root_dir + 'DMS_uncal/'  # Uncalibrated data file directory
-input_filetag = 'uncal'  # Uncalibrated file tag
-outlier_maps = None  # Outliers to mask in 1/f correction
-trace_mask = None  # Trace mask for 1/f correction.
-trace_mask2 = None  # Slightly larger mask around the trace to refine 1/f correction.
+uncal_indir = root_dir + 'DMS_uncal/'  # Uncalibrated data file directory.
+input_filetag = 'uncal'  # Uncalibrated file tag.
+outlier_maps = None  # For 1/f correction; outlier pixel maps.
+trace_mask = None  # For 1/f correcton; trace mask.
+trace_mask2 = None  # For 1/f correcton; trace mask for window subtraction.
 
 # Stage 2 Input Files
 # Using STScI background model from here:
 # https://jwst-docs.stsci.edu/jwst-calibration-pipeline-caveats/jwst-time-series-observations-pipeline-caveats/niriss-time-series-observation-pipeline-caveats#NIRISSTimeSeriesObservationPipelineCaveats-SOSSskybackground
-background_file = root_dir + 'model_background256.npy'  # Background model
+background_file = root_dir + 'model_background256.npy'  # Background model.
 
 # Stage 3 Input Files
-specprofile = None  # Specprofile reference file for ATOCA
-soss_estimate = None  # SOSS estmate file for ATOCA
+specprofile = None  # Specprofile reference file for ATOCA.
+soss_estimate = None  # SOSS estmate file for ATOCA.
 
 # Other Parameters
-save_results = True  # Save results of each intermediate step to file
-show_plots = False  # Show plots
-process_f277w = False  # Process F277W exposures in addition to CLEAR
-force_redo = False  # Force redo of steps which have already been completed
-extract_method = 'box'  # Extraction method, box or atoca
-out_frames = [50, -50]  # Out of transit frames
+save_results = True  # Save results of each intermediate step to file.
+show_plots = False  # Show plots.
+exposure_type = 'CLEAR'  # Either CLEAR or F277W.
+force_redo = False  # Force redo of steps which have already been completed.
+extract_method = 'box'  # Extraction method, box or atoca.
+out_frames = [50, -50]  # Out of transit frames.
 # ======================================================
 
 import os
 os.environ['CRDS_PATH'] = root_dir + 'crds_cache'
 os.environ['CRDS_SERVER_URL'] = 'https://jwst-crds.stsci.edu'
 
-# Unpack data file from input directory
+# Unpack all files in the input directory.
 input_files = utils.unpack_input_directory(uncal_indir, filetag=input_filetag,
-                                           process_f277w=process_f277w)
-
-clear_segments, f277w_segments = input_files[0], input_files[1]
-all_exposures = {'CLEAR': clear_segments}
-print('\nIdentified {} CLEAR exposure segment(s):'.format(len(clear_segments)))
-for file in clear_segments:
+                                           exposure_type=exposure_type)
+print('\nIdentified {0} {1} exposure segments'.format(len(input_files), exposure_type))
+for file in input_files:
     print(' ' + file)
-if len(f277w_segments) != 0:
-    all_exposures['F277W'] = f277w_segments
-    print('and {} F277W exposre segment(s):'.format(len(f277w_segments)))
-    for file in f277w_segments:
-        print(' ' + file)
 
 # Run Stage 1
-to_process = all_exposures['CLEAR']
-if process_f277w is True and len(f277w_segments) != 0:
-    to_process.append(all_exposures['F277W'])
-stage1_results = custom_stage1.run_stage1(to_process,
+stage1_results = custom_stage1.run_stage1(input_files,
                                           save_results=save_results,
                                           outlier_maps=outlier_maps,
                                           trace_mask=trace_mask,
