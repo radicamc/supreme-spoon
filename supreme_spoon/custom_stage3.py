@@ -57,7 +57,11 @@ def construct_lightcurves(datafiles, output_dir, out_frames,
             ferr_o2 = np.concatenate([ferr_o2, segment[2]['FLUX_ERROR']*dn2e])
 
     wave1d_o1, wave1d_o2 = wave2d_o1[0], wave2d_o2[0]
-    t = utils.make_time_axis(file)
+    if isinstance(file, str):
+        t = utils.make_time_axis(file)
+    else:
+        filename = file.meta.filename
+        t = utils.make_time_axis(filename)
     out_frames = np.abs(out_frames)
     out_trans = np.concatenate([np.arange(out_frames[0]),
                                 np.arange(out_frames[1]) - out_frames[1]])
@@ -101,7 +105,9 @@ def construct_lightcurves(datafiles, output_dir, out_frames,
     header_dict['Contents'] = 'Full resolution stellar spectra'
     header_dict['Method'] = extract_method
     header_dict['Width'] = extract_params['soss_width']
-    header_dict['Transf'] = extract_params['soss_transform']
+    header_dict['Transx'] = extract_params['soss_transform_x']
+    header_dict['Transy'] = extract_params['soss_transform_y']
+    header_dict['Transth'] = extract_params['soss_transform_t']
 
     nint = np.shape(flux_o1_clip)[1]
     wl1, wu1 = utils.get_wavebin_limits(wave2d_o1)
@@ -244,7 +250,9 @@ def run_stage3(results, deepframe, out_frames, save_results=True,
                                             output_dir=outdir)
     step_tag = 'extract1dstep_{}.fits'.format(extract_method)
     new_results = []
-    extract_params = {'transform': soss_transform,
+    extract_params = {'transform_x': soss_transform[0],
+                      'transform_y': soss_transform[1],
+                      'transform_t': soss_transform[2],
                       'soss_width': soss_width}
     for i, segment in enumerate(results):
         expected_file = outdir + fileroots[i] + step_tag

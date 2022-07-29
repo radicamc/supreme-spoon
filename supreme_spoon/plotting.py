@@ -94,8 +94,9 @@ def do_lightcurve_plot(t, data, error, model, scatter, rms, outpdf=None,
     ax1.set_ylabel('Relative Flux', fontsize=14)
     ax1.set_xlim(np.min(t), np.max(t))
     ax1.xaxis.set_major_formatter(plt.NullFormatter())
-    chi2_v = chi2(data * 1e6, model * 1e6, scatter) / (len(t) - nfit)
-    ax1.text(t[2], np.min(model), r'$\chi_\nu^2 = {:.2f}$''\n'r'$\sigma={:.2f}$ppm'.format(chi2_v, rms),
+    chi2_v = chi2(data * 1e6, model * 1e6, error * 1e6) / (len(t) - nfit)
+    err_mult = scatter / np.nanmean(error*1e6)
+    ax1.text(t[2], np.min(model), r'$\chi_\nu^2 = {:.2f}$''\n'r'$\sigma={:.2f}$ppm''\n'r'$e={:.2f}$'.format(chi2_v, rms, err_mult),
              fontsize=14)
 
     if title is not None:
@@ -164,14 +165,15 @@ def make_corner(fit_params, results, posterior_names=None, outpdf=None,
 
 def do_backgroundsubtraction_plot(data, model, scale_factor):
 
+    plt.figure(figsize=(7, 5), facecolor='white')
     tt = data + model*scale_factor
     plt.plot(tt[10, 220], label='Before Subtraction', c='salmon')
     plt.plot(data[10, 220], label='After Subtraction', c='royalblue')
     plt.plot((model[220]*scale_factor), c='black', label='Background Model')
-    plt.ylim(-1.5, 6.5)
+    plt.ylim(-1.5, 10)
     plt.xlabel('Spectral Pixel', fontsize=16)
     plt.ylabel('Counts', fontsize=16)
-    plt.legend(fontsize=12)
+    plt.legend(fontsize=12, loc=4)
     plt.show()
 
 

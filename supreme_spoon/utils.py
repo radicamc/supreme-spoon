@@ -296,7 +296,9 @@ def get_default_header():
                    'Contents': None,
                    'Method': 'Box Extraction',
                    'Width': 25,
-                   'Transf': [0, 0, 0]}
+                   'Transx': 0,
+                   'Transy': 0,
+                   'Transth': 0}
     header_comments = {'Target': 'Name of the target',
                        'Inst': 'Instrument used to acquire the data',
                        'Date': 'UTC date file created',
@@ -305,7 +307,9 @@ def get_default_header():
                        'Contents': 'Description of file contents',
                        'Method': 'Type of 1D extraction',
                        'Width': 'Box width',
-                       'Transf': 'SOSS transform [dx, dy, dtheta]'}
+                       'Transx': 'SOSS transform dx',
+                       'Transy': 'SOSS transform dy',
+                       'Transth': 'SOSS transform dtheta'}
 
     return header_dict, header_comments
 

@@ -21,10 +21,137 @@ from supreme_spoon import utils
 from supreme_spoon import plotting
 
 
+def backgroundstep(datafiles, background_model, output_dir=None,
+                   save_results=True, show_plots=False):
+    """Background subtraction must be carefully treated with SOSS observations.
+    Due to the extent of the PSF wings, there are very few, if any,
+    non-illuminated pixels to serve as a sky region. Furthermore, the zodi
+    background has a unique stepped shape, which would render a constant
+    background subtraction ill-advised. Therefore, a background subtracton is
+    performed by scaling a model background to the counntns level of a median
+    stack of the exposure. This scaled model background is then subtracted
+    from each integration.
+
+    Parameters
+    ----------
+    datafiles : list[str], list[CubeModel]
+        Paths to data segments for a SOSS exposure, or the datamodels
+        themselves.
+    background_model : np.array
+        Background model. Should be 2D (dimy, dimx)
+    output_dir : str, None
+        Directory to which to save outputs.
+    save_results : bool
+        If True, save outputs to file.
+    show_plots : bool
+        If True, show plots.
+
+    Returns
+    -------
+    results : list[CubeModel]
+        Input data segments, corrected for the background.
+    """
+
+    print('Starting custom background subtraction step.')
+    # Output directory formatting.
+    if output_dir is not None:
+        if output_dir[-1] != '/':
+            output_dir += '/'
+
+    datafiles = np.atleast_1d(datafiles)
+    opened_datafiles = []
+    for i, file in enumerate(datafiles):
+        currentfile = utils.open_filetype(file)
+        opened_datafiles.append(currentfile)
+        # To create the deepstack, join all segments together.
+        if i == 0:
+            cube = currentfile.data
+        else:
+            cube = np.concatenate([cube, currentfile.data], axis=0)
+    datafiles = opened_datafiles
+
+    # Make median stack of all integrations to use for background scaling.
+    # This is to limit the influence of cosmic rays, which can greatly effect
+    # the background scaling factor calculated for an individual inegration.
+    deepstack = utils.make_deepstack(cube)
+
+    # Usng a region in the top left corner where influence from the traces is
+    # minimal, calculate the scaling of the model background to the median
+    # stack.
+    bkg_ratio = deepstack[210:250, 500:800] / background_model[210:250, 500:800]
+    # Instead of a straight median, use the median of the 2nd quartile to
+    # limit the effect of any remaining illuminated pixels.
+    q1 = np.nanpercentile(bkg_ratio, 25)
+    q2 = np.nanpercentile(bkg_ratio, 50)
+    ii = np.where((bkg_ratio > q1) & (bkg_ratio < q2))
+    scale_factor = np.nanmedian(bkg_ratio[ii])
+    print('Determined a scale factor of {:.4f}.'.format(scale_factor))
+    # Scale the background model to the flux level of the data.
+    model_scaled = background_model * scale_factor
+
+    # Loop over all segments in the exposure and subtract the background from
+    # each of them.
+    results = []
+    for currentfile in datafiles:
+        # Get file name root.
+        old_filename = currentfile.meta.filename
+        to_remove = old_filename.split('_')[-1]
+        fileroot = old_filename.split(to_remove)[0]
+
+        # Subtract the scaled background model.
+        data_backsub = currentfile.data - model_scaled
+        currentfile.data = data_backsub
+
+        # Save the results to file if requested.
+        if save_results is True:
+            # Scaled model background.
+            hdu = fits.PrimaryHDU(model_scaled)
+            hdu.writeto(output_dir + fileroot + 'background.fits',
+                        overwrite=True)
+            # Background subtarcted data.
+            currentfile.write(output_dir + fileroot + 'backgroundstep.fits')
+
+        # Show background scaling plot if requested.
+        if show_plots is True:
+            plotting.do_backgroundsubtraction_plot(currentfile.data,
+                                                   background_model,
+                                                   scale_factor)
+        results.append(currentfile)
+        currentfile.close()
+
+    return results
+
+
 def badpixstep(datafiles, thresh=3, box_size=5, max_iter=2, output_dir=None,
                save_results=True):
-    """Interpolate bad pixels flagged in the deep frame in individual
-    integrations.
+    """Identify and correct bad pixels remaining in the dataset. Find outlier
+    pixels in the median stack and correct them via the median of a box of
+    surrounding pixels in each integration.
+
+    Parameters
+    ----------
+    datafiles : list[str], list[CubeModel]
+        List of paths to datafiles for each segment, or the datamodels
+        themselves.
+    thresh : int
+        Sigma threshold for a deviant pixel to be flagged.
+    box_size : int
+        Size of box around each pixel to test for deviations.
+    max_iter : int
+        Maximum number of outlier flagging iterations.
+    output_dir : str, None
+        Directory to which to output results.
+    save_results : bool
+        If True, save results to file.
+
+    Returns
+    -------
+    data : list[CubeModel]
+        Input datamodels for each segment, corrected for outlier pixels.
+    badpix_mask : np.array
+        Mask of all pixels flagged by the outlier routine.
+    deepframe : np.array
+        Final median stack of all outlier corrected integrations.
     """
 
     print('Starting custom outlier interpolation step.')
@@ -39,13 +166,10 @@ def badpixstep(datafiles, thresh=3, box_size=5, max_iter=2, output_dir=None,
     data, fileroots = [], []
     # Load in datamodels from all segments.
     for i, file in enumerate(datafiles):
-        currentfile = datamodels.open(file)
+        currentfile = utils.open_filetype(file)
         data.append(currentfile)
         # Hack to get filename root.
-        if isinstance(file, str):
-            filename = file
-        else:
-            filename = file.meta.filename
+        filename = currentfile.meta.filename
         filename_split = filename.split('/')[-1].split('_')
         fileroot = ''
         for seg, segment in enumerate(filename_split):
@@ -56,6 +180,7 @@ def badpixstep(datafiles, thresh=3, box_size=5, max_iter=2, output_dir=None,
         fileroots.append(fileroot)
 
         # To create the deepstack, join all segments together.
+        # Also stack all the dq arrays from each segement.
         if i == 0:
             cube = currentfile.data
             dq_cube = currentfile.dq
@@ -72,7 +197,7 @@ def badpixstep(datafiles, thresh=3, box_size=5, max_iter=2, output_dir=None,
     else:
         fileroot_noseg = fileroots[0]
 
-        # Initialize starting loop variables.
+    # Initialize starting loop variables.
     badpix_mask = np.zeros((256, 2048))
     newdata = np.copy(cube)
     newdq = np.copy(dq_cube)
@@ -152,7 +277,9 @@ def badpixstep(datafiles, thresh=3, box_size=5, max_iter=2, output_dir=None,
         file.dq = newdq[current_int:(current_int + nints)]
         current_int += nints
         if save_results is True:
-            file.write(output_dir + fileroots[n] + 'badpixstep.fits')
+            with warnings.catch_warnings():
+                warnings.simplefilter('ignore')
+                file.write(output_dir + fileroots[n] + 'badpixstep.fits')
 
     if save_results is True:
         # Save bad pixel mask.
@@ -166,67 +293,6 @@ def badpixstep(datafiles, thresh=3, box_size=5, max_iter=2, output_dir=None,
                     overwrite=True)
 
     return data, badpix_mask, deepframe
-
-
-def backgroundstep(datafiles, background_model, output_dir=None,
-                   save_results=True, show_plots=False):
-
-    print('Starting custom background subtraction step.')
-    # Output directory formatting.
-    if output_dir is not None:
-        if output_dir[-1] != '/':
-            output_dir += '/'
-
-    datafiles = np.atleast_1d(datafiles)
-    opened_datafiles = []
-    for i, file in enumerate(datafiles):
-        if isinstance(file, str):
-            currentfile = datamodels.open(file)
-        else:
-            currentfile = file
-        opened_datafiles.append(currentfile)
-        # To create the deepstack, join all segments together.
-        if i == 0:
-            cube = currentfile.data
-        else:
-            cube = np.concatenate([cube, currentfile.data], axis=0)
-    datafiles = opened_datafiles
-    deepstack = utils.make_deepstack(cube)
-
-    # Do model scaling
-    bkg_ratio = deepstack[210:250, 500:800] / background_model[210:250, 500:800]
-    q1 = np.nanpercentile(bkg_ratio, 25)
-    q2 = np.nanpercentile(bkg_ratio, 50)
-    ii = np.where((bkg_ratio > q1) & (bkg_ratio < q2))
-    scale_factor = np.nanmedian(bkg_ratio[ii])
-    print('Determined a scale factor of {:.4f}.'.format(scale_factor))
-    model_scaled = background_model * scale_factor
-
-    results = []
-    for currentfile in datafiles:
-        old_filename = currentfile.meta.filename
-        to_remove = old_filename.split('_')[-1]
-        fileroot = old_filename.split(to_remove)[0]
-
-        data_backsub = currentfile.data - model_scaled
-
-        currentfile.data = data_backsub
-
-        if save_results is True:
-            hdu = fits.PrimaryHDU(model_scaled)
-            hdu.writeto(output_dir + fileroot + 'background.fits',
-                        overwrite=True)
-
-            currentfile.write(output_dir + fileroot + 'backgroundstep.fits')
-
-        if show_plots is True:
-            plotting.do_backgroundsubtraction_plot(currentfile.data,
-                                                   background_model,
-                                                   scale_factor)
-        results.append(currentfile)
-        currentfile.close()
-
-    return results
 
 
 def run_stage2(results, background_model=None, save_results=True,
