@@ -18,19 +18,18 @@ from supreme_spoon import utils
 root_dir = '/home/radica/jwst/ERO/WASP-96b/'  # Root file directory
 uncal_indir = root_dir + 'DMS_uncal/'  # Uncalibrated data file directory
 input_filetag = 'uncal'  # Uncalibrated file tag
-outlier_maps = [
-    root_dir + 'OLD_pipeline_outputs_directory/Stage1/jw02734002001_04101_00001-seg001_nis_1_dqpixelflags.fits',
-    root_dir + 'OLD_pipeline_outputs_directory/Stage1/jw02734002001_04101_00001-seg002_nis_1_dqpixelflags.fits',
-    root_dir + 'OLD_pipeline_outputs_directory/Stage1/jw02734002001_04101_00001-seg003_nis_1_dqpixelflags.fits']
-trace_mask = root_dir + 'OLD_pipeline_outputs_directory/Stage2/jw02734002001_tracemask.fits'
-trace_mask2 = None
+outlier_maps = [root_dir + 'OLD_pipeline_outputs_directory/Stage1/jw02734002001_04101_00001-seg001_nis_1_dqpixelflags.fits',
+                root_dir + 'OLD_pipeline_outputs_directory/Stage1/jw02734002001_04101_00001-seg002_nis_1_dqpixelflags.fits',
+                root_dir + 'OLD_pipeline_outputs_directory/Stage1/jw02734002001_04101_00001-seg003_nis_1_dqpixelflags.fits']  # Outliers to mask in 1/f correction
+trace_mask = root_dir + 'OLD_pipeline_outputs_directory/Stage2/jw02734002001_tracemask.fits'  # Trace mask for 1/f correction.
+trace_mask2 = None  # Slightly larger mask around the trace to refine 1/f correction.
 
 # Stage 2 Input Files
 background_file = root_dir + 'model_background256.npy'  # Background model
 
 # Stage 3 Input Files
-specprofile = root_dir + 'pipeline_outputs_directory/Stage3/APPLESOSS_ref_2D_profile_SUBSTRIP256_os1_pad0.fits'  # Specprofile reference file for atoca
-soss_estimate = None
+specprofile = root_dir + 'pipeline_outputs_directory/Stage3/APPLESOSS_ref_2D_profile_SUBSTRIP256_os1_pad0.fits'  # Specprofile reference file for ATOCA
+soss_estimate = None  # SOSS estmate file for ATOCA
 
 # Other Parameters
 save_results = True  # Save results of each intermediate step to file
@@ -38,7 +37,7 @@ show_plots = False  # Show plots
 process_f277w = False  # Process F277W exposures in addition to CLEAR
 force_redo = False  # Force redo of steps which have already been completed
 extract_method = 'box'  # Extraction method, box or atoca
-out_frames = [90, -40]
+out_frames = [90, -40]  # Out of transit frames
 # ======================================================
 
 import os
@@ -61,7 +60,10 @@ if len(f277w_segments) != 0:
         print(' ' + file)
 
 # Run Stage 1
-stage1_results = custom_stage1.run_stage1(all_exposures['CLEAR'],
+to_process = all_exposures['CLEAR']
+if process_f277w is True and len(f277w_segments) != 0:
+    to_process.append(all_exposures['F277W'])
+stage1_results = custom_stage1.run_stage1(to_process,
                                           save_results=save_results,
                                           outlier_maps=outlier_maps,
                                           trace_mask=trace_mask,
