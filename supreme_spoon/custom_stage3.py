@@ -80,12 +80,12 @@ def construct_lightcurves(datafiles, output_dir, out_frames,
 
     if show_plots is True:
         kwargs = {'vmax': 1e-4, 'vmin': -1e-4}
-        plotting.plot_2dlightcurves(nflux_o1, nflux_o2, wave1d_o1, wave1d_o2)
-        plotting.plot_2dlightcurves(nflux_o1 - nflux_o1_clip,
-                                    nflux_o2 - nflux_o2_clip,
-                                    wave1d_o1, wave1d_o2, **kwargs)
-        plotting.plot_2dlightcurves(nflux_o1_clip, nflux_o2_clip, wave1d_o1,
-                                    wave1d_o2)
+        plotting.plot_2dlightcurves(wave1d_o1, nflux_o1, wave1d_o2, nflux_o2)
+        plotting.plot_2dlightcurves(wave1d_o1, nflux_o1 - nflux_o1_clip,
+                                    wave1d_o2, nflux_o2 - nflux_o2_clip,
+                                    **kwargs)
+        plotting.plot_2dlightcurves(wave1d_o1, nflux_o1_clip, wave1d_o2,
+                                    nflux_o2_clip)
 
     flux_o1_clip = nflux_o1_clip * norm_factor_o1
     flux_o2_clip = nflux_o2_clip * norm_factor_o2
@@ -108,7 +108,7 @@ def construct_lightcurves(datafiles, output_dir, out_frames,
     header_dict['Transx'] = extract_params['soss_transform_x']
     header_dict['Transy'] = extract_params['soss_transform_y']
     header_dict['Transth'] = extract_params['soss_transform_t']
-
+    # TODO: Probably a bug here!
     nint = np.shape(flux_o1_clip)[1]
     wl1, wu1 = utils.get_wavebin_limits(wave2d_o1)
     wl2, wu2 = utils.get_wavebin_limits(wave2d_o2)
