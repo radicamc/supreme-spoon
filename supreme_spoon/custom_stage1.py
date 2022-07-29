@@ -253,7 +253,7 @@ def tracemaskstep(deepframe, output_dir, mask_width=30, save_results=True,
 
     cen_o1, cen_o2, cen_o3 = utils.get_trace_centroids(deepframe, subarray,
                                                        output_dir=output_dir,
-                                                       save_results=save_results,
+                                                       save_results=False,
                                                        save_filename=fileroot)
     x1, y1 = cen_o1
     x2, y2 = cen_o2
