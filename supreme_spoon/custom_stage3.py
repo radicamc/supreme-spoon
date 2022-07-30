@@ -260,6 +260,7 @@ def run_stage3(results, deepframe, out_frames, save_results=True,
             print('Skipping 1D Extraction Step.')
             res = expected_file
         else:
+            segment = utils.open_filetype(segment)
             if extract_method == 'atoca':
                 soss_atoca = True
                 soss_modelname = fileroots[i][:-1]
@@ -269,6 +270,7 @@ def run_stage3(results, deepframe, out_frames, save_results=True,
                 soss_atoca = False
                 soss_modelname = None
                 soss_bad_pix = 'masking'
+                segment.dq = np.zeros_like(segment.dq)
             step = calwebb_spec2.extract_1d_step.Extract1dStep()
             try:
                 res = step.call(segment, output_dir=outdir,
