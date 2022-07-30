@@ -189,6 +189,8 @@ def get_trace_centroids(deepframe, subarray, output_dir=None,
                           'xcen o2': x1, 'ycen o2': yy2,
                           'xcen o3': x1, 'ycen o3': yy3}
         df = pd.DataFrame(data=centroids_dict)
+        if save_filename[-1] != '_':
+            save_filename += '_'
         outfile_name = output_dir + save_filename + 'centroids.csv'
         outfile = open(outfile_name, 'a')
         outfile.write('# File Contents: Edgetrigger trace centroids\n')
