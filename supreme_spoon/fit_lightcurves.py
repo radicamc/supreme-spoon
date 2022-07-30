@@ -99,7 +99,7 @@ for order in orders:
     outdict = {}
     for i in range(nbins):
         skip = False
-        if np.all(flux[:, i] == 0):
+        if not np.isfinite(flux[:, i]).all():
             print('skipping bin #{} / {}'.format(i + 1, nbins))
             skip = True
         else:
