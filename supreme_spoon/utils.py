@@ -291,7 +291,7 @@ def get_default_header():
     header_dict = {'Target': None,
                    'Inst': 'NIRISS/SOSS',
                    'Date': datetime.utcnow().replace(microsecond=0).isoformat(),
-                   'Pipeline': 'Supreme Spoon',
+                   'Pipeline': 'Supreme SPOON',
                    'Author': 'MCR',
                    'Contents': None,
                    'Method': 'Box Extraction',
