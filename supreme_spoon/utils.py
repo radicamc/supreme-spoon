@@ -422,13 +422,13 @@ def get_wavebin_limits(wave):
     lw = np.concatenate([wave[:, None], np.roll(wave, 1)[:, None]], axis=1)
     up = np.concatenate([wave[:, None], np.roll(wave, -1)[:, None]], axis=1)
 
-    uperr = (np.mean(up, axis=1) - wave)[:-1]
-    uperr = np.insert(uperr, -1, uperr[-1])
+    bin_up = (np.mean(up, axis=1))[:-1]
+    bin_up = np.insert(bin_up, -1, bin_up[-1])
 
-    lwerr = (wave - np.mean(lw, axis=1))[1:]
-    lwerr = np.insert(lwerr, 0, lwerr[0])
+    bin_low = (np.mean(lw, axis=1))[1:]
+    bin_low = np.insert(bin_low, 0, bin_low[0])
 
-    return lwerr, uperr
+    return bin_low, bin_up
 
 
 def open_filetype(datafile):

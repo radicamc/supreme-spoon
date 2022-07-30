@@ -108,10 +108,9 @@ def construct_lightcurves(datafiles, output_dir, out_frames,
     header_dict['Transx'] = extract_params['soss_transform_x']
     header_dict['Transy'] = extract_params['soss_transform_y']
     header_dict['Transth'] = extract_params['soss_transform_t']
-    # TODO: Probably a bug here!
     nint = np.shape(flux_o1_clip)[1]
-    wl1, wu1 = utils.get_wavebin_limits(wave2d_o1)
-    wl2, wu2 = utils.get_wavebin_limits(wave2d_o2)
+    wl1, wu1 = utils.get_wavebin_limits(wave1d_o1)
+    wl2, wu2 = utils.get_wavebin_limits(wave1d_o2)
     wl1 = np.repeat(wl1[np.newaxis, :], nint, axis=0)
     wu1 = np.repeat(wu1[np.newaxis, :], nint, axis=0)
     wl2 = np.repeat(wl2[np.newaxis, :], nint, axis=0)
