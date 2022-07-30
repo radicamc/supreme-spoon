@@ -31,6 +31,7 @@ except ModuleNotFoundError:
 from supreme_spoon import plotting, utils
 
 
+# TODO: low wavebin might actually be up and vice-versa
 def construct_lightcurves(datafiles, out_frames, output_dir=None,
                           save_results=True, show_plots=False,
                           extract_params=None):
@@ -252,12 +253,27 @@ def run_stage3(results, deepframe, out_frames, save_results=True,
                       'transform_y': soss_transform[1],
                       'transform_t': soss_transform[2],
                       'soss_width': soss_width}
-    for i, segment in enumerate(results):
+    i = 0
+    completed_segments = []
+    redo_segments = []
+    redo = False
+    while len(completed_segments) < len(results):
+        if i == len(results):
+            i = i % len(results)
+            redo = True
+        if redo is True and i not in redo_segments:
+            i += 1
+            continue
+        segment = results[i]
         expected_file = outdir + fileroots[i] + step_tag
         if expected_file in all_files and force_redo is False:
             print('Output file {} already exists.'.format(expected_file))
             print('Skipping 1D Extraction Step.')
             res = expected_file
+            if extract_method == 'atoca' and soss_estimate is None:
+                atoca_spectra = outdir + fileroots[i] + 'AtocaSpectra.fits'
+                soss_estimate = utils.get_soss_estimate(atoca_spectra,
+                                                        output_dir=outdir)
         else:
             segment = utils.open_filetype(segment)
             if extract_method == 'atoca':
@@ -285,18 +301,25 @@ def run_stage3(results, deepframe, out_frames, save_results=True,
                                 soss_width=soss_width,
                                 soss_modelname=soss_modelname,
                                 override_specprofile=specprofile)
+                if extract_method == 'atoca' and soss_estimate is None:
+                    atoca_spectra = outdir + fileroots[i] + 'AtocaSpectra.fits'
+                    soss_estimate = utils.get_soss_estimate(atoca_spectra,
+                                                            output_dir=outdir)
+                completed_segments.append(i)
+                i += 1
             except Exception as err:
                 if str(err) == '(m>k) failed for hidden m: fpcurf0:m=0':
                     if soss_estimate is None:
-                        if i != 0:
-                            atoca_spectra = outdir + fileroots[i-1] + 'AtocaSpectra.fits'
-                            soss_estimate = utils.get_soss_estimate(atoca_spectra,
-                                                                    output_dir=outdir)
-                        else:
-                            print('No completed segments to create soss_estimate.')
+                        i += 1
+                        if len(redo_segments) == len(results):
+                            print('No segment can be correctly processed.')
                             raise err
+                        print('Initial flux estimate failed, and no soss '
+                              'estimate provided. Moving to next segment.')
+                        redo_segments.append(i)
+                        continue
 
-                    print('\nInitial flux estimate failed, trying again with soss_estimate.\n')
+                    print('\nInitial flux estimate failed, retrying with soss_estimate.\n')
                     res = step.call(segment, output_dir=outdir,
                                     save_results=save_results,
                                     soss_transform=[soss_transform[0],
@@ -308,6 +331,8 @@ def run_stage3(results, deepframe, out_frames, save_results=True,
                                     soss_modelname=soss_modelname,
                                     override_specprofile=specprofile,
                                     soss_estimate=soss_estimate)
+                    completed_segments.append(i)
+                    i += 1
                 else:
                     raise err
             # Hack to fix file names
@@ -315,6 +340,9 @@ def run_stage3(results, deepframe, out_frames, save_results=True,
                                       to_add=extract_method)[0]
         new_results.append(res)
     results = new_results
+    seg_nums = [seg.meta.exposure.segment_number for seg in results]
+    ii = np.argsort(seg_nums)
+    results = results[ii]
 
     # ===== Lightcurve Construction Step =====
     # Custom DMS step.
