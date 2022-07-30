@@ -105,9 +105,9 @@ def construct_lightcurves(datafiles, output_dir, out_frames,
     header_dict['Contents'] = 'Full resolution stellar spectra'
     header_dict['Method'] = extract_method
     header_dict['Width'] = extract_params['soss_width']
-    header_dict['Transx'] = extract_params['soss_transform_x']
-    header_dict['Transy'] = extract_params['soss_transform_y']
-    header_dict['Transth'] = extract_params['soss_transform_t']
+    header_dict['Transx'] = extract_params['transform_x']
+    header_dict['Transy'] = extract_params['transform_y']
+    header_dict['Transth'] = extract_params['transform_t']
     nint = np.shape(flux_o1_clip)[0]
     wl1, wu1 = utils.get_wavebin_limits(wave1d_o1)
     wl2, wu2 = utils.get_wavebin_limits(wave1d_o2)
