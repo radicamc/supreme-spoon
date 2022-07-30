@@ -59,7 +59,7 @@ def construct_lightcurves(datafiles, out_frames, output_dir=None,
     if isinstance(file, str):
         t = utils.make_time_axis(file)
     else:
-        filename = file.meta.filename
+        filename = output_dir + file.meta.filename
         t = utils.make_time_axis(filename)
     out_frames = np.abs(out_frames)
     out_trans = np.concatenate([np.arange(out_frames[0]),
@@ -304,8 +304,6 @@ def run_stage3(results, deepframe, out_frames, save_results=True,
                     atoca_spectra = outdir + fileroots[i] + 'AtocaSpectra.fits'
                     soss_estimate = utils.get_soss_estimate(atoca_spectra,
                                                             output_dir=outdir)
-                completed_segments.append(i)
-                i += 1
             except Exception as err:
                 if str(err) == '(m>k) failed for hidden m: fpcurf0:m=0':
                     if soss_estimate is None:
@@ -330,18 +328,18 @@ def run_stage3(results, deepframe, out_frames, save_results=True,
                                     soss_modelname=soss_modelname,
                                     override_specprofile=specprofile,
                                     soss_estimate=soss_estimate)
-                    completed_segments.append(i)
-                    i += 1
                 else:
                     raise err
             # Hack to fix file names
             res = utils.fix_filenames(res, '_badpixstep_', outdir,
                                       to_add=extract_method)[0]
-        new_results.append(res)
+        new_results.append(utils.open_filetype(res))
+        completed_segments.append(i)
+        i += 1
     results = new_results
     seg_nums = [seg.meta.exposure.segment_number for seg in results]
     ii = np.argsort(seg_nums)
-    results = results[ii]
+    results = np.array(results)[ii]
 
     # ===== Lightcurve Construction Step =====
     # Custom DMS step.
