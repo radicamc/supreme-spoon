@@ -269,6 +269,8 @@ def run_stage3(results, deepframe, out_frames, save_results=True,
                 soss_atoca = False
                 soss_modelname = None
                 soss_bad_pix = 'masking'
+                ii = np.where(segment.dq != 0)
+                segment.err[ii] = 0
                 segment.dq = np.zeros_like(segment.dq)
             step = calwebb_spec2.extract_1d_step.Extract1dStep()
             try:
