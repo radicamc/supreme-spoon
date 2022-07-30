@@ -13,6 +13,7 @@ from astropy.time import Time
 import bottleneck as bn
 from datetime import datetime
 import glob
+import juliet
 import numpy as np
 import os
 import pandas as pd
@@ -421,14 +422,14 @@ def gen_ldprior_from_nestor(filename, wave):
 
 
 def get_wavebin_limits(wave):
-    lw = np.concatenate([wave[:, None], np.roll(wave, 1)[:, None]], axis=1)
-    up = np.concatenate([wave[:, None], np.roll(wave, -1)[:, None]], axis=1)
+    up = np.concatenate([wave[:, None], np.roll(wave, 1)[:, None]], axis=1)
+    low = np.concatenate([wave[:, None], np.roll(wave, -1)[:, None]], axis=1)
 
-    bin_up = (np.mean(up, axis=1))[:-1]
-    bin_up = np.insert(bin_up, -1, bin_up[-1])
+    bin_low = (np.mean(low, axis=1))[:-1]
+    bin_low = np.insert(bin_low, -1, bin_low[-1])
 
-    bin_low = (np.mean(lw, axis=1))[1:]
-    bin_low = np.insert(bin_low, 0, bin_low[0])
+    bin_up = (np.mean(up, axis=1))[1:]
+    bin_up = np.insert(bin_up, 0, bin_up[0])
 
     return bin_low, bin_up
 
@@ -441,3 +442,26 @@ def open_filetype(datafile):
     else:
         raise ValueError('Invalid filetype: {}'.format(type(datafile)))
     return data
+
+
+def get_ld_prior(order, wavebin_low, wavebin_up):
+    rawprior = pd.read_csv('w96_order{}_lds_spam_quadratic.txt'.format(order),
+                           sep=' ',
+                           comment='#', usecols=[0, 7, 8],
+                           names=['wave', 'u1', 'u2'])
+    q1, q2 = juliet.reverse_q_coeffs('quadratic', rawprior['u1'].values,
+                                     rawprior['u2'].values)
+
+    prior_q1, prior_q2 = [], []
+    for wl, wu in zip(wavebin_low, wavebin_up):
+        current_q1, current_q2 = [], []
+        for i, w in enumerate(rawprior['wave'].values):
+            if w > wl and w <= wu:
+                current_q1.append(q1[i])
+                current_q2.append(q2[i])
+            elif w > wu:
+                prior_q1.append(np.nanmean(current_q1))
+                prior_q2.append(np.nanmean(current_q2))
+                break
+
+    return prior_q1, prior_q2

@@ -31,7 +31,6 @@ except ModuleNotFoundError:
 from supreme_spoon import plotting, utils
 
 
-# TODO: low wavebin might actually be up and vice-versa
 def construct_lightcurves(datafiles, out_frames, output_dir=None,
                           save_results=True, show_plots=False,
                           extract_params=None):
