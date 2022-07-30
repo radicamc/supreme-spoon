@@ -28,11 +28,10 @@ except ModuleNotFoundError:
     warnings.warn(msg)
     use_applesoss = False
 
-from supreme_spoon import utils
-from supreme_spoon import plotting
+from supreme_spoon import plotting, utils
 
 
-def construct_lightcurves(datafiles, output_dir, out_frames,
+def construct_lightcurves(datafiles, out_frames, output_dir=None,
                           save_results=True, show_plots=False,
                           extract_params=None):
     print('Constructing stellar spectra')
@@ -328,32 +327,37 @@ def run_stage3(results, deepframe, out_frames, save_results=True,
 
 if __name__ == "__main__":
     # =============== User Input ===============
-    root_dir = '/home/radica/jwst/ERO/WASP-96b/'
-    indir = root_dir + 'pipeline_outputs_directory/Stage2/'
-    input_filetag = 'badpixstep'
-    deepframe_file = indir + 'jw02734002001_04101_00001_nis_deepframe.fits'
-    extract_method = 'atoca'
-    specprofile = root_dir + 'pipeline_outputs_directory/Stage3/APPLESOSS_ref_2D_profile_SUBSTRIP256_os1_pad0.fits'
-    out_frames = [90, -40]
-    soss_estimate = None
-    soss_width = 25
+    root_dir = './'  # Root directory.
+    indir = root_dir + 'pipeline_outputs_directory/Stage2/'  # Stage 2 results directory.
+    input_filetag = 'badpixstep'  # Stage 2 results filetag.
+    deepframe_file = None  # Median stack file.
+    extract_method = 'box'  # Extraction method, box or atoca.
+    soss_width = 25  # For extraction, box width.
+    specprofile = None  # For ATOCA extraction, reference trace profiles.
+    soss_estimate = None  # For ATOCA extraction, soss_estimate model.
+    out_frames = [50, -50]  # For lightcurve normalization, transit ingress and egress integrations.
+    force_redo = False  # Force redo of completed steps.
     # ==========================================
 
+    # Set the CRDS cache variables.
     import os
     os.environ['CRDS_PATH'] = root_dir + 'crds_cache'
     os.environ['CRDS_SERVER_URL'] = 'https://jwst-crds.stsci.edu'
 
+    # Unpack all files in the input directory.
     input_files = utils.unpack_input_directory(indir, filetag=input_filetag,
                                                exposure_type='CLEAR')
-    deepframe = fits.getdata(deepframe_file, 0)
-
     print('\nIdentified {} CLEAR exposure segment(s):'.format(len(input_files)))
     for file in input_files:
         print(' ' + file)
 
+    # Unpack the median stack.
+    deepframe = fits.getdata(deepframe_file, 0)
+
+    # Run segments through Stage 3.
     stellar_spectra = run_stage3(input_files, deepframe=deepframe,
                                  save_results=True, show_plots=False,
-                                 root_dir=root_dir, force_redo=False,
+                                 root_dir=root_dir, force_redo=force_redo,
                                  extract_method=extract_method,
                                  specprofile=specprofile,
                                  out_frames=out_frames,

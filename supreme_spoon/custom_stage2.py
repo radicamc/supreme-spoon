@@ -17,8 +17,7 @@ import warnings
 from jwst import datamodels
 from jwst.pipeline import calwebb_spec2
 
-from supreme_spoon import utils
-from supreme_spoon import plotting
+from supreme_spoon import plotting, utils
 
 
 def backgroundstep(datafiles, background_model, output_dir=None,
@@ -226,7 +225,6 @@ def badpixstep(datafiles, thresh=3, box_size=5, max_iter=2, output_dir=None,
                 box_size_i = box_size
                 box_prop = utils.get_interp_box(deepframe, box_size_i, i, j,
                                                 dimx, dimy)
-
                 # Ensure that the median and std dev extracted are good.
                 # If not, increase the box size until they are.
                 while np.any(np.isnan(box_prop)):
@@ -263,7 +261,7 @@ def badpixstep(datafiles, thresh=3, box_size=5, max_iter=2, output_dir=None,
                                                             box_size=box_size)
         it += 1
 
-    # Ensure that the bad pixels mask remains zeros or ones.
+    # Ensure that the bad pixel mask remains zeros or ones.
     badpix_mask = np.where(badpix_mask == 0, 0, 1)
     # Generate a final corrected deep frame.
     deepframe = utils.make_deepstack(newdata)
@@ -313,10 +311,7 @@ def run_stage2(results, background_model=None, save_results=True,
     # Get file root
     fileroots = []
     for file in results:
-        if isinstance(file, str):
-            data = datamodels.open(file)
-        else:
-            data = file
+        data = utils.open_filetype(file)
         filename_split = data.meta.filename.split('_')
         fileroot = ''
         for chunk in filename_split[:-1]:
@@ -328,11 +323,13 @@ def run_stage2(results, background_model=None, save_results=True,
     step_tag = 'assignwcsstep.fits'
     new_results = []
     for i, segment in enumerate(results):
+        # If an output file for this segment already exists, skip the step.
         expected_file = outdir + fileroots[i] + step_tag
         if expected_file in all_files and force_redo is False:
             print('Output file {} already exists.'.format(expected_file))
             print('Skipping Assign WCS Step.')
             res = expected_file
+        # If no output files are detected, run the step.
         else:
             step = calwebb_spec2.assign_wcs_step.AssignWcsStep()
             res = step.call(segment, output_dir=outdir,
@@ -345,11 +342,13 @@ def run_stage2(results, background_model=None, save_results=True,
     step_tag = 'sourcetypestep.fits'
     new_results = []
     for i, segment in enumerate(results):
+        # If an output file for this segment already exists, skip the step.
         expected_file = outdir + fileroots[i] + step_tag
         if expected_file in all_files and force_redo is False:
             print('Output file {} already exists.'.format(expected_file))
             print('Skipping Source Type Determination Step.')
             res = expected_file
+        # If no output files are detected, run the step.
         else:
             step = calwebb_spec2.srctype_step.SourceTypeStep()
             res = step.call(segment, output_dir=outdir,
@@ -362,11 +361,13 @@ def run_stage2(results, background_model=None, save_results=True,
     step_tag = 'flatfieldstep.fits'
     new_results = []
     for i, segment in enumerate(results):
+        # If an output file for this segment already exists, skip the step.
         expected_file = outdir + fileroots[i] + step_tag
         if expected_file in all_files and force_redo is False:
             print('Output file {} already exists.'.format(expected_file))
             print('Skipping Flat Field Correction Step.')
             res = expected_file
+        # If no output files are detected, run the step.
         else:
             step = calwebb_spec2.flat_field_step.FlatFieldStep()
             res = step.call(segment, output_dir=outdir,
@@ -380,6 +381,7 @@ def run_stage2(results, background_model=None, save_results=True,
     do_step = 1
     new_results = []
     for i in range(len(results)):
+        # If an output file for this segment already exists, skip the step.
         expected_file = outdir + fileroots[i] + step_tag
         if expected_file not in all_files:
             do_step *= 0
@@ -389,6 +391,7 @@ def run_stage2(results, background_model=None, save_results=True,
         print('Output files already exist.')
         print('Skipping Background Subtraction Step.')
         results = new_results
+    # If no output files are detected, run the step.
     else:
         if background_model is None:
             msg = 'No background model provided'
@@ -406,6 +409,7 @@ def run_stage2(results, background_model=None, save_results=True,
     do_step = 1
     new_results = []
     for i in range(len(results)):
+        # If an output file for this segment already exists, skip the step.
         expected_file = outdir + fileroots[i] + step_tag
         if expected_file not in all_files:
             do_step *= 0
@@ -424,8 +428,10 @@ def run_stage2(results, background_model=None, save_results=True,
             fileroot_noseg = part1 + part2
         else:
             fileroot_noseg = fileroots[0]
+        # Also get the median stack.
         existing_deep = fileroot_noseg + 'deepframe.fits'
         deepframe = fits.getdata(outdir + existing_deep, 0)
+    # If no output files are detected, run the step.
     else:
         with warnings.catch_warnings():
             warnings.simplefilter('ignore')
@@ -438,29 +444,33 @@ def run_stage2(results, background_model=None, save_results=True,
 
 if __name__ == "__main__":
     # =============== User Input ===============
-    root_dir = '/home/radica/jwst/ERO/WASP-96b/'
-    indir = root_dir + 'pipeline_outputs_directory/Stage1/'
-    input_filetag = 'gainscalestep'
-    background_file = root_dir + 'model_background256.npy'
+    root_dir = './'  # Root directory
+    indir = root_dir + 'pipeline_outputs_directory/Stage1/'  # Stage 1 outputs directory.
+    input_filetag = 'gainscalestep'  # Stage 1 result filetage.
+    background_file = root_dir + 'model_background256.npy'  # Background model.
     exposure_type = 'CLEAR'  # Either CLEAR or F277W.
+    force_redo = False  # Force redo of completed steps.
     # ==========================================
 
+    # Set the CRDS cache variables.
     import os
     os.environ['CRDS_PATH'] = root_dir + 'crds_cache'
     os.environ['CRDS_SERVER_URL'] = 'https://jwst-crds.stsci.edu'
 
+    # Unpack all files in the input directory.
     input_files = utils.unpack_input_directory(indir, filetag=input_filetag,
                                                exposure_type=exposure_type)
-    # Unpack all files in the input directory.
     print('\nIdentified {0} {1} exposure segments'.format(len(input_files),
                                                           exposure_type))
     for file in input_files:
         print(' ' + file)
 
+    # Unpack background model.
     background_model = np.load(background_file)
 
+    # Run segments through Stage 2.
     result = run_stage2(input_files,
                         background_model=background_model,
-                        save_results=True, force_redo=False, show_plots=False,
-                        root_dir=root_dir)
+                        save_results=True, force_redo=force_redo,
+                        show_plots=False, root_dir=root_dir)
     stage2_results, deepframe = result

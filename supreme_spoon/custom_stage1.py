@@ -18,8 +18,7 @@ from jwst import datamodels
 from jwst.pipeline import calwebb_detector1
 from jwst.extract_1d.soss_extract import soss_boxextract
 
-from supreme_spoon import utils
-from supreme_spoon import plotting
+from supreme_spoon import plotting, utils
 
 
 def oneoverfstep(datafiles, output_dir=None, save_results=True,
@@ -614,7 +613,7 @@ def run_stage1(results, save_results=True, outlier_maps=None, trace_mask=None,
 
 if __name__ == "__main__":
     # =============== User Input ===============
-    root_dir = './'  # Root directory
+    root_dir = './'  # Root directory.
     indir = root_dir + 'DMS_uncal/'  # Uncalibrated file directory.
     input_filetag = 'uncal'  # Unclaibrated file tag.
     outlier_maps = None  # For 1/f correction; outlier pixel maps.
