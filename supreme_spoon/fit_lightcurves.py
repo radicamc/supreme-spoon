@@ -49,7 +49,7 @@ formatted_names = {'P_p1': r'$P$', 't0_p1': r'$T_0$', 'p_p1': r'R$_p$/R$_*$',
                    'rho': r'$\rho$'}
 
 # Get time axis
-t = fits.getdata(outdir + 'lightcurves{}.fits'.format(suffix), 7)
+t = fits.getdata(outdir + 'lightcurves{}.fits'.format(suffix), 9)
 # Noramalized time for trends
 tt = np.zeros((280, 1))
 tt[:, 0] = (t - np.mean(t)) / np.sqrt(np.var(t))
