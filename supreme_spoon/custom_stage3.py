@@ -227,9 +227,13 @@ def run_stage3(results, deepframe, out_frames, save_results=True,
 
     # ===== SpecProfile Construction Step =====
     # Custom DMS step
-    # TODO: add skip test here
     if extract_method == 'atoca':
         if specprofile is None:
+            expected_file = outdir + 'APPLESOSS_ref_2D_profile_SUBSTRIP256_os1_pad0.fits'
+            if expected_file in all_files and force_redo is False:
+                print('Output file {} already exists.'.format(expected_file))
+                print('Skipping SpecProfile Construction Step.')
+                specprofile = expected_file
             if use_applesoss is True:
                 specprofile = specprofilestep(deepframe,
                                               save_results=save_results,
