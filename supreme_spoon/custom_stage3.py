@@ -227,6 +227,7 @@ def run_stage3(results, deepframe, out_frames, save_results=True,
 
     # ===== SpecProfile Construction Step =====
     # Custom DMS step
+    # TODO: add skip test here
     if extract_method == 'atoca':
         if specprofile is None:
             if use_applesoss is True:
@@ -284,8 +285,11 @@ def run_stage3(results, deepframe, out_frames, save_results=True,
                 soss_atoca = False
                 soss_modelname = None
                 soss_bad_pix = 'masking'
-                ii = np.where(segment.dq != 0)
-                segment.err[ii] = 0
+                # Interpolate all remaining bad pixels
+                print('Interpolating remaining bad pixels.')
+                for itg in range(segment.dq.shape[0]):
+                    segment.data[itg] = utils.do_replacement(segment.data[itg],
+                                                             segment.dq[itg])[0]
                 segment.dq = np.zeros_like(segment.dq)
             step = calwebb_spec2.extract_1d_step.Extract1dStep()
             try:
