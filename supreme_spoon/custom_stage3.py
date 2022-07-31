@@ -235,7 +235,7 @@ def run_stage3(results, deepframe, out_frames, save_results=True,
                 print('Output file {} already exists.'.format(expected_file))
                 print('Skipping SpecProfile Construction Step.')
                 specprofile = expected_file
-            if use_applesoss is True:
+            elif use_applesoss is True:
                 specprofile = specprofilestep(deepframe,
                                               save_results=save_results,
                                               output_dir=outdir)[1]
