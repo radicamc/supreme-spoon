@@ -318,9 +318,9 @@ def tracemaskstep(deepframe, output_dir=None, mask_width=30, save_results=True,
     # Get centroids via the edgetrigger method
     centroids = utils.get_trace_centroids(deepframe, subarray,
                                           save_results=False)
-    x1, y1 = centroids[0], centroids[1]
-    x2, y2 = centroids[2], centroids[3]
-    x3, y3 = centroids[4], centroids[5]
+    x1, y1 = centroids[0][0], centroids[0][1]
+    x2, y2 = centroids[1][0], centroids[1][1]
+    x3, y3 = centroids[2][0], centroids[2][1]
     # Show the extracted centroids over the deepframe is requested.
     if show_plots is True:
         plotting.do_centroid_plot(deepframe, x1, y1, x2, y2, x3, y3)
