@@ -11,6 +11,7 @@ Custom JWST DMS pipeline steps for Stage 3 (1D spectral extraction).
 from astropy.io import fits
 import glob
 import numpy as np
+from tqdm import tqdm
 import warnings
 
 from jwst import datamodels
@@ -291,7 +292,7 @@ def run_stage3(results, deepframe, out_frames, save_results=True,
                 soss_bad_pix = 'masking'
                 # Interpolate all remaining bad pixels
                 print('Interpolating remaining bad pixels.')
-                for itg in range(segment.dq.shape[0]):
+                for itg in tqdm(range(segment.dq.shape[0])):
                     segment.data[itg] = utils.do_replacement(segment.data[itg],
                                                              segment.dq[itg])[0]
                 segment.dq = np.zeros_like(segment.dq)
