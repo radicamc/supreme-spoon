@@ -147,15 +147,14 @@ for order in orders:
         if skip is False:
             transit_model = results.lc.evaluate('SOSS')
             scatter = np.median(results.posteriors['posterior_samples']['sigma_w_SOSS'])
-            rms = np.nanstd(norm_flux[out_trans]) * 1e6
             nfit = len(np.where(dists != 'fixed')[0])
+            out_dev = utils.outlier_resistant_variance(norm_flux[out_trans])
             plotting.do_lightcurve_plot(t=dataset.times_lc['SOSS'],
                                         data=dataset.data_lc['SOSS'],
-                                        error=scatter/1e6, model=transit_model,
-                                        real_errors=err[:, i]/np.median(flux[out_trans, i]),
-                                        scatter=scatter, rms=rms,
-                                        outpdf=outpdf, nfit=nfit,
-                                        title='bin {0} | {1:.3f}µm'.format(i, wave[0, i]))
+                                        model=transit_model, scatter=scatter,
+                                        out_dev=out_dev, outpdf=outpdf,
+                                        title='bin {0} | {1:.3f}µm'.format(i, wave[0, i]),
+                                        nfit=nfit)
 
             fit_params, posterior_names = [], []
             for param, dist in zip(params, dists):

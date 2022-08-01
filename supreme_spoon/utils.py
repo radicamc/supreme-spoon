@@ -465,3 +465,8 @@ def get_ld_prior(order, wavebin_low, wavebin_up):
                 break
 
     return prior_q1, prior_q2
+
+
+def outlier_resistant_variance(data):
+    var = (np.nanmedian(np.abs(data-np.nanmedian(data)))/0.6745)**2
+    return var
