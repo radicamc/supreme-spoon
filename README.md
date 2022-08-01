@@ -23,7 +23,7 @@ via the ```run_DMS.py``` script with the following steps:
     Other Parameters
    - run_stages : list of pipeline stages to run.
    - save_results : if True, save intermediate results of each step.
-   - process_f277w : if True, also process any F277W exposures present in the dataset.
+   - exposure_type : "CLEAR" or "F277W". Processes only the corresponding integration.
    - extract_method : "box" or "atoca" - runs the applicable 1D extraction method. 
    - out_frames : Indices of intigrations corresponding to the beginning and end of the transit.
    
