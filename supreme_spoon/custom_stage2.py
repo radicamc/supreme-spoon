@@ -15,6 +15,7 @@ from tqdm import tqdm
 import warnings
 
 from jwst import datamodels
+from jwst.extract_1d.soss_extract import soss_boxextract
 from jwst.pipeline import calwebb_spec2
 
 from supreme_spoon import plotting, utils
@@ -293,6 +294,84 @@ def badpixstep(datafiles, thresh=3, box_size=5, max_iter=2, output_dir=None,
     return data, badpix_mask, deepframe
 
 
+def tracemaskstep(deepframe, output_dir=None, mask_width=30, save_results=True,
+                  show_plots=False):
+    """Create a mask of a user-specified width around each of the SOSS
+    diffraction orders.
+    Note that the centroiding algorithm requires the APPLESOSS module, and
+    will fail if it is not available.
+
+    Parameters
+    ----------
+    deepframe : str, np.array, RampModel
+        Path to median stack file, or the median stack itself. Should be 2D
+        (dimy, dimx).
+    output_dir : str, None
+        Directory to which to save outputs.
+    mask_width : int
+        Mask width, in pixels, around the trace centroids.
+    save_results : bool
+        If Tre, save results to file.
+    show_plots : bool
+        If True, display plots.
+
+    Returns
+    -------
+    tracemask : np.array
+        3D (norder, dimy, dimx) trace mask.
+    """
+
+    # get the mediann stack data.
+    deepframe = utils.open_filetype(deepframe)
+
+    fileroot = deepframe.meta.filename.split('deepframe')[0]
+    deepframe = deepframe.extra_fits.PRIMARY.data
+
+    # Get centroids for orders one to three.
+    dimy, dimx = np.shape(deepframe)
+    if dimy == 256:
+        subarray = 'SUBSTRIP256'
+    else:
+        raise NotImplementedError
+    # Get centroids via the edgetrigger method
+    centroids = utils.get_trace_centroids(deepframe, subarray,
+                                          save_results=False)
+    x1, y1 = centroids[0][0], centroids[0][1]
+    x2, y2 = centroids[1][0], centroids[1][1]
+    x3, y3 = centroids[2][0], centroids[2][1]
+    # Show the extracted centroids over the deepframe is requested.
+    if show_plots is True:
+        plotting.do_centroid_plot(deepframe, x1, y1, x2, y2, x3, y3)
+
+    # Create the masks for each order.
+    weights1 = soss_boxextract.get_box_weights(y1, mask_width, (dimy, dimx),
+                                               cols=x1.astype(int))
+    weights1 = np.where(weights1 == 0, 0, 1)
+    weights2 = soss_boxextract.get_box_weights(y2, mask_width, (dimy, dimx),
+                                               cols=x2.astype(int))
+    weights2 = np.where(weights2 == 0, 0, 1)
+    weights3 = soss_boxextract.get_box_weights(y3, mask_width, (dimy, dimx),
+                                               cols=x3.astype(int))
+    weights3 = np.where(weights3 == 0, 0, 1)
+
+    # Pack the masks into an array.
+    tracemask = np.zeros((3, dimy, dimx))
+    tracemask[0] = weights1
+    tracemask[1] = weights2
+    tracemask[2] = weights3
+    # Plot the mask if requested.
+    if show_plots is True:
+        plotting.do_tracemask_plot(weights1 | weights2 | weights3)
+
+    # Save the trace mask to file if requested.
+    if save_results is True:
+        hdu = fits.PrimaryHDU(tracemask)
+        hdu.writeto(output_dir + fileroot + 'tracemask_width{}.fits'.format(mask_width),
+                    overwrite=True)
+
+    return tracemask
+
+
 def run_stage2(results, background_model=None, save_results=True,
                force_redo=False, show_plots=False, max_iter=2, mask_width=30,
                root_dir='./'):
@@ -438,6 +517,22 @@ def run_stage2(results, background_model=None, save_results=True,
             res = badpixstep(results, output_dir=outdir,
                              save_results=save_results, max_iter=max_iter)
             results, deepframe = res[0], res[2]
+
+    # ===== Trace Mask Creation Step =====
+    # Custom DMS step.
+    step_tag = 'tracemask_width{}.fits'.format(mask_width)
+    # If an output file for this segment already exists, skip the step.
+    fileroot_split = fileroots[0].split('-seg')
+    fileroot_noseg = fileroot_split[0] + fileroot_split[1][3:]
+    expected_file = outdir + fileroot_noseg + step_tag
+    if expected_file in all_files and force_redo is False:
+        print('Output file {} already exists.'.format(expected_file))
+        print('Skipping Trace Mask Creation Step.')
+        mask = expected_file
+    else:
+        mask = tracemaskstep(deepframe, output_dir=outdir,
+                             mask_width=mask_width, save_results=save_results,
+                             show_plots=False)
 
     return results, deepframe
 
