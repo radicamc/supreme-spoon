@@ -208,7 +208,7 @@ def run_stage3(results, deepframe, out_frames, save_results=True,
     print('1D spectral extraction\n\n')
 
     if output_tag != '':
-        output_tag += '_'
+        output_tag = '_' + output_tag
     # Create output directories and define output paths.
     utils.verify_path(root_dir + 'pipeline_outputs_directory' + output_tag)
     utils.verify_path(root_dir + 'pipeline_outputs_directory' + output_tag + '/Stage3')

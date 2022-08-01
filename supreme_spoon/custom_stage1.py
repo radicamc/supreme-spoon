@@ -325,7 +325,7 @@ def run_stage1(results, save_results=True, outlier_maps=None, trace_mask=None,
     print('Detector level processing\n\n')
 
     if output_tag != '':
-        output_tag += '_'
+        output_tag = '_' + output_tag
     # Create output directories and define output paths.
     utils.verify_path(root_dir + 'pipeline_outputs_directory' + output_tag)
     utils.verify_path(root_dir + 'pipeline_outputs_directory' + output_tag + '/Stage1')

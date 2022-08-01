@@ -382,7 +382,7 @@ def run_stage2(results, background_model=None, save_results=True,
     print('Spectroscopic processing\n\n')
 
     if output_tag != '':
-        output_tag += '_'
+        output_tag = '_' + output_tag
     # Create output directories and define output paths.
     utils.verify_path(root_dir + 'pipeline_outputs_directory' + output_tag)
     utils.verify_path(root_dir + 'pipeline_outputs_directory' + output_tag + '/Stage2')
