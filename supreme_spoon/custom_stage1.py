@@ -277,7 +277,7 @@ def oneoverfstep(datafiles, output_dir=None, save_results=True,
 
 def run_stage1(results, save_results=True, outlier_maps=None, trace_mask=None,
                trace_mask2=None, force_redo=False, rejection_threshold=5,
-               root_dir='./'):
+               root_dir='./', output_tag=''):
     """Run the supreme-SPOON Stage 1 pipeline: detector level processing,
     using a combination of official STScI DMS and custom steps. Documentation
     for the official DMS steps can be found here:
@@ -310,6 +310,8 @@ def run_stage1(results, save_results=True, outlier_maps=None, trace_mask=None,
         outlier.
     root_dir : str
         Directory from which all relative paths are defined.
+    output_tag : str
+        Name tag to append to pipeline outputs directory.
 
     Returns
     -------
@@ -322,10 +324,12 @@ def run_stage1(results, save_results=True, outlier_maps=None, trace_mask=None,
     print('\n\n**Starting supreme-SPOON Stage 1**')
     print('Detector level processing\n\n')
 
+    if output_tag != '':
+        output_tag += '_'
     # Create output directories and define output paths.
-    utils.verify_path(root_dir + 'pipeline_outputs_directory')
-    utils.verify_path(root_dir + 'pipeline_outputs_directory/Stage1')
-    outdir = root_dir + 'pipeline_outputs_directory/Stage1/'
+    utils.verify_path(root_dir + 'pipeline_outputs_directory' + output_tag)
+    utils.verify_path(root_dir + 'pipeline_outputs_directory' + output_tag + '/Stage1')
+    outdir = root_dir + 'pipeline_outputs_directory' + output_tag + '/Stage1/'
 
     # Get all files curretly n the output directory to check if steps have
     # been completed.

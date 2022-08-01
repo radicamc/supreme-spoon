@@ -34,6 +34,7 @@ specprofile = None  # Specprofile reference file for ATOCA.
 soss_estimate = None  # SOSS estmate file for ATOCA.
 
 # Other Parameters
+output_tag = ''  # Name tag for output file directory.
 run_stages = [1, 2, 3]  # Pipeline stages to run.
 save_results = True  # Save results of each intermediate step to file.
 show_plots = False  # Show plots.
@@ -62,7 +63,8 @@ if 1 in run_stages:
                                               trace_mask=trace_mask,
                                               trace_mask2=trace_mask2,
                                               force_redo=force_redo,
-                                              root_dir=root_dir)
+                                              root_dir=root_dir,
+                                              output_tag=output_tag)
 else:
     stage1_results = input_files
 
@@ -74,7 +76,8 @@ if 2 in run_stages:
                                               save_results=save_results,
                                               force_redo=force_redo,
                                               show_plots=show_plots,
-                                              root_dir=root_dir)
+                                              root_dir=root_dir,
+                                              output_tag=output_tag)
     stage2_results, deepframe = stage2_results
 else:
     stage2_results = input_files
@@ -93,7 +96,8 @@ if 3 in run_stages:
                                               extract_method=extract_method,
                                               specprofile=specprofile,
                                               out_frames=out_frames,
-                                              soss_estimate=soss_estimate)
+                                              soss_estimate=soss_estimate,
+                                              output_tag=output_tag)
     stellar_spectra = stage3_results
 
 print('Done')

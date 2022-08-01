@@ -201,15 +201,18 @@ def get_soss_transform(deepframe, datafile, show_plots=False,
 def run_stage3(results, deepframe, out_frames, save_results=True,
                show_plots=False, root_dir='./', force_redo=False,
                extract_method='box', specprofile=None, soss_estimate=None,
-               soss_width=25, soss_transform=None):
+               soss_width=25, soss_transform=None, output_tag=''):
     # ============== DMS Stage 3 ==============
     # 1D spectral extraction.
     print('\n\n**Starting supreme-SPOON Stage 3**')
     print('1D spectral extraction\n\n')
 
-    utils.verify_path(root_dir + 'pipeline_outputs_directory')
-    outdir = root_dir + 'pipeline_outputs_directory/Stage3/'
-    utils.verify_path(outdir)
+    if output_tag != '':
+        output_tag += '_'
+    # Create output directories and define output paths.
+    utils.verify_path(root_dir + 'pipeline_outputs_directory' + output_tag)
+    utils.verify_path(root_dir + 'pipeline_outputs_directory' + output_tag + '/Stage3')
+    outdir = root_dir + 'pipeline_outputs_directory' + output_tag + '/Stage3/'
 
     all_files = glob.glob(outdir + '*')
     results = np.atleast_1d(results)

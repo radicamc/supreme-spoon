@@ -374,16 +374,19 @@ def tracemaskstep(deepframe, output_dir=None, mask_width=30, save_results=True,
 
 def run_stage2(results, background_model=None, save_results=True,
                force_redo=False, show_plots=False, max_iter=2, mask_width=30,
-               root_dir='./'):
+               root_dir='./', output_tag = ''):
     # ============== DMS Stage 2 ==============
     # Spectroscopic processing.
     # Documentation: https://jwst-pipeline.readthedocs.io/en/latest/jwst/pipeline/calwebb_spec2.html
     print('\n\n**Starting supreme-SPOON Stage 2**')
     print('Spectroscopic processing\n\n')
 
-    utils.verify_path(root_dir + 'pipeline_outputs_directory')
-    utils.verify_path(root_dir + 'pipeline_outputs_directory/Stage2')
-    outdir = root_dir + 'pipeline_outputs_directory/Stage2/'
+    if output_tag != '':
+        output_tag += '_'
+    # Create output directories and define output paths.
+    utils.verify_path(root_dir + 'pipeline_outputs_directory' + output_tag)
+    utils.verify_path(root_dir + 'pipeline_outputs_directory' + output_tag + '/Stage2')
+    outdir = root_dir + 'pipeline_outputs_directory' + output_tag + '/Stage2/'
 
     all_files = glob.glob(outdir + '*')
     results = np.atleast_1d(results)
