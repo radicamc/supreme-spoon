@@ -67,16 +67,14 @@ def bin_at_resolution(wavelengths, depths, R=100):
             current_depths = np.append(current_depths, dd[i])
 
             # Calculate current mean R:
-            current_R = np.mean(current_wavs) / np.abs(
-                current_wavs[0] - current_wavs[-1])
+            current_R = np.mean(current_wavs) / np.abs(current_wavs[0] - current_wavs[-1])
 
             # If the current set of wavs/depths is below or at the target resolution, stop and move to next bin:
             if current_R <= R:
                 wout = np.append(wout, np.nanmean(current_wavs))
                 dout = np.append(dout, np.nanmean(current_depths))
                 derrout = np.append(derrout,
-                                    np.sqrt(np.nanvar(current_depths)) / np.sqrt(
-                                        len(current_depths)))
+                                    np.sqrt(np.nanvar(current_depths)) / np.sqrt(np.sum(np.isfinite(current_depths))))
 
                 oncall = False
 
