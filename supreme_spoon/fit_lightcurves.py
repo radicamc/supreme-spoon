@@ -33,8 +33,8 @@ hyperps = [3.42525650, 2459751.821681146, [0., 1], 0.748,
            [0., 1.], [0., 1.], 0.0, 90., 8.82,
            1.0, 0, [1e-1, 1e4], (9.1164330491e-05, 1.87579835e-05)]
 
-nestorprior_o1 = None
-nestorprior_o2 = None
+ldcoef_file_o1 = None
+ldcoef_file_o2 = None
 # ==========================================
 
 if suffix != '':
@@ -88,12 +88,10 @@ for order in orders:
         priors[param]['distribution'] = dist
         priors[param]['hyperparameters'] = hyperp
 
-    if order == 1 and nestorprior_o1 is not None:
-        print("Porting in Néstor's priors")
-        prior_q1, prior_q2 = utils.gen_ldprior_from_nestor(nestorprior_o1, wave[0])
-    if order == 2 and nestorprior_o2 is not None:
-        print("Porting in Néstor's priors")
-        prior_q1, prior_q2 = utils.gen_ldprior_from_nestor(nestorprior_o2, wave[0])
+    if order == 1 and ldcoef_file_o1 is not None:
+        prior_q1, prior_q2 = utils.get_ld_coefs(ldcoef_file_o1)
+    if order == 2 and ldcoef_file_o2 is not None:
+        prior_q1, prior_q2 = utils.get_ld_coefs(ldcoef_file_o2)
 
     # Fit each light curve
     outdict = {}
@@ -107,7 +105,7 @@ for order in orders:
             norm_flux = flux[:, i] / np.median(flux[out_trans, i])
             norm_err = np.zeros_like(err[:, i])
 
-            if nestorprior_o1 is not None or nestorprior_o2 is not None:
+            if ldcoef_file_o1 is not None or ldcoef_file_o2 is not None:
                 if np.isfinite(prior_q1[i]):
                     priors['q1_SOSS']['distribution'] = 'truncatednormal'
                     priors['q1_SOSS']['hyperparameters'] = [prior_q1[i], 0.1, 0.0, 1.0]

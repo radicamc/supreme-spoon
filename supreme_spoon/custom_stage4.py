@@ -8,6 +8,7 @@ Created on Thurs Jul 21 18:07 2022
 Custom JWST DMS pipeline steps for Stage 4 (lightcurve fitting).
 """
 
+from exotic_ld import StellarLimbDarkening
 import os
 import pandas as pd
 from datetime import datetime
@@ -143,8 +144,26 @@ def save_transmission_spectrum(wave, wave_err, dppm, dppm_err, order, outdir,
     f.write('# Column dppm: (Rp/R*)^2 (ppm)\n')
     f.write('# Column dppm_err: Error in (Rp/R*)^2 (ppm)\n')
     f.write('# Column order: SOSS diffraction order\n')
+    f.write('#\n')
     df.to_csv(f, index=False)
     f.close()
+
+
+def gen_ld_coefs(wavebin_low, wavebin_up, order, M_H, logg, Teff):
+    ld_data_path = '/home/radica/.anaconda3/envs/atoca/lib/python3.10/site-packages/exotic_ld/exotic-ld_data/'
+    sld = StellarLimbDarkening(M_H, Teff, logg, '1D', ld_data_path)
+    mode = 'JWST_NIRISS_SOSSo{}'.format(order)
+
+    c1s, c2s = [], []
+    for wl, wu in zip(wavebin_low * 10000, wavebin_up * 10000):
+        wr = [wl, wu]
+        c1, c2 = sld.compute_quadratic_ld_coeffs(wr, mode)
+        c1s.append(c1)
+        c2s.append(c2)
+    c1s = np.array(c1s)
+    c2s = np.array(c2s)
+
+    return c1s, c2s
 
 
 def run_stage4():

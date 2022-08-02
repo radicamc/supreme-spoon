@@ -470,3 +470,36 @@ def get_ld_prior(order, wavebin_low, wavebin_up):
 def outlier_resistant_variance(data):
     var = (np.nanmedian(np.abs(data-np.nanmedian(data)))/0.6745)**2
     return var
+
+
+def get_ld_coefs(filename):
+    ld = pd.read_csv(filename, comment='#', sep=',')
+    q1, q2 = juliet.reverse_q_coeffs('quadratic', ld['c1'].values, ld['c2'].values)
+    return q1, q2
+
+
+def package_ld_priors(wave, c1, c2, order, target, M_H, Teff, logg, outdir):
+    dd = {'wave': wave,
+          'c1': c1,
+          'c2': c2}
+    df = pd.DataFrame(data=dd)
+    filename = target+'_order' + str(order) + '_exotic-ld_quadratic.csv'
+    if os.path.exists(outdir + filename):
+        os.remove(outdir + filename)
+    f = open(outdir + filename, 'a')
+    f.write('# Target: {}\n'.format(target))
+    f.write('# Instrument: NIRISS/SOSS\n')
+    f.write('# Order: {}\n'.format(order))
+    f.write('# Author: {}\n'.format(os.environ.get('USER')))
+    f.write('# Date: {}\n'.format(datetime.utcnow().replace(microsecond=0).isoformat()))
+    f.write('# Stellar M/H: {}\n'.format(M_H))
+    f.write('# Stellar log g: {}\n'.format(logg))
+    f.write('# Stellar Teff: {}\n'.format(Teff))
+    f.write('# Algorithm: ExoTiC-LD\n')
+    f.write('# Limb Darkening Model: quadratic\n')
+    f.write('# Column wave: Central wavelength of bin (micron)\n')
+    f.write('# Column c1: Quadratic Coefficient 1\n')
+    f.write('# Column c2: Quadratic Coefficient 2\n')
+    f.write('#\n')
+    df.to_csv(f, index=False)
+    f.close()
