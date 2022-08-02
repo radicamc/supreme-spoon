@@ -8,6 +8,9 @@ Created on Thurs Jul 21 18:07 2022
 Custom JWST DMS pipeline steps for Stage 4 (lightcurve fitting).
 """
 
+import os
+import pandas as pd
+from datetime import datetime
 from tqdm import tqdm
 import numpy as np
 
@@ -119,8 +122,29 @@ def bin_2d_spectra(wave2d, flux2d, R=150):
     return wc_bin, wl_bin, wu_bin, f_bin, e_bin
 
 
-def save_transmissions_spectrum(fitres_o1, fitres_o2, output_dir):
-    return
+def save_transmission_spectrum(wave, wave_err, dppm, dppm_err, order, outdir,
+                               filename, target):
+    dd = {'wave': wave,
+          'wave_err': wave_err,
+          'dppm': dppm,
+          'dppm_err': dppm_err,
+          'order': order}
+    df = pd.DataFrame(data=dd)
+    if os.path.exists(outdir + filename):
+        os.remove(outdir + filename)
+    f = open(outdir + filename, 'a')
+    f.write('# Target: {}\n'.format(target))
+    f.write('# Instrument: NIRISS/SOSS\n')
+    f.write('# Pipeline: Supreme-SPOON\n')
+    f.write('# Author: {}\n'.format(os.environ.get('USER')))
+    f.write('# Date: {}\n'.format(datetime.utcnow().replace(microsecond=0).isoformat()))
+    f.write('# Column wave: Central wavelength of bin (micron)\n')
+    f.write('# Column wave_err: Wavelength bin halfwidth (micron)\n')
+    f.write('# Column dppm: (Rp/R*)^2 (ppm)\n')
+    f.write('# Column dppm_err: Error in (Rp/R*)^2 (ppm)\n')
+    f.write('# Column order: SOSS diffraction order\n')
+    df.to_csv(f, index=False)
+    f.close()
 
 
 def run_stage4():
