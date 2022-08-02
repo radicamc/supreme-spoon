@@ -293,9 +293,9 @@ def badpixstep(datafiles, thresh=3, box_size=5, max_iter=2, output_dir=None,
 
     return data, badpix_mask, deepframe
 
-
-def tracemaskstep(deepframe, output_dir=None, mask_width=30, save_results=True,
-                  show_plots=False):
+# needs to work for str, datamodel or np.array
+def tracemaskstep(deepframe, result, output_dir=None, mask_width=30,
+                  save_results=True, show_plots=False):
     """Create a mask of a user-specified width around each of the SOSS
     diffraction orders.
     Note that the centroiding algorithm requires the APPLESOSS module, and
@@ -321,11 +321,19 @@ def tracemaskstep(deepframe, output_dir=None, mask_width=30, save_results=True,
         3D (norder, dimy, dimx) trace mask.
     """
 
-    # get the mediann stack data.
-    deepframe = utils.open_filetype(deepframe)
+    # get the median stack data.
+    # deepframe = utils.open_filetype(deepframe)
+    # deepframe = deepframe.extra_fits.PRIMARY.data
 
-    fileroot = deepframe.meta.filename.split('deepframe')[0]
-    deepframe = deepframe.extra_fits.PRIMARY.data
+    result = utils.open_filetype(result)
+    working_name = result.meta.filename
+    # Get total file root, with no segment info.
+    if 'seg' in working_name:
+        parts = working_name.split('seg')
+        part1, part2 = parts[0][:-1], parts[1][3:8]
+        fileroot = part1 + part2
+    else:
+        fileroot = working_name
 
     # Get centroids for orders one to three.
     dimy, dimx = np.shape(deepframe)
@@ -533,7 +541,8 @@ def run_stage2(results, background_model=None, save_results=True,
         print('Skipping Trace Mask Creation Step.')
         mask = expected_file
     else:
-        mask = tracemaskstep(deepframe, output_dir=outdir,
+        print('Starting Trace Mask Creation Step.')
+        mask = tracemaskstep(deepframe, results[0], output_dir=outdir,
                              mask_width=mask_width, save_results=save_results,
                              show_plots=False)
 
