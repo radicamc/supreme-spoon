@@ -15,6 +15,9 @@ from datetime import datetime
 from tqdm import tqdm
 import numpy as np
 
+from jwst import datamodels
+from jwst.pipeline import calwebb_spec2
+
 
 def bin_at_resolution(wavelengths, depths, R=100):
     """FROM Néstor Espinoza
@@ -149,15 +152,25 @@ def save_transmission_spectrum(wave, wave_err, dppm, dppm_err, order, outdir,
     f.close()
 
 
-def gen_ld_coefs(wavebin_low, wavebin_up, order, M_H, logg, Teff):
+def gen_ld_coefs(datafile, wavebin_low, wavebin_up, order, M_H, logg, Teff):
     ld_data_path = '/home/radica/.anaconda3/envs/atoca/lib/python3.10/site-packages/exotic_ld/exotic-ld_data/'
     sld = StellarLimbDarkening(M_H, Teff, logg, '1D', ld_data_path)
-    mode = 'JWST_NIRISS_SOSSo{}'.format(order)
+    mode = 'custom'
+
+    step = calwebb_spec2.extract_1d_step.Extract1dStep()
+    spectrace_ref = step.get_reference_file(datafile, 'spectrace')
+    spec_trace = datamodels.SpecTraceModel(spectrace_ref)
+    wavelengths = spec_trace.trace[order].data['WAVELENGTH']*10000
+    throughputs = spec_trace.trace[order].data['THROUGHPUT']
 
     c1s, c2s = [], []
     for wl, wu in zip(wavebin_low * 10000, wavebin_up * 10000):
         wr = [wl, wu]
-        c1, c2 = sld.compute_quadratic_ld_coeffs(wr, mode)
+        try:
+            c1, c2 = sld.compute_quadratic_ld_coeffs(wr, mode, wavelengths,
+                                                     throughputs)
+        except ValueError:
+            c1, c2 = np.nan, np.nan
         c1s.append(c1)
         c2s.append(c2)
     c1s = np.array(c1s)

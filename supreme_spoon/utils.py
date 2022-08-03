@@ -476,6 +476,10 @@ def get_ld_coefs(filename, wavebin_low, wavebin_up):
     ld = pd.read_csv(filename, comment='#', sep=',')
     q1s, q2s = juliet.reverse_q_coeffs('quadratic', ld['c1'].values, ld['c2'].values)
     waves = ld['wave'].values
+    ii = np.argsort(waves)
+    waves = waves[ii]
+    q1s = q1s[ii]
+    q2s = q2s[ii]
 
     prior_q1, prior_q2 = [], []
     for wl, wu in zip(wavebin_low, wavebin_up):
