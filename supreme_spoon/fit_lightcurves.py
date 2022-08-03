@@ -98,7 +98,7 @@ for order in orders:
     for i in range(nbins):
         skip = False
         if not np.isfinite(flux[:, i]).all():
-            print('skipping bin #{} / {}'.format(i + 1, nbins))
+            print('Skipping bin #{} / {}'.format(i + 1, nbins))
             skip = True
         else:
             print('Fitting bin #{} / {}'.format(i + 1, nbins))
@@ -114,12 +114,17 @@ for order in orders:
                     priors['q2_SOSS']['distribution'] = 'truncatednormal'
                     priors['q2_SOSS']['hyperparameters'] = [prior_q2[i], 0.1, 0.0, 1.0]
 
-            dataset = juliet.load(priors=priors, t_lc={'SOSS': t},
-                                  y_lc={'SOSS': norm_flux},
-                                  yerr_lc={'SOSS': norm_err},
-                                  linear_regressors_lc={'SOSS': tt},
-                                  out_folder=outdir + 'speclightcurve{2}/order{0}_wavebin{1}'.format(order, i, suffix))
-            results = dataset.fit(sampler='dynesty')
+            try:
+                dataset = juliet.load(priors=priors, t_lc={'SOSS': t},
+                                      y_lc={'SOSS': norm_flux},
+                                      yerr_lc={'SOSS': norm_err},
+                                      linear_regressors_lc={'SOSS': tt},
+                                      out_folder=outdir + 'speclightcurve{2}/order{0}_wavebin{1}'.format(order, i, suffix))
+                results = dataset.fit(sampler='dynesty')
+            except:
+                print('Exception encountered.')
+                print('Skipping bin #{} / {}'.format(i + 1, nbins))
+                skip = True
 
         # Pack best fit params into a dictionary
         for param, dist in zip(params, dists):
