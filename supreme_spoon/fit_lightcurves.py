@@ -89,9 +89,9 @@ for order in orders:
         priors[param]['hyperparameters'] = hyperp
 
     if order == 1 and ldcoef_file_o1 is not None:
-        prior_q1, prior_q2 = utils.get_ld_coefs(ldcoef_file_o1)
+        prior_q1, prior_q2 = utils.get_ld_coefs(ldcoef_file_o1, wave_low, wave_up)
     if order == 2 and ldcoef_file_o2 is not None:
-        prior_q1, prior_q2 = utils.get_ld_coefs(ldcoef_file_o2)
+        prior_q1, prior_q2 = utils.get_ld_coefs(ldcoef_file_o2, wave_low, wave_up)
 
     # Fit each light curve
     outdict = {}

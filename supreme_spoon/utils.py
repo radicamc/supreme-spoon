@@ -472,10 +472,23 @@ def outlier_resistant_variance(data):
     return var
 
 
-def get_ld_coefs(filename):
+def get_ld_coefs(filename, wavebin_low, wavebin_up):
     ld = pd.read_csv(filename, comment='#', sep=',')
-    q1, q2 = juliet.reverse_q_coeffs('quadratic', ld['c1'].values, ld['c2'].values)
-    return q1, q2
+    q1s, q2s = juliet.reverse_q_coeffs('quadratic', ld['c1'].values, ld['c2'].values)
+    waves = ld['wave'].values
+
+    prior_q1, prior_q2 = [], []
+    for wl, wu in zip(wavebin_low, wavebin_up):
+        current_q1, current_q2 = [], []
+        for w, q1, q2 in zip(waves, q1s, q2s):
+            if w > wl and w <= wu:
+                current_q1.append(q1)
+                current_q2.append(q2)
+            elif w > wu:
+                prior_q1.append(np.nanmean(current_q1))
+                prior_q2.append(np.nanmean(current_q2))
+                break
+    return prior_q1, prior_q2
 
 
 def package_ld_priors(wave, c1, c2, order, target, M_H, Teff, logg, outdir):

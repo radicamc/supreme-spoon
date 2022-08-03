@@ -556,8 +556,8 @@ def oneoverfstep(datafiles, out_frames, scaling_curve=None, output_dir=None, sav
         # Initialize output storage arrays.
         dcmap = np.copy(datamodel.data)
         dcmap_w = np.zeros((2, nint, ngroup, dimy, dimx))
-        sub, sub_m = np.copy(datamodel.data), np.copy(datamodel.data)
-        subcorr, subcorr_w = np.copy(datamodel.data), np.copy(datamodel.data)
+        sub, sub_m = np.zeros_like(datamodel.data), np.zeros_like(datamodel.data)
+        subcorr, subcorr_w = np.zeros_like(datamodel.data), np.zeros_like(datamodel.data)
         # Loop over all integrations to determine the 1/f noise level via a
         # difference image, and correct it.
         for i in tqdm(range(nint)):
