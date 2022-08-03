@@ -68,7 +68,7 @@ for order in orders:
     wave_low = fits.getdata(outdir + 'lightcurves{}.fits'.format(suffix),
                             1 + 4 * (order - 1))
     wave_up = fits.getdata(outdir + 'lightcurves{}.fits'.format(suffix),
-                            2 + 4 * (order - 1))
+                           2 + 4 * (order - 1))
     wave = np.nanmean(np.stack([wave_low, wave_up]), axis=0)
     flux = fits.getdata(outdir + 'lightcurves{}.fits'.format(suffix),
                         3 + 4 * (order - 1))
@@ -102,7 +102,8 @@ for order in orders:
             skip = True
         else:
             print('Fitting bin #{} / {}'.format(i + 1, nbins))
-            norm_flux = flux[:, i] / np.median(flux[out_trans, i])
+            out_med = np.median(flux[out_trans, i])
+            norm_flux = flux[:, i] / out_med
             norm_err = np.zeros_like(err[:, i])
 
             if ldcoef_file_o1 is not None or ldcoef_file_o2 is not None:
@@ -150,7 +151,7 @@ for order in orders:
             plotting.do_lightcurve_plot(t=dataset.times_lc['SOSS'],
                                         data=dataset.data_lc['SOSS'],
                                         model=transit_model, scatter=scatter,
-                                        out_dev=out_dev, outpdf=outpdf,
+                                        out_dev=out_dev/out_med, outpdf=outpdf,
                                         title='bin {0} | {1:.3f}µm'.format(i, wave[0, i]),
                                         nfit=nfit)
 
