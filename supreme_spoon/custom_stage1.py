@@ -473,6 +473,7 @@ def oneoverfstep(datafiles, out_frames, scaling_curve=None, output_dir=None, sav
 
     # Individually treat each segment.
     corrected_rampmodels = []
+    current_int = 0
     for n, datamodel in enumerate(data):
         print('Starting segment {} of {}.'.format(n + 1, len(data)))
 
@@ -561,8 +562,9 @@ def oneoverfstep(datafiles, out_frames, scaling_curve=None, output_dir=None, sav
         # difference image, and correct it.
         for i in tqdm(range(nint)):
             # Create two difference images; one to be masked and one not.
-            sub[i] = datamodel.data[i] - deepstack * scaling_curve[i]
-            sub_m[i] = datamodel.data[i] - deepstack * scaling_curve[i]
+            ii = current_int + i
+            sub[i] = datamodel.data[i] - deepstack * scaling_curve[ii]
+            sub_m[i] = datamodel.data[i] - deepstack * scaling_curve[ii]
             # Since the variable upon which 1/f noise depends is time, treat
             # each group individually.
             for g in range(ngroup):
@@ -608,6 +610,7 @@ def oneoverfstep(datafiles, out_frames, scaling_curve=None, output_dir=None, sav
                         # difference image.
                         dcmap_w[order, i, g, :, :] = dc2d_w * tracemask2[order]
                         subcorr_w[i, g, :, :] = subcorr[i, g, :, :] - dcmap_w[order, i, g, :, :]
+        current_int += nint
 
         # Make sure no NaNs are in the DC map
         dcmap = np.where(np.isfinite(dcmap), dcmap, 0)
