@@ -42,6 +42,7 @@ exposure_type = 'CLEAR'  # Either CLEAR or F277W.
 force_redo = False  # Force redo of steps which have already been completed.
 extract_method = 'box'  # Extraction method, box or atoca.
 out_frames = [50, -50]  # Out of transit frames.
+scaling_curve = None
 # ======================================================
 
 import os
@@ -57,7 +58,13 @@ for file in input_files:
 
 # Run Stage 1
 if 1 in run_stages:
+    background_model = np.load(background_file)
+    if scaling_curve is not None:
+        scaling_curve = np.load(scaling_curve)
     stage1_results = custom_stage1.run_stage1(input_files,
+                                              out_frames=out_frames,
+                                              scaling_curve=scaling_curve,
+                                              background_model=background_model,
                                               save_results=save_results,
                                               outlier_maps=outlier_maps,
                                               trace_mask=trace_mask,

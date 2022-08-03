@@ -293,7 +293,8 @@ def badpixstep(datafiles, thresh=3, box_size=5, max_iter=2, output_dir=None,
 
     return data, badpix_mask, deepframe
 
-# needs to work for str, datamodel or np.array
+
+# TODO: needs to work for str, datamodel or np.array
 def tracemaskstep(deepframe, result, output_dir=None, mask_width=30,
                   save_results=True, show_plots=False):
     """Create a mask of a user-specified width around each of the SOSS
@@ -382,7 +383,7 @@ def tracemaskstep(deepframe, result, output_dir=None, mask_width=30,
 
 def run_stage2(results, background_model=None, save_results=True,
                force_redo=False, show_plots=False, max_iter=2, mask_width=30,
-               root_dir='./', output_tag = ''):
+               root_dir='./', output_tag=''):
     # ============== DMS Stage 2 ==============
     # Spectroscopic processing.
     # Documentation: https://jwst-pipeline.readthedocs.io/en/latest/jwst/pipeline/calwebb_spec2.html
@@ -465,33 +466,33 @@ def run_stage2(results, background_model=None, save_results=True,
         new_results.append(res)
     results = new_results
 
-    # ===== Background Subtraction Step =====
-    # Custom DMS step.
-    step_tag = 'backgroundstep.fits'
-    do_step = 1
-    new_results = []
-    for i in range(len(results)):
-        # If an output file for this segment already exists, skip the step.
-        expected_file = outdir + fileroots[i] + step_tag
-        if expected_file not in all_files:
-            do_step *= 0
-        else:
-            new_results.append(expected_file)
-    if do_step == 1 and force_redo is False:
-        print('Output files already exist.')
-        print('Skipping Background Subtraction Step.')
-        results = new_results
-    # If no output files are detected, run the step.
-    else:
-        if background_model is None:
-            msg = 'No background model provided'
-            raise ValueError(msg)
-        with warnings.catch_warnings():
-            warnings.filterwarnings('ignore')
-            results = backgroundstep(results, background_model,
-                                     output_dir=outdir,
-                                     save_results=save_results,
-                                     show_plots=show_plots)
+    # # ===== Background Subtraction Step =====
+    # # Custom DMS step.
+    # step_tag = 'backgroundstep.fits'
+    # do_step = 1
+    # new_results = []
+    # for i in range(len(results)):
+    #     # If an output file for this segment already exists, skip the step.
+    #     expected_file = outdir + fileroots[i] + step_tag
+    #     if expected_file not in all_files:
+    #         do_step *= 0
+    #     else:
+    #         new_results.append(expected_file)
+    # if do_step == 1 and force_redo is False:
+    #     print('Output files already exist.')
+    #     print('Skipping Background Subtraction Step.')
+    #     results = new_results
+    # # If no output files are detected, run the step.
+    # else:
+    #     if background_model is None:
+    #         msg = 'No background model provided'
+    #         raise ValueError(msg)
+    #     with warnings.catch_warnings():
+    #         warnings.filterwarnings('ignore')
+    #         results = backgroundstep(results, background_model,
+    #                                  output_dir=outdir,
+    #                                  save_results=save_results,
+    #                                  show_plots=show_plots)
 
     # ===== Bad Pixel Correction Step =====
     # Custom DMS step.

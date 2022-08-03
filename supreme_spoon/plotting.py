@@ -170,7 +170,7 @@ def do_backgroundsubtraction_plot(data, model, scale_factor):
     plt.plot(tt[10, 220], label='Before Subtraction', c='salmon')
     plt.plot(data[10, 220], label='After Subtraction', c='royalblue')
     plt.plot((model[220]*scale_factor), c='black', label='Background Model')
-    plt.ylim(-1.5, 10)
+    plt.ylim(-100, 600)
     plt.xlabel('Spectral Pixel', fontsize=16)
     plt.ylabel('Counts', fontsize=16)
     plt.legend(fontsize=12, loc=4)
