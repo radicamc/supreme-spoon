@@ -18,6 +18,7 @@ from supreme_spoon import plotting, utils
 
 # =============== User Input ===============
 outdir = './'
+infile = ''
 orders = [1, 2]
 suffix = ''
 out_frames = [50, -50]
@@ -49,7 +50,7 @@ formatted_names = {'P_p1': r'$P$', 't0_p1': r'$T_0$', 'p_p1': r'R$_p$/R$_*$',
                    'rho': r'$\rho$'}
 
 # Get time axis
-t = fits.getdata(outdir + 'lightcurves{}.fits'.format(suffix), 9)
+t = fits.getdata(infile, 9)
 # Noramalized time for trends
 tt = np.zeros((280, 1))
 tt[:, 0] = (t - np.mean(t)) / np.sqrt(np.var(t))
@@ -65,15 +66,11 @@ for order in orders:
 
     print('\nFitting order {}\n'.format(order))
     # Unpack wave, flux and error
-    wave_low = fits.getdata(outdir + 'lightcurves{}.fits'.format(suffix),
-                            1 + 4 * (order - 1))
-    wave_up = fits.getdata(outdir + 'lightcurves{}.fits'.format(suffix),
-                           2 + 4 * (order - 1))
+    wave_low = fits.getdata(infile,  1 + 4*(order - 1))
+    wave_up = fits.getdata(infile, 2 + 4*(order - 1))
     wave = np.nanmean(np.stack([wave_low, wave_up]), axis=0)
-    flux = fits.getdata(outdir + 'lightcurves{}.fits'.format(suffix),
-                        3 + 4 * (order - 1))
-    err = fits.getdata(outdir + 'lightcurves{}.fits'.format(suffix),
-                       4 + 4 * (order - 1))
+    flux = fits.getdata(infile, 3 + 4*(order - 1))
+    err = fits.getdata(infile, 4 + 4*(order - 1))
     nints, nbins = np.shape(flux)
 
     # Set up light curve plots
