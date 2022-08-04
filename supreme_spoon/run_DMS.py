@@ -24,7 +24,6 @@ input_filetag = 'uncal'  # Input file tag.
 # Stage 1 Input Files
 outlier_maps = None  # For 1/f correction; outlier pixel maps.
 trace_mask = None  # For 1/f correcton; trace mask.
-trace_mask2 = None  # For 1/f correcton; trace mask for window subtraction.
 scaling_curve = None  # for 1/f correction; estimate of white light curve.
 # Using STScI background model from here:
 # https://jwst-docs.stsci.edu/jwst-calibration-pipeline-caveats/jwst-time-series-observations-pipeline-caveats/niriss-time-series-observation-pipeline-caveats#NIRISSTimeSeriesObservationPipelineCaveats-SOSSskybackground
