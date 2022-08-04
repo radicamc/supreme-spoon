@@ -127,7 +127,7 @@ def bin_2d_spectra(wave2d, flux2d, R=150):
 
 
 def save_transmission_spectrum(wave, wave_err, dppm, dppm_err, order, outdir,
-                               filename, target):
+                               filename, target, extraction_type):
     dd = {'wave': wave,
           'wave_err': wave_err,
           'dppm': dppm,
@@ -140,6 +140,7 @@ def save_transmission_spectrum(wave, wave_err, dppm, dppm_err, order, outdir,
     f.write('# Target: {}\n'.format(target))
     f.write('# Instrument: NIRISS/SOSS\n')
     f.write('# Pipeline: Supreme-SPOON\n')
+    f.write('# 1D Extraction : {}\n'.format(extraction_type))
     f.write('# Author: {}\n'.format(os.environ.get('USER')))
     f.write('# Date: {}\n'.format(datetime.utcnow().replace(microsecond=0).isoformat()))
     f.write('# Column wave: Central wavelength of bin (micron)\n')
