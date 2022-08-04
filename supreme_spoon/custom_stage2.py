@@ -294,10 +294,9 @@ def lcestimatestep(datafiles, out_frames, save_results=True, output_dir=None):
         else:
             cube = np.concatenate([cube, current_data.data], axis=0)
 
-    filename = file.meta.filename.split('/')[-1]
-    parts = filename.split('seg')
-    part1, part2 = parts[0][:-1], parts[1][3:]
-    fileroot_noseg = part1 + part2
+    filename = current_data.meta.filename.split('/')[-1]
+    fileroot_noseg = filename.split('-')[0]
+    fileroot_noseg += '_nis_'
 
     postage = cube[:, 20:60, 1500:1550]
     timeseries = np.sum(postage, axis=(1, 2))
