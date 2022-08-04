@@ -465,36 +465,3 @@ def run_stage2(results, out_frames, save_results=True,
                                  save_results=save_results, output_dir=outdir)
 
     return results, deepframe
-
-
-if __name__ == "__main__":
-    # =============== User Input ===============
-    root_dir = './'  # Root directory
-    indir = root_dir + 'pipeline_outputs_directory/Stage1/'  # Stage 1 outputs directory.
-    input_filetag = 'gainscalestep'  # Stage 1 result filetage.
-    background_file = root_dir + 'model_background256.npy'  # Background model.
-    exposure_type = 'CLEAR'  # Either CLEAR or F277W.
-    out_frames = [50, -50]  # Integrations of ingress and egress.
-    force_redo = False  # Force redo of completed steps.
-    # ==========================================
-
-    # Set the CRDS cache variables.
-    import os
-    os.environ['CRDS_PATH'] = root_dir + 'crds_cache'
-    os.environ['CRDS_SERVER_URL'] = 'https://jwst-crds.stsci.edu'
-
-    # Unpack all files in the input directory.
-    input_files = utils.unpack_input_directory(indir, filetag=input_filetag,
-                                               exposure_type=exposure_type)
-    print('\nIdentified {0} {1} exposure segments'.format(len(input_files),
-                                                          exposure_type))
-    for file in input_files:
-        print(' ' + file)
-
-    # Unpack background model.
-    background_model = np.load(background_file)
-
-    # Run segments through Stage 2.
-    result = run_stage2(input_files, out_frames=out_frames, save_results=True,
-                        force_redo=force_redo, root_dir=root_dir)
-    stage2_results, deepframe = result

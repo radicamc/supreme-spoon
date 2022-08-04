@@ -67,7 +67,6 @@ if 1 in run_stages:
                                               save_results=save_results,
                                               outlier_maps=outlier_maps,
                                               trace_mask=trace_mask,
-                                              trace_mask2=trace_mask2,
                                               force_redo=force_redo,
                                               root_dir=root_dir,
                                               output_tag=output_tag)
