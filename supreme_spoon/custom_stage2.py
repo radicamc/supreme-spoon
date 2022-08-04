@@ -21,107 +21,6 @@ from jwst.pipeline import calwebb_spec2
 from supreme_spoon import plotting, utils
 
 
-def backgroundstep(datafiles, background_model, output_dir=None,
-                   save_results=True, show_plots=False):
-    """Background subtraction must be carefully treated with SOSS observations.
-    Due to the extent of the PSF wings, there are very few, if any,
-    non-illuminated pixels to serve as a sky region. Furthermore, the zodi
-    background has a unique stepped shape, which would render a constant
-    background subtraction ill-advised. Therefore, a background subtracton is
-    performed by scaling a model background to the counntns level of a median
-    stack of the exposure. This scaled model background is then subtracted
-    from each integration.
-
-    Parameters
-    ----------
-    datafiles : list[str], list[CubeModel]
-        Paths to data segments for a SOSS exposure, or the datamodels
-        themselves.
-    background_model : np.array
-        Background model. Should be 2D (dimy, dimx)
-    output_dir : str, None
-        Directory to which to save outputs.
-    save_results : bool
-        If True, save outputs to file.
-    show_plots : bool
-        If True, show plots.
-
-    Returns
-    -------
-    results : list[CubeModel]
-        Input data segments, corrected for the background.
-    """
-
-    print('Starting custom background subtraction step.')
-    # Output directory formatting.
-    if output_dir is not None:
-        if output_dir[-1] != '/':
-            output_dir += '/'
-
-    datafiles = np.atleast_1d(datafiles)
-    opened_datafiles = []
-    for i, file in enumerate(datafiles):
-        currentfile = utils.open_filetype(file)
-        opened_datafiles.append(currentfile)
-        # To create the deepstack, join all segments together.
-        if i == 0:
-            cube = currentfile.data
-        else:
-            cube = np.concatenate([cube, currentfile.data], axis=0)
-    datafiles = opened_datafiles
-
-    # Make median stack of all integrations to use for background scaling.
-    # This is to limit the influence of cosmic rays, which can greatly effect
-    # the background scaling factor calculated for an individual inegration.
-    deepstack = utils.make_deepstack(cube)
-
-    # Usng a region in the top left corner where influence from the traces is
-    # minimal, calculate the scaling of the model background to the median
-    # stack.
-    bkg_ratio = deepstack[210:250, 500:800] / background_model[210:250, 500:800]
-    # Instead of a straight median, use the median of the 2nd quartile to
-    # limit the effect of any remaining illuminated pixels.
-    q1 = np.nanpercentile(bkg_ratio, 25)
-    q2 = np.nanpercentile(bkg_ratio, 50)
-    ii = np.where((bkg_ratio > q1) & (bkg_ratio < q2))
-    scale_factor = np.nanmedian(bkg_ratio[ii])
-    print('Determined a scale factor of {:.4f}.'.format(scale_factor))
-    # Scale the background model to the flux level of the data.
-    model_scaled = background_model * scale_factor
-
-    # Loop over all segments in the exposure and subtract the background from
-    # each of them.
-    results = []
-    for currentfile in datafiles:
-        # Get file name root.
-        old_filename = currentfile.meta.filename
-        to_remove = old_filename.split('_')[-1]
-        fileroot = old_filename.split(to_remove)[0]
-
-        # Subtract the scaled background model.
-        data_backsub = currentfile.data - model_scaled
-        currentfile.data = data_backsub
-
-        # Save the results to file if requested.
-        if save_results is True:
-            # Scaled model background.
-            hdu = fits.PrimaryHDU(model_scaled)
-            hdu.writeto(output_dir + fileroot + 'background.fits',
-                        overwrite=True)
-            # Background subtarcted data.
-            currentfile.write(output_dir + fileroot + 'backgroundstep.fits')
-
-        # Show background scaling plot if requested.
-        if show_plots is True:
-            plotting.do_backgroundsubtraction_plot(currentfile.data,
-                                                   background_model,
-                                                   scale_factor)
-        results.append(currentfile)
-        currentfile.close()
-
-    return results
-
-
 def badpixstep(datafiles, thresh=3, box_size=5, max_iter=2, output_dir=None,
                save_results=True):
     """Identify and correct bad pixels remaining in the dataset. Find outlier
@@ -381,8 +280,38 @@ def tracemaskstep(deepframe, result, output_dir=None, mask_width=30,
     return tracemask
 
 
-def run_stage2(results, background_model=None, save_results=True,
-               force_redo=False, show_plots=False, max_iter=2, mask_width=30,
+def lcestimatestep(datafiles, out_frames, save_results=True, output_dir=None):
+    out_frames = np.abs(out_frames)
+    out_trans = np.concatenate([np.arange(out_frames[0]),
+                                np.arange(out_frames[1]) - out_frames[1]])
+
+    datafiles = np.atleast_1d(datafiles)
+
+    for i, file in enumerate(datafiles):
+        current_data = utils.open_filetype(file)
+        if i == 0:
+            cube = current_data.data
+        else:
+            cube = np.concatenate([cube, current_data.data], axis=0)
+
+    filename = file.meta.filename.split('/')[-1]
+    parts = filename.split('seg')
+    part1, part2 = parts[0][:-1], parts[1][3:]
+    fileroot_noseg = part1 + part2
+
+    postage = cube[:, 20:60, 1500:1550]
+    timeseries = np.sum(postage, axis=(1, 2))
+    curve = timeseries / np.median(timeseries[out_trans])
+
+    if save_results is True:
+        outfile = output_dir + fileroot_noseg + 'lcscaling.npy'
+        np.save(outfile, curve)
+
+    return curve
+
+
+def run_stage2(results, out_frames, save_results=True,
+               force_redo=False, max_iter=2, mask_width=30,
                root_dir='./', output_tag=''):
     # ============== DMS Stage 2 ==============
     # Spectroscopic processing.
@@ -466,34 +395,6 @@ def run_stage2(results, background_model=None, save_results=True,
         new_results.append(res)
     results = new_results
 
-    # # ===== Background Subtraction Step =====
-    # # Custom DMS step.
-    # step_tag = 'backgroundstep.fits'
-    # do_step = 1
-    # new_results = []
-    # for i in range(len(results)):
-    #     # If an output file for this segment already exists, skip the step.
-    #     expected_file = outdir + fileroots[i] + step_tag
-    #     if expected_file not in all_files:
-    #         do_step *= 0
-    #     else:
-    #         new_results.append(expected_file)
-    # if do_step == 1 and force_redo is False:
-    #     print('Output files already exist.')
-    #     print('Skipping Background Subtraction Step.')
-    #     results = new_results
-    # # If no output files are detected, run the step.
-    # else:
-    #     if background_model is None:
-    #         msg = 'No background model provided'
-    #         raise ValueError(msg)
-    #     with warnings.catch_warnings():
-    #         warnings.filterwarnings('ignore')
-    #         results = backgroundstep(results, background_model,
-    #                                  output_dir=outdir,
-    #                                  save_results=save_results,
-    #                                  show_plots=show_plots)
-
     # ===== Bad Pixel Correction Step =====
     # Custom DMS step.
     step_tag = 'badpixstep.fits'
@@ -547,6 +448,22 @@ def run_stage2(results, background_model=None, save_results=True,
                              mask_width=mask_width, save_results=save_results,
                              show_plots=False)
 
+    # ===== Light Curve Scaling Estimation Step =====
+    # Custom DMS step.
+    step_tag = 'lcscaling.npy'.format(mask_width)
+    # If an output file for this segment already exists, skip the step.
+    fileroot_split = fileroots[0].split('-seg')
+    fileroot_noseg = fileroot_split[0] + fileroot_split[1][3:]
+    expected_file = outdir + fileroot_noseg + step_tag
+    if expected_file in all_files and force_redo is False:
+        print('Output file {} already exists.'.format(expected_file))
+        print('Skipping Light Curve Estimation Step.')
+        scaling = expected_file
+    else:
+        print('Starting Trace Mask Creation Step.')
+        scaling = lcestimatestep(results, out_frames=out_frames,
+                                 save_results=save_results, output_dir=outdir)
+
     return results, deepframe
 
 
@@ -557,6 +474,7 @@ if __name__ == "__main__":
     input_filetag = 'gainscalestep'  # Stage 1 result filetage.
     background_file = root_dir + 'model_background256.npy'  # Background model.
     exposure_type = 'CLEAR'  # Either CLEAR or F277W.
+    out_frames = [50, -50]  # Integrations of ingress and egress.
     force_redo = False  # Force redo of completed steps.
     # ==========================================
 
@@ -577,8 +495,6 @@ if __name__ == "__main__":
     background_model = np.load(background_file)
 
     # Run segments through Stage 2.
-    result = run_stage2(input_files,
-                        background_model=background_model,
-                        save_results=True, force_redo=force_redo,
-                        show_plots=False, root_dir=root_dir)
+    result = run_stage2(input_files, out_frames=out_frames, save_results=True,
+                        force_redo=force_redo, root_dir=root_dir)
     stage2_results, deepframe = result

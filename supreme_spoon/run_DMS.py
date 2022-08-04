@@ -16,15 +16,16 @@ from supreme_spoon import custom_stage1, custom_stage2, custom_stage3
 from supreme_spoon import utils
 
 # ================== User Input ========================
-# Stage 1 Input Files
+# Key Parameters
 root_dir = './'  # Root file directory
 input_dir = root_dir + 'DMS_uncal/'  # Input data file directory.
 input_filetag = 'uncal'  # Input file tag.
+
+# Stage 1 Input Files
 outlier_maps = None  # For 1/f correction; outlier pixel maps.
 trace_mask = None  # For 1/f correcton; trace mask.
 trace_mask2 = None  # For 1/f correcton; trace mask for window subtraction.
-
-# Stage 2 Input Files
+scaling_curve = None  # for 1/f correction; estimate of white light curve.
 # Using STScI background model from here:
 # https://jwst-docs.stsci.edu/jwst-calibration-pipeline-caveats/jwst-time-series-observations-pipeline-caveats/niriss-time-series-observation-pipeline-caveats#NIRISSTimeSeriesObservationPipelineCaveats-SOSSskybackground
 background_file = root_dir + 'model_background256.npy'  # Background model.
@@ -36,13 +37,11 @@ soss_estimate = None  # SOSS estmate file for ATOCA.
 # Other Parameters
 output_tag = ''  # Name tag for output file directory.
 run_stages = [1, 2, 3]  # Pipeline stages to run.
-save_results = True  # Save results of each intermediate step to file.
-show_plots = False  # Show plots.
-exposure_type = 'CLEAR'  # Either CLEAR or F277W.
-force_redo = False  # Force redo of steps which have already been completed.
+exposure_type = 'CLEAR'  # Type of exposure; either CLEAR or F277W.
 extract_method = 'box'  # Extraction method, box or atoca.
-out_frames = [50, -50]  # Out of transit frames.
-scaling_curve = None
+save_results = True  # Save results of each intermediate step to file.
+force_redo = False  # Force redo of steps which have already been completed.
+out_frames = [50, -50]  # Integrations of ingress and egress.
 # ======================================================
 
 import os
@@ -79,10 +78,9 @@ else:
 if 2 in run_stages:
     background_model = np.load(background_file)
     stage2_results = custom_stage2.run_stage2(stage1_results,
-                                              background_model=background_model,
+                                              out_frames=out_frames,
                                               save_results=save_results,
                                               force_redo=force_redo,
-                                              show_plots=show_plots,
                                               root_dir=root_dir,
                                               output_tag=output_tag)
     stage2_results, deepframe = stage2_results
@@ -97,7 +95,6 @@ if 3 in run_stages:
     stage3_results = custom_stage3.run_stage3(stage2_results,
                                               deepframe=deepframe,
                                               save_results=save_results,
-                                              show_plots=show_plots,
                                               root_dir=root_dir,
                                               force_redo=force_redo,
                                               extract_method=extract_method,

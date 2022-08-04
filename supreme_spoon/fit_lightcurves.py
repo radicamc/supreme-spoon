@@ -17,10 +17,10 @@ import pandas as pd
 from supreme_spoon import plotting, utils
 
 # =============== User Input ===============
-outdir = 'pipeline_outputs_directory/Stage4/'
+outdir = './'
 orders = [1, 2]
-suffix = 'box_R300'
-out_frames = [90, -40]
+suffix = ''
+out_frames = [50, -50]
 
 # Fitting priors
 params = ['P_p1', 't0_p1', 'p_p1', 'b_p1',
@@ -113,7 +113,6 @@ for order in orders:
                 if np.isfinite(prior_q2[i]):
                     priors['q2_SOSS']['distribution'] = 'truncatednormal'
                     priors['q2_SOSS']['hyperparameters'] = [prior_q2[i], 0.1, 0.0, 1.0]
-
             try:
                 dataset = juliet.load(priors=priors, t_lc={'SOSS': t},
                                       y_lc={'SOSS': norm_flux},
@@ -121,6 +120,8 @@ for order in orders:
                                       linear_regressors_lc={'SOSS': tt},
                                       out_folder=outdir + 'speclightcurve{2}/order{0}_wavebin{1}'.format(order, i, suffix))
                 results = dataset.fit(sampler='dynesty')
+            except KeyboardInterrupt as err:
+                raise err
             except:
                 print('Exception encountered.')
                 print('Skipping bin #{} / {}'.format(i + 1, nbins))

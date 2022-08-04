@@ -650,9 +650,10 @@ def oneoverfstep(datafiles, out_frames, scaling_curve=None, output_dir=None, sav
     return corrected_rampmodels
 
 
-def run_stage1(results, background_model, out_frames, scaling_curve=None, save_results=True, outlier_maps=None, trace_mask=None,
-               trace_mask2=None, force_redo=False, rejection_threshold=5, show_plots=False,
-               root_dir='./', output_tag=''):
+def run_stage1(results, background_model, out_frames, scaling_curve=None,
+               save_results=True, outlier_maps=None, trace_mask=None,
+               trace_mask2=None, force_redo=False, rejection_threshold=5,
+               show_plots=False, root_dir='./', output_tag=''):
     """Run the supreme-SPOON Stage 1 pipeline: detector level processing,
     using a combination of official STScI DMS and custom steps. Documentation
     for the official DMS steps can be found here:
@@ -965,6 +966,7 @@ if __name__ == "__main__":
     indir = root_dir + 'DMS_uncal/'  # Uncalibrated file directory.
     input_filetag = 'uncal'  # Unclaibrated file tag.
     background_file = root_dir + 'model_background256.npy'  # Background model.
+    out_frames = None  # Integrations of ingress and egress.
     outlier_maps = None  # For 1/f correction; outlier pixel maps.
     trace_mask = None  # For 1/f correcton; trace mask.
     trace_mask2 = None  # For 1/f correcton; trace mask for window subtraction.
@@ -989,7 +991,7 @@ if __name__ == "__main__":
 
     # Run segments through Stage 1.
     stage1_results = run_stage1(input_files, background_model=background_model,
-                                save_results=True,
+                                out_frames=out_frames, save_results=True,
                                 outlier_maps=outlier_maps,
                                 trace_mask=trace_mask, trace_mask2=trace_mask2,
                                 force_redo=force_redo, root_dir=root_dir)
