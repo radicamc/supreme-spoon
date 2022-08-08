@@ -147,31 +147,35 @@ for order in orders:
 
         # Make summary plots
         if skip is False:
-            transit_model = results.lc.evaluate('SOSS')
-            scatter = np.median(results.posteriors['posterior_samples']['sigma_w_SOSS'])
-            nfit = len(np.where(dists != 'fixed')[0])
-            out_dev = np.sqrt(utils.outlier_resistant_variance(norm_flux[out_trans]))
-            plotting.do_lightcurve_plot(t=dataset.times_lc['SOSS'],
-                                        data=dataset.data_lc['SOSS'],
-                                        model=transit_model, scatter=scatter,
-                                        out_dev=out_dev, outpdf=outpdf,
-                                        title='bin {0} | {1:.3f}µm'.format(i, wave[0, i]),
-                                        nfit=nfit)
+            try:
+                transit_model = results.lc.evaluate('SOSS')
+                scatter = np.median(results.posteriors['posterior_samples']['sigma_w_SOSS'])
+                nfit = len(np.where(dists != 'fixed')[0])
+                out_dev = np.sqrt(utils.outlier_resistant_variance(norm_flux[out_trans]))
+                plotting.do_lightcurve_plot(t=dataset.times_lc['SOSS'],
+                                            data=dataset.data_lc['SOSS'],
+                                            model=transit_model,
+                                            scatter=scatter, out_dev=out_dev,
+                                            outpdf=outpdf,
+                                            title='bin {0} | {1:.3f}µm'.format(i, wave[0, i]),
+                                            nfit=nfit)
 
-            fit_params, posterior_names = [], []
-            for param, dist in zip(params, dists):
-                if dist != 'fixed':
-                    fit_params.append(param)
-                    if param in formatted_names.keys():
-                        posterior_names.append(formatted_names[param])
-                    else:
-                        posterior_names.append(param)
-            plotting.make_corner(fit_params, results, outpdf=outpdf,
-                                 posterior_names=posterior_names)
+                fit_params, posterior_names = [], []
+                for param, dist in zip(params, dists):
+                    if dist != 'fixed':
+                        fit_params.append(param)
+                        if param in formatted_names.keys():
+                            posterior_names.append(formatted_names[param])
+                        else:
+                            posterior_names.append(param)
+                plotting.make_corner(fit_params, results, outpdf=outpdf,
+                                     posterior_names=posterior_names)
 
-            data[:, i] = norm_flux
-            models[:, i] = transit_model
-            residuals[:, i] = norm_flux - transit_model
+                data[:, i] = norm_flux
+                models[:, i] = transit_model
+                residuals[:, i] = norm_flux - transit_model
+            except:
+                pass
 
     plotting.plot_2dlightcurves(wave[0], data, outpdf=outpdf,
                                 title='Normalized Lightcurves')

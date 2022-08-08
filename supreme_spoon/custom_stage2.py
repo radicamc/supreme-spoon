@@ -21,7 +21,7 @@ from jwst.pipeline import calwebb_spec2
 from supreme_spoon import plotting, utils
 
 
-def badpixstep(datafiles, thresh=3, box_size=5, max_iter=2, output_dir=None,
+def badpixstep(datafiles, out_frames, thresh=3, box_size=5, max_iter=2, output_dir=None,
                save_results=True):
     """Identify and correct bad pixels remaining in the dataset. Find outlier
     pixels in the median stack and correct them via the median of a box of
@@ -32,6 +32,8 @@ def badpixstep(datafiles, thresh=3, box_size=5, max_iter=2, output_dir=None,
     datafiles : list[str], list[CubeModel]
         List of paths to datafiles for each segment, or the datamodels
         themselves.
+    out_frames : list[int]
+        Integrations of ingress and egress.
     thresh : int
         Sigma threshold for a deviant pixel to be flagged.
     box_size : int
@@ -59,6 +61,11 @@ def badpixstep(datafiles, thresh=3, box_size=5, max_iter=2, output_dir=None,
     if output_dir is not None:
         if output_dir[-1] != '/':
             output_dir += '/'
+
+    # Format out of transit frames.
+    out_frames = np.abs(out_frames)
+    out_trans = np.concatenate([np.arange(out_frames[0]),
+                                np.arange(out_frames[1]) - out_frames[1]])
 
     datafiles = np.atleast_1d(datafiles)
 
@@ -163,8 +170,8 @@ def badpixstep(datafiles, thresh=3, box_size=5, max_iter=2, output_dir=None,
 
     # Ensure that the bad pixel mask remains zeros or ones.
     badpix_mask = np.where(badpix_mask == 0, 0, 1)
-    # Generate a final corrected deep frame.
-    deepframe = utils.make_deepstack(newdata)
+    # Generate a final corrected deep frame for out-of-transit.
+    deepframe = utils.make_deepstack(newdata[out_trans])
 
     current_int = 0
     # Save interpolated data.
@@ -426,7 +433,7 @@ def run_stage2(results, out_frames, save_results=True,
     else:
         with warnings.catch_warnings():
             warnings.simplefilter('ignore')
-            res = badpixstep(results, output_dir=outdir,
+            res = badpixstep(results, out_frames=out_frames, output_dir=outdir,
                              save_results=save_results, max_iter=max_iter)
             results, deepframe = res[0], res[2]
 
