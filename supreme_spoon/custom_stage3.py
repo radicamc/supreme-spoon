@@ -41,6 +41,8 @@ def construct_lightcurves(datafiles, out_frames, output_dir=None,
 
     for i, file in enumerate(datafiles):
         segment = utils.unpack_spectra(file)
+        if isinstance(file, str):
+            file = datamodels.open(file)
         if i == 0:
             wave2d_o1 = segment[1]['WAVELENGTH']
             flux_o1 = segment[1]['FLUX']*dn2e

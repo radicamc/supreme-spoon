@@ -115,8 +115,8 @@ def make_time_axis(filepath):
     tgroup = header['TGROUP'] / 3600 / 24
     ngroup = header['NGROUPS'] + 1
     nint = header['NINTS']
-    t_start = Time(t_start, format='isot', scale='utc')
-    t = np.arange(nint) * tgroup * ngroup + t_start.jd
+    t_start = Time(t_start, format='isot', scale='tdb')
+    t = np.arange(nint) * tgroup * ngroup + t_start.mjd
     return t
 
 
