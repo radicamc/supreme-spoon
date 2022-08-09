@@ -290,12 +290,34 @@ def tracemaskstep(deepframe, result, output_dir=None, mask_width=30,
 
 
 def lcestimatestep(datafiles, out_frames, save_results=True, output_dir=None):
+    """Construct a rough estimate of the TSO photometric light curve to use as
+    a scaling factor for the median out-of-transit frame in 1/f noise
+    correction.
+
+    Parameters
+    ----------
+    datafiles : list[str], list[CubeModel]
+        Input data files.
+    out_frames : list[int]
+        Integrations of ingress and egress.
+    save_results : bool
+        Whether to save outputs.
+    output_dir : str
+        Directory to which to save outputs
+
+    Returns
+    -------
+    curve : np.array
+        Estimate of the TSO photometric light curve.
+    """
+
+    # Format out of transit frames.
     out_frames = np.abs(out_frames)
     out_trans = np.concatenate([np.arange(out_frames[0]),
                                 np.arange(out_frames[1]) - out_frames[1]])
 
+    # Open datafiles and pack into datacube.
     datafiles = np.atleast_1d(datafiles)
-
     for i, file in enumerate(datafiles):
         current_data = utils.open_filetype(file)
         if i == 0:
@@ -303,12 +325,16 @@ def lcestimatestep(datafiles, out_frames, save_results=True, output_dir=None):
         else:
             cube = np.concatenate([cube, current_data.data], axis=0)
 
+    # Get file root name.
     filename = current_data.meta.filename.split('/')[-1]
     fileroot_noseg = filename.split('-')[0]
     fileroot_noseg += '_nis_'
 
+    # Use an area centered on the peak of the order 1 blaze to estimate the
+    # photometric light curve.
     postage = cube[:, 20:60, 1500:1550]
     timeseries = np.sum(postage, axis=(1, 2))
+    # Normalize by the out-of-transit flux level.
     curve = timeseries / np.median(timeseries[out_trans])
 
     if save_results is True:
@@ -318,12 +344,46 @@ def lcestimatestep(datafiles, out_frames, save_results=True, output_dir=None):
     return curve
 
 
-def run_stage2(results, out_frames, save_results=True,
-               force_redo=False, max_iter=2, mask_width=30,
-               root_dir='./', output_tag=''):
+def run_stage2(results, out_frames, save_results=True, force_redo=False,
+               max_iter=2, mask_width=30, root_dir='./', output_tag=''):
+    """Run the supreme-SPOON Stage 2 pipeline: spectroscopic processing,
+    using a combination of official STScI DMS and custom steps. Documentation
+    for the official DMS steps can be found here:
+    https://jwst-pipeline.readthedocs.io/en/latest/jwst/pipeline/calwebb_spec2.html
+
+    Parameters
+    ----------
+    results : list[str], list[CubeModel]
+        supreme-SPOON Stage 1 output files.
+    out_frames : list[int]
+        Integration numbers for transit ingress and egress.
+    save_results : bool
+        If True, save results of each step to file.
+    force_redo : bool
+        If True, redo steps even if outputs files are already present.
+    max_iter : int
+        maximum number of iterations for bad pixel flagging.
+    mask_width : int
+        Width, in pixels, of trace mask to generate
+    root_dir : str
+        Directory from which all relative paths are defined.
+    output_tag : str
+        Name tag to append to pipeline outputs directory.
+
+    Returns
+    -------
+    results : list[CubeModel]
+        Datafiles for each segment processed through Stage 2.
+    deepframe : np.array
+        Out-of-transit median stack.
+    mask : np.array
+        Trace mask.
+    scaling : np.array
+        Estimate of the photometric light curve.
+    """
+
     # ============== DMS Stage 2 ==============
     # Spectroscopic processing.
-    # Documentation: https://jwst-pipeline.readthedocs.io/en/latest/jwst/pipeline/calwebb_spec2.html
     print('\n\n**Starting supreme-SPOON Stage 2**')
     print('Spectroscopic processing\n\n')
 
@@ -472,4 +532,4 @@ def run_stage2(results, out_frames, save_results=True,
         scaling = lcestimatestep(results, out_frames=out_frames,
                                  save_results=save_results, output_dir=outdir)
 
-    return results, deepframe
+    return results, deepframe, mask, scaling

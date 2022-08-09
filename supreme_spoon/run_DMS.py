@@ -81,7 +81,7 @@ if 2 in run_stages:
                                               force_redo=force_redo,
                                               root_dir=root_dir,
                                               output_tag=output_tag)
-    stage2_results, deepframe = stage2_results
+    stage2_results, deepframe = stage2_results[0], stage2_results[1]
 else:
     stage2_results = input_files
     deep_file = glob.glob(root_dir + 'pipeline_outputs_directory/Stage2/*deepframe*')

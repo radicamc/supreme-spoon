@@ -367,11 +367,11 @@ def run_stage1(results, background_model, out_frames, scaling_curve=None,
     background_model : np.array
         SOSS background model.
     out_frames : list[int]
-        Integration numbers for transiit ingress and egress.
+        Integration numbers for transit ingress and egress.
     scaling_curve : np.array, None
         Estimate of the out-of-transit normalized light curve.
     save_results : bool
-        If True, save resukts of each step to file.
+        If True, save results of each step to file.
     outlier_maps : list[str], None
         For improved 1/f noise corecton. List of paths to outlier maps for each
         data segment. Can be 3D (nints, dimy, dimx), or 2D (dimy, dimx) files.
