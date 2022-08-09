@@ -21,8 +21,8 @@ from jwst.pipeline import calwebb_spec2
 from supreme_spoon import plotting, utils
 
 
-def badpixstep(datafiles, out_frames, thresh=3, box_size=5, max_iter=2, output_dir=None,
-               save_results=True):
+def badpixstep(datafiles, out_frames, thresh=3, box_size=5, max_iter=2,
+               output_dir=None,  save_results=True):
     """Identify and correct bad pixels remaining in the dataset. Find outlier
     pixels in the median stack and correct them via the median of a box of
     surrounding pixels in each integration.
@@ -104,7 +104,7 @@ def badpixstep(datafiles, out_frames, thresh=3, box_size=5, max_iter=2, output_d
         fileroot_noseg = fileroots[0]
 
     # Initialize starting loop variables.
-    badpix_mask = np.zeros((256, 2048))
+    badpix_mask = np.copy(cube)
     newdata = np.copy(cube)
     newdq = np.copy(dq_cube)
     it = 0
@@ -246,6 +246,8 @@ def tracemaskstep(deepframe, result, output_dir=None, mask_width=30,
     dimy, dimx = np.shape(deepframe)
     if dimy == 256:
         subarray = 'SUBSTRIP256'
+    elif dimy == 96:
+        subarray = 'SUBSTRIP96'
     else:
         raise NotImplementedError
     # Get centroids via the edgetrigger method

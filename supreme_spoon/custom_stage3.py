@@ -134,7 +134,11 @@ def specprofilestep(deepframe, save_results=True, output_dir='./'):
     spat_prof.build_empirical_profile(verbose=1, wave_increment=0.1)
 
     if save_results is True:
-        filename = spat_prof.write_specprofile_reference('SUBSTRIP256',
+        if np.shape(deepframe[0]) == 96:
+            subarray = 'SUBSTRIP96'
+        else:
+            subarray = 'SUBSTRIP256'
+        filename = spat_prof.write_specprofile_reference(subarray,
                                                          output_dir=output_dir)
     else:
         filename = None
@@ -146,6 +150,10 @@ def get_soss_transform(deepframe, datafile, show_plots=False,
                        save_results=True, output_dir=None):
 
     print('Solving the SOSS transform')
+    if np.shape(deepframe)[0] == 96:
+        subarray = 'SUBSTRIP96'
+    else:
+        subarray = 'SUBSTRIP256'
     with warnings.catch_warnings():
         warnings.filterwarnings('ignore')
         step = calwebb_spec2.extract_1d_step.Extract1dStep()
@@ -162,7 +170,7 @@ def get_soss_transform(deepframe, datafile, show_plots=False,
         transform = soss_solver.solve_transform(deepframe, np.isnan(deepframe),
                                                 xref_o1, yref_o1,
                                                 xref_o2, yref_o2,
-                                                soss_filter='SUBSTRIP256',
+                                                soss_filter=subarray,
                                                 is_fitted=(True, True, True),
                                                 guess_transform=(0, 0, 0))
     print('Determined a transform of:\nx = {}\ny = {}\ntheta = {}'.format(*transform))
@@ -173,7 +181,7 @@ def get_soss_transform(deepframe, datafile, show_plots=False,
                 warnings.filterwarnings('ignore')
                 datafile = datamodels.open(datafile)
         save_filename = datafile.meta.filename.split('_')[0]
-        cens = utils.get_trace_centroids(deepframe, 'SUBSTRIP256',
+        cens = utils.get_trace_centroids(deepframe, subarray,
                                          output_dir=output_dir,
                                          save_results=save_results,
                                          save_filename=save_filename)
@@ -216,6 +224,11 @@ def run_stage3(results, deepframe, out_frames, save_results=True,
     utils.verify_path(root_dir + 'pipeline_outputs_directory' + output_tag + '/Stage3')
     outdir = root_dir + 'pipeline_outputs_directory' + output_tag + '/Stage3/'
 
+    if np.shape(deepframe)[0] == 96:
+        subarray = 'SUBSTRIP96'
+    else:
+        subarray = 'SUBSTRIP256'
+
     all_files = glob.glob(outdir + '*')
     results = np.atleast_1d(results)
     # Get file root
@@ -235,7 +248,7 @@ def run_stage3(results, deepframe, out_frames, save_results=True,
     # Custom DMS step
     if extract_method == 'atoca':
         if specprofile is None:
-            expected_file = outdir + 'APPLESOSS_ref_2D_profile_SUBSTRIP256_os1_pad0.fits'
+            expected_file = outdir + 'APPLESOSS_ref_2D_profile_{}_os1_pad0.fits'.format(subarray)
             if expected_file in all_files and force_redo is False:
                 print('Output file {} already exists.'.format(expected_file))
                 print('Skipping SpecProfile Construction Step.')

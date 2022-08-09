@@ -79,10 +79,13 @@ def backgroundstep(datafiles, background_model, output_dir=None,
 
     model_scaled = np.zeros_like(deepstack)
     for i in range(ngroup):
-        # Using a region in the top left corner where influence from the
-        # traces is minimal, calculate the scaling of the model background to
-        # the median stack.
-        bkg_ratio = deepstack[i, 210:250, 500:800] / background_model[210:250, 500:800]
+        # Ccalculate the scaling of the model background to the median stack.
+        if dimy == 96:
+            # Use area in bottom left corner of detector for SUBSTRIP96.
+            bkg_ratio = deepstack[i, 10:20, 10:200] / background_model[10:20, 10:200]
+        else:
+            # Use area in the top left corner of detector for SUBSTRIP256
+            bkg_ratio = deepstack[i, 210:250, 500:800] / background_model[210:250, 500:800]
         # Instead of a straight median, use the median of the 2nd quartile to
         # limit the effect of any remaining illuminated pixels.
         q1 = np.nanpercentile(bkg_ratio, 25)

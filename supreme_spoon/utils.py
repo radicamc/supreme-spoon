@@ -162,12 +162,9 @@ def get_trace_centroids(deepframe, subarray, output_dir=None,
         warnings.filterwarnings('ignore')
         centroids = get_soss_centroids(deepframe, subarray=subarray)
 
-    X1, Y1 = centroids['order 1']['X centroid'], centroids['order 1'][
-        'Y centroid']
-    X2, Y2 = centroids['order 2']['X centroid'], centroids['order 2'][
-        'Y centroid']
-    X3, Y3 = centroids['order 3']['X centroid'], centroids['order 3'][
-        'Y centroid']
+    X1, Y1 = centroids['order 1']['X centroid'], centroids['order 1']['Y centroid']
+    X2, Y2 = centroids['order 2']['X centroid'], centroids['order 2']['Y centroid']
+    X3, Y3 = centroids['order 3']['X centroid'], centroids['order 3']['Y centroid']
     ii = np.where((X1 >= 0) & (X1 <= dimx - 1))
     ii2 = np.where((X2 >= 0) & (X2 <= dimx - 1) & (Y2 <= dimy - 1))
     ii3 = np.where((X3 >= 0) & (X3 <= dimx - 1) & (Y3 <= dimy - 1))
