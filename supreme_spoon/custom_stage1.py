@@ -772,22 +772,7 @@ def run_stage1(results, background_model, out_frames, scaling_curve=None,
     utils.verify_path(root_dir + 'pipeline_outputs_directory' + output_tag + '/Stage1')
     outdir = root_dir + 'pipeline_outputs_directory' + output_tag + '/Stage1/'
 
-    # Get all files curretly n the output directory to check if steps have
-    # been completed.
-    all_files = glob.glob(outdir + '*')
     results = np.atleast_1d(results)
-    # Get file name root.
-    fileroots = []
-    for file in results:
-        if isinstance(file, str):
-            data = datamodels.open(file)
-        else:
-            data = file
-        filename_split = data.meta.filename.split('_')
-        fileroot = ''
-        for chunk in filename_split[:-1]:
-            fileroot += chunk + '_'
-        fileroots.append(fileroot)
 
     # ===== Group Scale Step =====
     # Default DMS step.
