@@ -20,6 +20,370 @@ from jwst.pipeline import calwebb_detector1
 from supreme_spoon import utils, plotting
 
 
+class GroupScaleStep:
+    """Wrapper around default calwebb_detector1 Group Scale Correction step.
+    """
+    def __init__(self, datafiles, output_dir='./'):
+        self.tag = 'groupscalestep.fits'
+        self.output_dir = output_dir
+        self.datafiles = np.atleast_1d(datafiles)
+        self.fileroots = utils.get_filename_root(self.datafiles)
+
+    def run(self, save_results=True, force_redo=False, **kwargs):
+        results = []
+        all_files = glob.glob(self.output_dir + '*')
+        for i, segment in enumerate(self.datafiles):
+            # If an output file for this segment already exists, skip the step.
+            expected_file = self.output_dir + self.fileroots[i] + self.tag
+            if expected_file in all_files and force_redo is False:
+                print('Output file {} already exists.'.format(expected_file))
+                print('Skipping Group Scale Step.\n')
+                res = expected_file
+            # If no output files are detected, run the step.
+            else:
+                step = calwebb_detector1.group_scale_step.GroupScaleStep()
+                res = step.call(segment, output_dir=self.output_dir,
+                                save_results=save_results, **kwargs)
+            results.append(res)
+
+        return results
+
+
+class DQInitStep:
+    """Wrapper around default calwebb_detector1 Data Quality Initialization
+    step.
+    """
+
+    def __init__(self, datafiles, output_dir='./'):
+        self.tag = 'dqnitstep.fits'
+        self.output_dir = output_dir
+        self.datafiles = np.atleast_1d(datafiles)
+        self.fileroots = utils.get_filename_root(self.datafiles)
+
+    def run(self, save_results=True, force_redo=False, **kwargs):
+        results = []
+        all_files = glob.glob(self.output_dir + '*')
+        for i, segment in enumerate(self.datafiles):
+            # If an output file for this segment already exists, skip the step.
+            expected_file = self.output_dir + self.fileroots[i] + self.tag
+            if expected_file in all_files and force_redo is False:
+                print('Output file {} already exists.'.format(expected_file))
+                print('Skipping Data Quality Initialization Step.\n')
+                res = expected_file
+            # If no output files are detected, run the step.
+            else:
+                step = calwebb_detector1.dq_init_step.DQInitStep()
+                res = step.call(segment, output_dir=self.output_dir,
+                                save_results=save_results, **kwargs)
+            results.append(res)
+
+        return results
+
+
+class SaturationStep:
+    """Wrapper around default calwebb_detector1 Saturation Detection step.
+    """
+
+    def __init__(self, datafiles, output_dir='./'):
+        self.tag = 'saturationstep.fits'
+        self.output_dir = output_dir
+        self.datafiles = np.atleast_1d(datafiles)
+        self.fileroots = utils.get_filename_root(self.datafiles)
+
+    def run(self, save_results=True, force_redo=False, **kwargs):
+        results = []
+        all_files = glob.glob(self.output_dir + '*')
+        for i, segment in enumerate(self.datafiles):
+            # If an output file for this segment already exists, skip the step.
+            expected_file = self.output_dir + self.fileroots[i] + self.tag
+            if expected_file in all_files and force_redo is False:
+                print('Output file {} already exists.'.format(expected_file))
+                print('Skipping Saturation Detection Step.\n')
+                res = expected_file
+            # If no output files are detected, run the step.
+            else:
+                step = calwebb_detector1.saturation_step.SaturationStep()
+                res = step.call(segment, output_dir=self.output_dir,
+                                save_results=save_results, **kwargs)
+            results.append(res)
+
+        return results
+
+
+class SuperBiasStep:
+    """Wrapper around default calwebb_detector1 Super Bias Subtraction step.
+    """
+
+    def __init__(self, datafiles, output_dir='./'):
+        self.tag = 'superbiasstep.fits'
+        self.output_dir = output_dir
+        self.datafiles = np.atleast_1d(datafiles)
+        self.fileroots = utils.get_filename_root(self.datafiles)
+
+    def run(self, save_results=True, force_redo=False, **kwargs):
+        results = []
+        all_files = glob.glob(self.output_dir + '*')
+        for i, segment in enumerate(self.datafiles):
+            # If an output file for this segment already exists, skip the step.
+            expected_file = self.output_dir + self.fileroots[i] + self.tag
+            if expected_file in all_files and force_redo is False:
+                print('Output file {} already exists.'.format(expected_file))
+                print('Skipping Superbias Subtraction Step.\n')
+                res = expected_file
+            # If no output files are detected, run the step.
+            else:
+                step = calwebb_detector1.superbias_step.SuperBiasStep()
+                res = step.call(segment, output_dir=self.output_dir,
+                                save_results=save_results, **kwargs)
+            results.append(res)
+
+        return results
+
+
+class RefPixStep:
+    """Wrapper around default calwebb_detector1 Reference Pixel Correction
+    step.
+    """
+
+    def __init__(self, datafiles, output_dir='./'):
+        self.tag = 'refpixstep.fits'
+        self.output_dir = output_dir
+        self.datafiles = np.atleast_1d(datafiles)
+        self.fileroots = utils.get_filename_root(self.datafiles)
+
+    def run(self, save_results=True, force_redo=False, **kwargs):
+        results = []
+        all_files = glob.glob(self.output_dir + '*')
+        for i, segment in enumerate(self.datafiles):
+            # If an output file for this segment already exists, skip the step.
+            expected_file = self.output_dir + self.fileroots[i] + self.tag
+            if expected_file in all_files and force_redo is False:
+                print('Output file {} already exists.'.format(expected_file))
+                print('Skipping Reference Pixel Correction Step.\n')
+                res = expected_file
+            # If no output files are detected, run the step.
+            else:
+                step = calwebb_detector1.refpix_step.RefPixStep()
+                res = step.call(segment, output_dir=self.output_dir,
+                                save_results=save_results, **kwargs)
+            results.append(res)
+
+        return results
+
+
+class BackgroundStep:
+    """Wrapper around custom Background Subtraction step.
+    """
+    def __init__(self, datafiles, background_model=None, output_dir='./'):
+        self.tag = 'backgroundstep.fits'
+        self.output_dir = output_dir
+        self.datafiles = np.atleast_1d(datafiles)
+        self.fileroots = utils.get_filename_root(self.datafiles)
+        if background_model is None:
+            msg = 'No background model provided'
+            raise ValueError(msg)
+        self.background_model = np.load(background_model)
+
+    def run(self, save_results=True, force_redo=False):
+        all_files = glob.glob(self.output_dir + '*')
+        do_step = 1
+        results = []
+        for i in range(len(self.datafiles)):
+            # If an output file for this segment already exists, skip the step.
+            expected_file = self.output_dir + self.fileroots[i] + self.tag
+            if expected_file not in all_files:
+                do_step *= 0
+            else:
+                results.append(expected_file)
+        if do_step == 1 and force_redo is False:
+            print('Output files already exist.')
+            print('Skipping Background Subtraction Step.')
+        # If no output files are detected, run the step.
+        else:
+            with warnings.catch_warnings():
+                warnings.filterwarnings('ignore')
+                results = backgroundstep(self.datafiles, self.background_model,
+                                         output_dir=self.output_dir,
+                                         save_results=save_results)
+
+        return results
+
+
+class OneOverFStep:
+    """Wrapper around custom 1/f Correction Step.
+    """
+    def __init__(self, datafiles, out_frames, output_dir='./',
+                 scaling_curve=None, outlier_maps=None, trace_mask=None):
+        self.tag = 'oneoverfstep.fits'
+        self.output_dir = output_dir
+        self.datafiles = np.atleast_1d(datafiles)
+        self.fileroots = utils.get_filename_root(self.datafiles)
+        self.out_frames = out_frames
+        self.scaling_curve = scaling_curve
+        self.trace_mask = trace_mask
+        self.outlier_maps = outlier_maps
+
+    def run(self, save_results=True, force_redo=False):
+        all_files = glob.glob(self.output_dir + '*')
+        do_step = 1
+        results = []
+        for i in range(len(self.datafiles)):
+            # If an output file for this segment already exists, skip the step.
+            expected_file = self.output_dir + self.fileroots[i] + self.tag
+            if expected_file not in all_files:
+                do_step *= 0
+            else:
+                results.append(self.output_dir + expected_file)
+        if do_step == 1 and force_redo is False:
+            print('Output files already exist.')
+            print('Skipping 1/f Correction Step.\n')
+        # If no output files are detected, run the step.
+        else:
+            results = oneoverfstep(self.datafiles, out_frames=self.out_frames,
+                                   scaling_curve=self.scaling_curve,
+                                   output_dir=self.output_dir,
+                                   save_results=save_results,
+                                   outlier_maps=self.outlier_maps,
+                                   trace_mask=self.trace_mask)
+
+        return results
+
+
+class LinearityStep:
+    """Wrapper around default calwebb_detector1 Linearity Correction step.
+    """
+
+    def __init__(self, datafiles, output_dir='./'):
+        self.tag = 'linearitystep.fits'
+        self.output_dir = output_dir
+        self.datafiles = np.atleast_1d(datafiles)
+        self.fileroots = utils.get_filename_root(self.datafiles)
+
+    def run(self, save_results=True, force_redo=False, **kwargs):
+        results = []
+        all_files = glob.glob(self.output_dir + '*')
+        for i, segment in enumerate(self.datafiles):
+            # If an output file for this segment already exists, skip the step.
+            expected_file = self.output_dir + self.fileroots[i] + self.tag
+            if expected_file in all_files and force_redo is False:
+                print('Output file {} already exists.'.format(expected_file))
+                print('Skipping Linearity Correction Step.\n')
+                res = expected_file
+            # If no output files are detected, run the step.
+            else:
+                step = calwebb_detector1.linearity_step.LinearityStep()
+                res = step.call(segment, output_dir=self.output_dir,
+                                save_results=save_results, **kwargs)
+                # Hack to remove oneoverfstep tag from file name.
+                try:
+                    res = utils.fix_filenames(res, '_oneoverfstep_',
+                                              self.output_dir)[0]
+                except IndexError:
+                    pass
+            results.append(res)
+
+        return results
+
+
+class JumpStep:
+    """Wrapper around default calwebb_detector1 Jump Detection step.
+    """
+
+    def __init__(self, datafiles, output_dir='./'):
+        self.tag = 'jump.fits'
+        self.output_dir = output_dir
+        self.datafiles = np.atleast_1d(datafiles)
+        self.fileroots = utils.get_filename_root(self.datafiles)
+
+    def run(self, save_results=True, force_redo=False, rejection_threshold=5,
+            **kwargs):
+        results = []
+        all_files = glob.glob(self.output_dir + '*')
+        for i, segment in enumerate(self.datafiles):
+            # If an output file for this segment already exists, skip the step.
+            expected_file = self.output_dir + self.fileroots[i] + self.tag
+            if expected_file in all_files and force_redo is False:
+                print('Output file {} already exists.'.format(expected_file))
+                print('Skipping Jump Detection Step.\n')
+                res = expected_file
+            # If no output files are detected, run the step.
+            else:
+                step = calwebb_detector1.jump_step.JumpStep()
+                res = step.call(segment, output_dir=self.output_dir,
+                                save_results=save_results,
+                                rejection_threshold=rejection_threshold,
+                                maximum_cores='quarter', **kwargs)
+            results.append(res)
+
+        return results
+
+
+class RampFitStep:
+    """Wrapper around default calwebb_detector1 Ramp Fit step.
+    """
+    def __init__(self, datafiles, output_dir='./'):
+        self.tag = 'jump.fits'
+        self.output_dir = output_dir
+        self.datafiles = np.atleast_1d(datafiles)
+        self.fileroots = utils.get_filename_root(self.datafiles)
+
+    def run(self, save_results=True, force_redo=False, **kwargs):
+        results = []
+        all_files = glob.glob(self.output_dir + '*')
+        for i, segment in enumerate(self.datafiles):
+            # If an output file for this segment already exists, skip the step.
+            expected_file = self.output_dir + self.fileroots[i] + self.tag
+            if expected_file in all_files and force_redo is False:
+                print('Output file {} already exists.'.format(expected_file))
+                print('Skipping Ramp Fit Step.\n')
+                res = expected_file
+            # If no output files are detected, run the step.
+            else:
+                step = calwebb_detector1.ramp_fit_step.RampFitStep()
+                res = step.call(segment, output_dir=self.output_dir,
+                                save_results=save_results, **kwargs)[1]
+                # Store pixel flags in seperate files for potential use in 1/f
+                # noise correction.
+                hdu = fits.PrimaryHDU(res.dq)
+                outfile = self.output_dir + self.fileroots[i] + 'dqpixelflags.fits'
+                hdu.writeto(outfile, overwrite=True)
+                # Hack to remove _1_ tag from file name.
+                res = utils.fix_filenames(res, '_1_', self.output_dir)[0]
+            results.append(res)
+
+        return results
+
+
+class GainScaleStep:
+    """Wrapper around default calwebb_detector1 Gain Scale Correction step.
+    """
+
+    def __init__(self, datafiles, output_dir='./'):
+        self.tag = 'gainscalestep.fits'
+        self.output_dir = output_dir
+        self.datafiles = np.atleast_1d(datafiles)
+        self.fileroots = utils.get_filename_root(self.datafiles)
+
+    def run(self, save_results=True, force_redo=False, **kwargs):
+        results = []
+        all_files = glob.glob(self.output_dir + '*')
+        for i, segment in enumerate(self.datafiles):
+            # If an output file for this segment already exists, skip the step.
+            expected_file = self.output_dir + self.fileroots[i] + self.tag
+            if expected_file in all_files and force_redo is False:
+                print('Output file {} already exists.'.format(expected_file))
+                print('Skipping Gain Scale Correction Step.\n')
+                res = expected_file
+            # If no output files are detected, run the step.
+            else:
+                step = calwebb_detector1.gain_scale_step.GainScaleStep()
+                res = step.call(segment, output_dir=self.output_dir,
+                                save_results=save_results, **kwargs)
+            results.append(res)
+
+        return results
+
+
 def backgroundstep(datafiles, background_model, output_dir=None,
                    save_results=True, show_plots=False):
     """Background subtraction must be carefully treated with SOSS observations.
@@ -33,7 +397,7 @@ def backgroundstep(datafiles, background_model, output_dir=None,
 
     Parameters
     ----------
-    datafiles : list[str], list[CubeModel]
+    datafiles : list[str], list[CubeModel], np.ndarray[str]
         Paths to data segments for a SOSS exposure, or the datamodels
         themselves.
     background_model : np.array
@@ -139,7 +503,7 @@ def oneoverfstep(datafiles, out_frames, scaling_curve=None, output_dir=None,
 
     Parameters
     ----------
-    datafiles : list[str], or list[RampModel]
+    datafiles : list[str], or list[RampModel], np.ndarray[str]
         List of paths to data files, or RampModels themselves for each segment
         of the TSO. Should be 4D ramps and not rate files.
     out_frames : list[int]
@@ -427,234 +791,61 @@ def run_stage1(results, background_model, out_frames, scaling_curve=None,
 
     # ===== Group Scale Step =====
     # Default DMS step.
-    step_tag = 'groupscalestep.fits'
-    new_results = []
-    for i, segment in enumerate(results):
-        # If an output file for this segment already exists, skip the step.
-        expected_file = outdir + fileroots[i] + step_tag
-        if expected_file in all_files and force_redo is False:
-            print('Output file {} already exists.'.format(expected_file))
-            print('Skipping Group Scale Step.\n')
-            res = expected_file
-        # If no output files are detected, run the step.
-        else:
-            step = calwebb_detector1.group_scale_step.GroupScaleStep()
-            res = step.call(segment, output_dir=outdir,
-                            save_results=save_results)
-        new_results.append(res)
-    results = new_results
+    step = GroupScaleStep(results, output_dir=outdir)
+    results = step.run(save_results=save_results, force_redo=force_redo)
 
     # ===== Data Quality Initialization Step =====
     # Default DMS step.
-    step_tag = 'dqinitstep.fits'
-    new_results = []
-    for i, segment in enumerate(results):
-        # If an output file for this segment already exists, skip the step.
-        expected_file = outdir + fileroots[i] + step_tag
-        if expected_file in all_files and force_redo is False:
-            print('Output file {} already exists.'.format(expected_file))
-            print('Skipping Data Quality Initialization Step.\n')
-            res = expected_file
-        # If no output files are detected, run the step.
-        else:
-            step = calwebb_detector1.dq_init_step.DQInitStep()
-            res = step.call(segment, output_dir=outdir,
-                            save_results=save_results)
-        new_results.append(res)
-    results = new_results
+    step = DQInitStep(results, output_dir=outdir)
+    results = step.run(save_results=save_results, force_redo=force_redo)
 
     # ===== Saturation Detection Step =====
     # Default DMS step.
-    step_tag = 'saturationstep.fits'
-    new_results = []
-    for i, segment in enumerate(results):
-        # If an output file for this segment already exists, skip the step.
-        expected_file = outdir + fileroots[i] + step_tag
-        if expected_file in all_files and force_redo is False:
-            print('Output file {} already exists.'.format(expected_file))
-            print('Skipping Saturation Detection Step.\n')
-            res = expected_file
-        # If no output files are detected, run the step.
-        else:
-            step = calwebb_detector1.saturation_step.SaturationStep()
-            res = step.call(segment, output_dir=outdir,
-                            save_results=save_results)
-        new_results.append(res)
-    results = new_results
+    step = SaturationStep(results, output_dir=outdir)
+    results = step.run(save_results=save_results, force_redo=force_redo)
 
     # ===== Superbias Subtraction Step =====
     # Default DMS step.
-    step_tag = 'superbiasstep.fits'
-    new_results = []
-    for i, segment in enumerate(results):
-        # If an output file for this segment already exists, skip the step.
-        expected_file = outdir + fileroots[i] + step_tag
-        if expected_file in all_files and force_redo is False:
-            print('Output file {} already exists.'.format(expected_file))
-            print('Skipping Superbias Subtraction Step.\n')
-            res = expected_file
-        # If no output files are detected, run the step.
-        else:
-            step = calwebb_detector1.superbias_step.SuperBiasStep()
-            res = step.call(segment, output_dir=outdir,
-                            save_results=save_results)
-        new_results.append(res)
-    results = new_results
+    step = SuperBiasStep(results, output_dir=outdir)
+    results = step.run(save_results=save_results, force_redo=force_redo)
 
     # ===== Reference Pixel Correction Step =====
     # Default DMS step.
-    step_tag = 'refpixstep.fits'
-    new_results = []
-    for i, segment in enumerate(results):
-        # If an output file for this segment already exists, skip the step.
-        expected_file = outdir + fileroots[i] + step_tag
-        if expected_file in all_files and force_redo is False:
-            print('Output file {} already exists.'.format(expected_file))
-            print('Skipping Reference Pixel Correction Step.\n')
-            res = expected_file
-        # If no output files are detected, run the step.
-        else:
-            step = calwebb_detector1.refpix_step.RefPixStep()
-            res = step.call(segment, output_dir=outdir,
-                            save_results=save_results)
-        new_results.append(res)
-    results = new_results
+    step = RefPixStep(results, output_dir=outdir)
+    results = step.run(save_results=save_results, force_redo=force_redo)
 
     # ===== Background Subtraction Step =====
     # Custom DMS step.
-    step_tag = 'backgroundstep.fits'
-    do_step = 1
-    new_results = []
-    for i in range(len(results)):
-        # If an output file for this segment already exists, skip the step.
-        expected_file = outdir + fileroots[i] + step_tag
-        if expected_file not in all_files:
-            do_step *= 0
-        else:
-            new_results.append(expected_file)
-    if do_step == 1 and force_redo is False:
-        print('Output files already exist.')
-        print('Skipping Background Subtraction Step.')
-        results = new_results
-    # If no output files are detected, run the step.
-    else:
-        if background_model is None:
-            msg = 'No background model provided'
-            raise ValueError(msg)
-        with warnings.catch_warnings():
-            warnings.filterwarnings('ignore')
-            results = backgroundstep(results, background_model,
-                                     output_dir=outdir,
-                                     save_results=save_results)
+    step = BackgroundStep(results, background_model=background_model,
+                          output_dir=outdir)
+    results = step.run(save_results=save_results, force_redo=force_redo)
 
     # ===== 1/f Noise Correction Step =====
     # Custom DMS step.
-    step_tag = 'oneoverfstep.fits'
-    do_step = 1
-    new_results = []
-    for i in range(len(results)):
-        # If an output file for this segment already exists, skip the step.
-        expected_file = outdir + fileroots[i] + step_tag
-        if expected_file not in all_files:
-            do_step *= 0
-        else:
-            new_results.append(outdir + expected_file)
-    if do_step == 1 and force_redo is False:
-        print('Output files already exist.')
-        print('Skipping 1/f Correction Step.\n')
-        results = new_results
-    # If no output files are detected, run the step.
-    else:
-        results = oneoverfstep(results, out_frames=out_frames,
-                               scaling_curve=scaling_curve, output_dir=outdir,
-                               save_results=save_results,
-                               outlier_maps=outlier_maps,
-                               trace_mask=trace_mask)
+    step = OneOverFStep(results, out_frames=out_frames,
+                        scaling_curve=scaling_curve, output_dir=outdir,
+                        outlier_maps=outlier_maps, trace_mask=trace_mask)
+    results = step.run(save_results=save_results, force_redo=force_redo)
 
     # ===== Linearity Correction Step =====
     # Default DMS step.
-    step_tag = 'linearitystep.fits'
-    new_results = []
-    for i, segment in enumerate(results):
-        # If an output file for this segment already exists, skip the step.
-        expected_file = outdir + fileroots[i] + step_tag
-        if expected_file in all_files and force_redo is False:
-            print('Output file {} already exists.'.format(expected_file))
-            print('Skipping Linearity Correction Step.\n')
-            res = expected_file
-        # If no output files are detected, run the step.
-        else:
-            step = calwebb_detector1.linearity_step.LinearityStep()
-            res = step.call(segment, output_dir=outdir,
-                            save_results=save_results)
-            # Hack to remove oneoverfstep tag from file name.
-            res = utils.fix_filenames(res, '_oneoverfstep_', outdir)[0]
-        new_results.append(res)
-    results = new_results
+    step = LinearityStep(results, output_dir=outdir)
+    results = step.run(save_results=save_results, force_redo=force_redo)
 
     # ===== Jump Detection Step =====
     # Default DMS step.
-    step_tag = 'jump.fits'
-    new_results = []
-    for i, segment in enumerate(results):
-        # If an output file for this segment already exists, skip the step.
-        expected_file = outdir + fileroots[i] + step_tag
-        if expected_file in all_files and force_redo is False:
-            print('Output file {} already exists.'.format(expected_file))
-            print('Skipping Jump Detection Step.\n')
-            res = expected_file
-        # If no output files are detected, run the step.
-        else:
-            step = calwebb_detector1.jump_step.JumpStep()
-            res = step.call(segment, maximum_cores='quarter',
-                            rejection_threshold=rejection_threshold,
-                            output_dir=outdir, save_results=save_results)
-        new_results.append(res)
-    results = new_results
+    step = JumpStep(results, output_dir=outdir)
+    results = step.run(save_results=save_results, force_redo=force_redo,
+                       rejection_threshold=rejection_threshold)
 
     # ===== Ramp Fit Step =====
     # Default DMS step.
-    step_tag = 'rampfitstep.fits'
-    new_results = []
-    for i, segment in enumerate(results):
-        # If an output file for this segment already exists, skip the step.
-        expected_file = outdir + fileroots[i] + step_tag
-        if expected_file in all_files and force_redo is False:
-            print('Output file {} already exists.'.format(expected_file))
-            print('Skipping Ramp Fit Step.\n')
-            res = expected_file
-        # If no output files are detected, run the step.
-        else:
-            step = calwebb_detector1.ramp_fit_step.RampFitStep()
-            res = step.call(segment, output_dir=outdir,
-                            save_results=save_results)[1]
-            # Store pixel flags in seperate files for potential use in 1/f
-            # noise correction.
-            hdu = fits.PrimaryHDU(res.dq)
-            outfile = outdir + fileroots[i] + 'dqpixelflags.fits'
-            hdu.writeto(outfile, overwrite=True)
-            # Hack to remove _1_ tag from file name.
-            res = utils.fix_filenames(res, '_1_', outdir)[0]
-        new_results.append(res)
-    results = new_results
+    step = RampFitStep(results, output_dir=outdir)
+    results = step.run(save_results=save_results, force_redo=force_redo)
 
     # ===== Gain Scale Correcton Step =====
     # Default DMS step.
-    step_tag = 'gainscalestep.fits'
-    new_results = []
-    for i, segment in enumerate(results):
-        # If an output file for this segment already exists, skip the step.
-        expected_file = outdir + fileroots[i] + step_tag
-        if expected_file in all_files and force_redo is False:
-            print('Output file {} already exists.'.format(expected_file))
-            print('Skipping Gain Scale Correction Step.\n')
-            res = expected_file
-        # If no output files are detected, run the step.
-        else:
-            step = calwebb_detector1.gain_scale_step.GainScaleStep()
-            res = step.call(segment, output_dir=outdir,
-                            save_results=save_results)
-        new_results.append(res)
-    results = new_results
+    step = GainScaleStep(results, output_dir=outdir)
+    results = step.run(save_results=save_results, force_redo=force_redo)
 
     return results

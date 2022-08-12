@@ -517,3 +517,18 @@ def package_ld_priors(wave, c1, c2, order, target, M_H, Teff, logg, outdir):
     f.write('#\n')
     df.to_csv(f, index=False)
     f.close()
+
+
+def get_filename_root(datafiles):
+    fileroots = []
+    for file in datafiles:
+        if isinstance(file, str):
+            data = datamodels.open(file)
+        else:
+            data = file
+        filename_split = data.meta.filename.split('_')
+        fileroot = ''
+        for chunk in filename_split[:-1]:
+            fileroot += chunk + '_'
+        fileroots.append(fileroot)
+    return fileroots
