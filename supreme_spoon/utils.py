@@ -532,3 +532,30 @@ def get_filename_root(datafiles):
             fileroot += chunk + '_'
         fileroots.append(fileroot)
     return fileroots
+
+
+def get_timestamps(datafiles):
+    datafiles = np.atleast_1d(datafiles)
+    for i, data in enumerate(datafiles):
+        if i == 0:
+            times = data.int_times['int_mid_BJD_TDB']
+        else:
+            times = np.concatenate([times, data.int_times['int_mid_BJD_TDB']])
+    return times
+
+
+def format_out_frames(out_frames, occultation_type='transit'):
+    if occultation_type == 'transit':
+        # Format the out-of-transit integration numbers.
+        out_frames = np.abs(out_frames)
+        out_frames = np.concatenate([np.arange(out_frames[0]),
+                                     np.arange(out_frames[1]) - out_frames[1]])
+    elif occultation_type == 'eclipse':
+        # Format the in-eclpse integration numbers.
+        out_frames = np.linspace(out_frames[0], out_frames[1],
+                                 out_frames[1] - out_frames[0] + 1).astype(int)
+    else:
+        msg = 'Unknown Occultaton Type: {}'.format(occultation_type)
+        raise ValueError(msg)
+
+    return out_frames
