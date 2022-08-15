@@ -18,16 +18,21 @@ from jwst import datamodels
 from jwst.pipeline import calwebb_detector1
 
 from supreme_spoon import utils, plotting
+from supreme_spoon.databowl import DataBowl
 
 
 class GroupScaleStep:
     """Wrapper around default calwebb_detector1 Group Scale Correction step.
     """
-    def __init__(self, datafiles, output_dir='./'):
+    def __init__(self, input_data, output_dir='./'):
         self.tag = 'groupscalestep.fits'
         self.output_dir = output_dir
-        self.datafiles = np.atleast_1d(datafiles)
-        self.fileroots = utils.get_filename_root(self.datafiles)
+        if isinstance(input_data, DataBowl):
+            self.datafiles = input_data.datamodels
+            self.fileroots = input_data.fileroots
+        else:
+            self.datafiles = np.atleast_1d(input_data)
+            self.fileroots = utils.get_filename_root(self.datafiles)
 
     def run(self, save_results=True, force_redo=False, **kwargs):
         results = []
@@ -54,11 +59,15 @@ class DQInitStep:
     step.
     """
 
-    def __init__(self, datafiles, output_dir='./'):
+    def __init__(self, input_data, output_dir='./'):
         self.tag = 'dqnitstep.fits'
         self.output_dir = output_dir
-        self.datafiles = np.atleast_1d(datafiles)
-        self.fileroots = utils.get_filename_root(self.datafiles)
+        if isinstance(input_data, DataBowl):
+            self.datafiles = input_data.datamodels
+            self.fileroots = input_data.fileroots
+        else:
+            self.datafiles = np.atleast_1d(input_data)
+            self.fileroots = utils.get_filename_root(self.datafiles)
 
     def run(self, save_results=True, force_redo=False, **kwargs):
         results = []
@@ -84,11 +93,15 @@ class SaturationStep:
     """Wrapper around default calwebb_detector1 Saturation Detection step.
     """
 
-    def __init__(self, datafiles, output_dir='./'):
+    def __init__(self, input_data, output_dir='./'):
         self.tag = 'saturationstep.fits'
         self.output_dir = output_dir
-        self.datafiles = np.atleast_1d(datafiles)
-        self.fileroots = utils.get_filename_root(self.datafiles)
+        if isinstance(input_data, DataBowl):
+            self.datafiles = input_data.datamodels
+            self.fileroots = input_data.fileroots
+        else:
+            self.datafiles = np.atleast_1d(input_data)
+            self.fileroots = utils.get_filename_root(self.datafiles)
 
     def run(self, save_results=True, force_redo=False, **kwargs):
         results = []
@@ -114,11 +127,15 @@ class SuperBiasStep:
     """Wrapper around default calwebb_detector1 Super Bias Subtraction step.
     """
 
-    def __init__(self, datafiles, output_dir='./'):
+    def __init__(self, input_data, output_dir='./'):
         self.tag = 'superbiasstep.fits'
         self.output_dir = output_dir
-        self.datafiles = np.atleast_1d(datafiles)
-        self.fileroots = utils.get_filename_root(self.datafiles)
+        if isinstance(input_data, DataBowl):
+            self.datafiles = input_data.datamodels
+            self.fileroots = input_data.fileroots
+        else:
+            self.datafiles = np.atleast_1d(input_data)
+            self.fileroots = utils.get_filename_root(self.datafiles)
 
     def run(self, save_results=True, force_redo=False, **kwargs):
         results = []
@@ -145,11 +162,15 @@ class RefPixStep:
     step.
     """
 
-    def __init__(self, datafiles, output_dir='./'):
+    def __init__(self, input_data, output_dir='./'):
         self.tag = 'refpixstep.fits'
         self.output_dir = output_dir
-        self.datafiles = np.atleast_1d(datafiles)
-        self.fileroots = utils.get_filename_root(self.datafiles)
+        if isinstance(input_data, DataBowl):
+            self.datafiles = input_data.datamodels
+            self.fileroots = input_data.fileroots
+        else:
+            self.datafiles = np.atleast_1d(input_data)
+            self.fileroots = utils.get_filename_root(self.datafiles)
 
     def run(self, save_results=True, force_redo=False, **kwargs):
         results = []
@@ -174,27 +195,30 @@ class RefPixStep:
 class BackgroundStep:
     """Wrapper around custom Background Subtraction step.
     """
-    def __init__(self, datafiles, background_model=None, output_dir='./'):
+    def __init__(self, input_data, background_model, output_dir='./'):
         self.tag = 'backgroundstep.fits'
         self.output_dir = output_dir
-        self.datafiles = np.atleast_1d(datafiles)
-        self.fileroots = utils.get_filename_root(self.datafiles)
-        if background_model is None:
-            msg = 'No background model provided'
-            raise ValueError(msg)
+        if isinstance(input_data, DataBowl):
+            self.datafiles = input_data.datamodels
+            self.fileroots = input_data.fileroots
+        else:
+            self.datafiles = np.atleast_1d(input_data)
+            self.fileroots = utils.get_filename_root(self.datafiles)
         self.background_model = np.load(background_model)
 
     def run(self, save_results=True, force_redo=False):
         all_files = glob.glob(self.output_dir + '*')
         do_step = 1
-        results = []
+        results, background_models = [], []
         for i in range(len(self.datafiles)):
             # If an output file for this segment already exists, skip the step.
             expected_file = self.output_dir + self.fileroots[i] + self.tag
+            expected_file_bkg = self.output_dir + self.fileroots[i] + 'background.fits'
             if expected_file not in all_files:
                 do_step *= 0
             else:
-                results.append(expected_file)
+                results.append(datamodels.open(expected_file))
+                background_models.append(fits.getdata(expected_file_bkg))
         if do_step == 1 and force_redo is False:
             print('Output files already exist.')
             print('Skipping Background Subtraction Step.')
@@ -202,26 +226,42 @@ class BackgroundStep:
         else:
             with warnings.catch_warnings():
                 warnings.filterwarnings('ignore')
-                results = backgroundstep(self.datafiles, self.background_model,
-                                         output_dir=self.output_dir,
-                                         save_results=save_results)
+                step_results = backgroundstep(self.datafiles,
+                                              self.background_model,
+                                              output_dir=self.output_dir,
+                                              save_results=save_results,
+                                              fileroots=self.fileroots)
+                results, background_models = step_results
 
-        return results
+        return results, background_models
 
 
 class OneOverFStep:
     """Wrapper around custom 1/f Correction Step.
     """
-    def __init__(self, datafiles, out_frames, output_dir='./',
-                 scaling_curve=None, outlier_maps=None, trace_mask=None):
+    def __init__(self, input_data, baseline_ints, output_dir='./',
+                 smoothed_wlc=None, outlier_maps=None, trace_mask=None):
         self.tag = 'oneoverfstep.fits'
         self.output_dir = output_dir
-        self.datafiles = np.atleast_1d(datafiles)
-        self.fileroots = utils.get_filename_root(self.datafiles)
-        self.out_frames = out_frames
-        self.scaling_curve = scaling_curve
+        self.baseline_ints = baseline_ints
+        self.smoothed_wlc = smoothed_wlc
         self.trace_mask = trace_mask
         self.outlier_maps = outlier_maps
+
+        if isinstance(input_data, DataBowl):
+            self.datafiles = input_data.datamodels
+            self.fileroots = input_data.fileroots
+            if input_data.smoothed_lightcurve is not None:
+                self.scaling_curve = input_data.smoothed_lightcurve
+            if input_data.trace_mask is not None:
+                self.trace_mask = input_data.trace_mask
+            if input_data.baseline_ints is not None:
+                self.baseline_ints = input_data.baseline_ints
+            if input_data.outlier_maps is not None:
+                self.outlier_maps = input_data.outlier_maps
+        else:
+            self.datafiles = np.atleast_1d(input_data)
+            self.fileroots = utils.get_filename_root(self.datafiles)
 
     def run(self, save_results=True, force_redo=False):
         all_files = glob.glob(self.output_dir + '*')
@@ -233,18 +273,20 @@ class OneOverFStep:
             if expected_file not in all_files:
                 do_step *= 0
             else:
-                results.append(self.output_dir + expected_file)
+                results.append(datamodels.open(expected_file))
         if do_step == 1 and force_redo is False:
             print('Output files already exist.')
             print('Skipping 1/f Correction Step.\n')
         # If no output files are detected, run the step.
         else:
-            results = oneoverfstep(self.datafiles, out_frames=self.out_frames,
-                                   scaling_curve=self.scaling_curve,
+            results = oneoverfstep(self.datafiles,
+                                   baseline_ints=self.baseline_ints,
+                                   smoothed_wlc=self.smoothed_wlc,
                                    output_dir=self.output_dir,
                                    save_results=save_results,
                                    outlier_maps=self.outlier_maps,
-                                   trace_mask=self.trace_mask)
+                                   trace_mask=self.trace_mask,
+                                   fileroots=self.fileroots)
 
         return results
 
@@ -253,11 +295,15 @@ class LinearityStep:
     """Wrapper around default calwebb_detector1 Linearity Correction step.
     """
 
-    def __init__(self, datafiles, output_dir='./'):
+    def __init__(self, input_data, output_dir='./'):
         self.tag = 'linearitystep.fits'
         self.output_dir = output_dir
-        self.datafiles = np.atleast_1d(datafiles)
-        self.fileroots = utils.get_filename_root(self.datafiles)
+        if isinstance(input_data, DataBowl):
+            self.datafiles = input_data.datamodels
+            self.fileroots = input_data.fileroots
+        else:
+            self.datafiles = np.atleast_1d(input_data)
+            self.fileroots = utils.get_filename_root(self.datafiles)
 
     def run(self, save_results=True, force_redo=False, **kwargs):
         results = []
@@ -278,6 +324,7 @@ class LinearityStep:
                 try:
                     res = utils.fix_filenames(res, '_oneoverfstep_',
                                               self.output_dir)[0]
+                    res = datamodels.open(res)
                 except IndexError:
                     pass
             results.append(res)
@@ -289,11 +336,15 @@ class JumpStep:
     """Wrapper around default calwebb_detector1 Jump Detection step.
     """
 
-    def __init__(self, datafiles, output_dir='./'):
+    def __init__(self, input_data, output_dir='./'):
         self.tag = 'jump.fits'
         self.output_dir = output_dir
-        self.datafiles = np.atleast_1d(datafiles)
-        self.fileroots = utils.get_filename_root(self.datafiles)
+        if isinstance(input_data, DataBowl):
+            self.datafiles = input_data.datamodels
+            self.fileroots = input_data.fileroots
+        else:
+            self.datafiles = np.atleast_1d(input_data)
+            self.fileroots = utils.get_filename_root(self.datafiles)
 
     def run(self, save_results=True, force_redo=False, rejection_threshold=5,
             **kwargs):
@@ -321,11 +372,15 @@ class JumpStep:
 class RampFitStep:
     """Wrapper around default calwebb_detector1 Ramp Fit step.
     """
-    def __init__(self, datafiles, output_dir='./'):
+    def __init__(self, input_data, output_dir='./'):
         self.tag = 'jump.fits'
         self.output_dir = output_dir
-        self.datafiles = np.atleast_1d(datafiles)
-        self.fileroots = utils.get_filename_root(self.datafiles)
+        if isinstance(input_data, DataBowl):
+            self.datafiles = input_data.datamodels
+            self.fileroots = input_data.fileroots
+        else:
+            self.datafiles = np.atleast_1d(input_data)
+            self.fileroots = utils.get_filename_root(self.datafiles)
 
     def run(self, save_results=True, force_redo=False, **kwargs):
         results = []
@@ -358,11 +413,15 @@ class GainScaleStep:
     """Wrapper around default calwebb_detector1 Gain Scale Correction step.
     """
 
-    def __init__(self, datafiles, output_dir='./'):
+    def __init__(self, input_data, output_dir='./'):
         self.tag = 'gainscalestep.fits'
         self.output_dir = output_dir
-        self.datafiles = np.atleast_1d(datafiles)
-        self.fileroots = utils.get_filename_root(self.datafiles)
+        if isinstance(input_data, DataBowl):
+            self.datafiles = input_data.datamodels
+            self.fileroots = input_data.fileroots
+        else:
+            self.datafiles = np.atleast_1d(input_data)
+            self.fileroots = utils.get_filename_root(self.datafiles)
 
     def run(self, save_results=True, force_redo=False, **kwargs):
         results = []
@@ -385,7 +444,7 @@ class GainScaleStep:
 
 
 def backgroundstep(datafiles, background_model, output_dir=None,
-                   save_results=True, show_plots=False):
+                   save_results=True, show_plots=False, fileroots=None):
     """Background subtraction must be carefully treated with SOSS observations.
     Due to the extent of the PSF wings, there are very few, if any,
     non-illuminated pixels to serve as a sky region. Furthermore, the zodi
@@ -408,11 +467,15 @@ def backgroundstep(datafiles, background_model, output_dir=None,
         If True, save outputs to file.
     show_plots : bool
         If True, show plots.
+    fileroots : list[str]
+        Root names for output files.
 
     Returns
     -------
     results : list[CubeModel]
         Input data segments, corrected for the background.
+    model_scaled : np.array
+        Background model, scaled to the flux level of each group median.
     """
 
     print('Starting background subtraction step.')
@@ -461,12 +524,7 @@ def backgroundstep(datafiles, background_model, output_dir=None,
     # Loop over all segments in the exposure and subtract the background from
     # each of them.
     results = []
-    for currentfile in datafiles:
-        # Get file name root.
-        old_filename = currentfile.meta.filename
-        to_remove = old_filename.split('_')[-1]
-        fileroot = old_filename.split(to_remove)[0]
-
+    for i, currentfile in enumerate(datafiles):
         # Subtract the scaled background model.
         data_backsub = currentfile.data - model_scaled
         currentfile.data = data_backsub
@@ -475,10 +533,10 @@ def backgroundstep(datafiles, background_model, output_dir=None,
         if save_results is True:
             # Scaled model background.
             hdu = fits.PrimaryHDU(model_scaled)
-            hdu.writeto(output_dir + fileroot + 'background.fits',
+            hdu.writeto(output_dir + fileroots[i] + 'background.fits',
                         overwrite=True)
             # Background subtracted data.
-            currentfile.write(output_dir + fileroot + 'backgroundstep.fits')
+            currentfile.write(output_dir + fileroots[i] + 'backgroundstep.fits')
 
         # Show background scaling plot if requested.
         if show_plots is True:
@@ -488,12 +546,12 @@ def backgroundstep(datafiles, background_model, output_dir=None,
         results.append(currentfile)
         currentfile.close()
 
-    return results
+    return results, model_scaled
 
 
-def oneoverfstep(datafiles, out_frames, scaling_curve=None, output_dir=None,
-                 save_results=True, outlier_maps=None, trace_mask=None,
-                 use_dq=True):
+def oneoverfstep(datafiles, baseline_ints, smoothed_wlc=None,
+                 output_dir=None, save_results=True, outlier_maps=None,
+                 trace_mask=None, use_dq=True, fileroots=None):
     """Custom 1/f correction routine to be applied at the group level. A
     median stack is constructed using all out-of-transit integrations and
     subtracted from each individual integration. The column-wise median of
@@ -506,9 +564,9 @@ def oneoverfstep(datafiles, out_frames, scaling_curve=None, output_dir=None,
     datafiles : list[str], or list[RampModel], np.ndarray[str]
         List of paths to data files, or RampModels themselves for each segment
         of the TSO. Should be 4D ramps and not rate files.
-    out_frames : list[int]
+    baseline_ints : list[int]
         Integration numbers of ingress and egress.
-    scaling_curve : None, np.array
+    smoothed_wlc : None, np.array
         Estimate of the out-of-transit normalized light curve.
     output_dir : str, None
         Directory to which to save results.
@@ -522,6 +580,8 @@ def oneoverfstep(datafiles, out_frames, scaling_curve=None, output_dir=None,
         dimx), or 2D (dimy, dimx).
     use_dq : bool
         If True, mask all pixels currently flagged in the DQ array.
+    fileroots : list[str]
+        Root names for output files.
 
     Returns
     -------
@@ -537,9 +597,9 @@ def oneoverfstep(datafiles, out_frames, scaling_curve=None, output_dir=None,
             output_dir += '/'
 
     # Format the out of transit frames.
-    out_frames = np.abs(out_frames)
-    out_trans = np.concatenate([np.arange(out_frames[0]),
-                                np.arange(out_frames[1]) - out_frames[1]])
+    baseline_ints = np.abs(baseline_ints)
+    out_trans = np.concatenate([np.arange(baseline_ints[0]),
+                                np.arange(baseline_ints[1]) - baseline_ints[1]])
 
     datafiles = np.atleast_1d(datafiles)
     # If outlier maps are passed, ensure that there is one for each segment.
@@ -548,20 +608,11 @@ def oneoverfstep(datafiles, out_frames, scaling_curve=None, output_dir=None,
         if len(outlier_maps) == 1:
             outlier_maps = [outlier_maps[0] for d in datafiles]
 
-    data, fileroots = [], []
+    data = []
     # Load in datamodels from all segments.
     for i, file in enumerate(datafiles):
         currentfile = utils.open_filetype(file)
         data.append(currentfile)
-        # Get file name root.
-        filename_split = currentfile.meta.filename.split('/')[-1].split('_')
-        fileroot = ''
-        for seg, segment in enumerate(filename_split):
-            if seg == len(filename_split) - 1:
-                break
-            segment += '_'
-            fileroot += segment
-        fileroots.append(fileroot)
         # To create the deepstack, join all segments together.
         if i == 0:
             cube = currentfile.data
@@ -578,11 +629,12 @@ def oneoverfstep(datafiles, out_frames, scaling_curve=None, output_dir=None,
     # In order to subtract off the trace as completely as possible, the median
     # stack must be scaled, via the transit curve, to the flux level of each
     # integration.
-    # If no scalng curve is provided, estimate it from the current data.
-    if scaling_curve is None:
+    # If no lightcurve is provided, estimate it from the current data.
+    # TODO: smooth wlc
+    if smoothed_wlc is None:
         postage = cube[:, -1, 20:60, 1500:1550]
         timeseries = np.sum(postage, axis=(1, 2))
-        scaling_curve = timeseries / np.median(timeseries[out_trans])
+        smoothed_wlc = timeseries / np.median(timeseries[out_trans])
 
     # Individually treat each segment.
     corrected_rampmodels = []
@@ -657,8 +709,8 @@ def oneoverfstep(datafiles, out_frames, scaling_curve=None, output_dir=None,
             # ints from the start of the exposure.
             ii = current_int + i
             # Create two difference images; one to be masked and one not.
-            sub[i] = datamodel.data[i] - deepstack * scaling_curve[ii]
-            sub_m[i] = datamodel.data[i] - deepstack * scaling_curve[ii]
+            sub[i] = datamodel.data[i] - deepstack * smoothed_wlc[ii]
+            sub_m[i] = datamodel.data[i] - deepstack * smoothed_wlc[ii]
             # Since the variable upon which 1/f noise depends is time, treat
             # each group individually.
             for g in range(ngroup):
@@ -714,10 +766,10 @@ def oneoverfstep(datafiles, out_frames, scaling_curve=None, output_dir=None,
     return corrected_rampmodels
 
 
-def run_stage1(results, background_model, out_frames, scaling_curve=None,
-               save_results=True, outlier_maps=None, trace_mask=None,
-               force_redo=False, rejection_threshold=5, root_dir='./',
-               output_tag=''):
+def run_stage1(results, background_model, baseline_ints=None,
+               smoothed_wlc=None, save_results=True, outlier_maps=None,
+               trace_mask=None,  force_redo=False, rejection_threshold=5,
+               root_dir='./', output_tag='', occultation_type='transit'):
     """Run the supreme-SPOON Stage 1 pipeline: detector level processing,
     using a combination of official STScI DMS and custom steps. Documentation
     for the official DMS steps can be found here:
@@ -725,14 +777,14 @@ def run_stage1(results, background_model, out_frames, scaling_curve=None,
 
     Parameters
     ----------
-    results : list[str]
+    results : DataBowl, list[str]
         List of paths to input uncalibrated datafiles for all segments in an
-        exposure.
+        exposure, or supreme-SPOON DataBowl object.
     background_model : np.array
         SOSS background model.
-    out_frames : list[int]
+    baseline_ints : list[int]
         Integration numbers for transit ingress and egress.
-    scaling_curve : np.array, None
+    smoothed_wlc : np.array, None
         Estimate of the out-of-transit normalized light curve.
     save_results : bool
         If True, save results of each step to file.
@@ -742,8 +794,7 @@ def run_stage1(results, background_model, out_frames, scaling_curve=None,
     trace_mask : str, np.array, None
         For improved 1/f noise correcton. Trace mask, or path to file
         containing a trace mask. Should be 3D (norder, dimy, dimx), or 2D
-        (dimy, dimx), although if a "window" median subtraction is to be
-        performed, a 3D file is required.
+        (dimy, dimx).
     force_redo : bool
         If True, redo steps even if outputs files are already present.
     rejection_threshold : int
@@ -753,10 +804,12 @@ def run_stage1(results, background_model, out_frames, scaling_curve=None,
         Directory from which all relative paths are defined.
     output_tag : str
         Name tag to append to pipeline outputs directory.
+    occultation_type : str
+        Type of occultation: transit or eclipse.
 
     Returns
     -------
-    results : list[str], list[RampModel]
+    results : DataBowl
         Datafiles for each segment processed through Stage 1.
     """
 
@@ -772,65 +825,80 @@ def run_stage1(results, background_model, out_frames, scaling_curve=None,
     utils.verify_path(root_dir + 'pipeline_outputs_directory' + output_tag + '/Stage1')
     outdir = root_dir + 'pipeline_outputs_directory' + output_tag + '/Stage1/'
 
-    results = np.atleast_1d(results)
+    if not isinstance(results, DataBowl):
+        results = DataBowl(results, occultation_type=occultation_type,
+                           trace_mask=trace_mask, baseline_ints=baseline_ints,
+                           outlier_maps=outlier_maps)
 
     # ===== Group Scale Step =====
     # Default DMS step.
     step = GroupScaleStep(results, output_dir=outdir)
-    results = step.run(save_results=save_results, force_redo=force_redo)
+    step_results = step.run(save_results=save_results, force_redo=force_redo)
+    results.datamodels = step_results
 
     # ===== Data Quality Initialization Step =====
     # Default DMS step.
     step = DQInitStep(results, output_dir=outdir)
-    results = step.run(save_results=save_results, force_redo=force_redo)
+    step_results = step.run(save_results=save_results, force_redo=force_redo)
+    results.datamodels = step_results
 
     # ===== Saturation Detection Step =====
     # Default DMS step.
     step = SaturationStep(results, output_dir=outdir)
-    results = step.run(save_results=save_results, force_redo=force_redo)
+    step_results = step.run(save_results=save_results, force_redo=force_redo)
+    results.datamodels = step_results
 
     # ===== Superbias Subtraction Step =====
     # Default DMS step.
     step = SuperBiasStep(results, output_dir=outdir)
-    results = step.run(save_results=save_results, force_redo=force_redo)
+    step_results = step.run(save_results=save_results, force_redo=force_redo)
+    results.datamodels = step_results
 
     # ===== Reference Pixel Correction Step =====
     # Default DMS step.
     step = RefPixStep(results, output_dir=outdir)
-    results = step.run(save_results=save_results, force_redo=force_redo)
+    step_results = step.run(save_results=save_results, force_redo=force_redo)
+    results.datamodels = step_results
 
     # ===== Background Subtraction Step =====
     # Custom DMS step.
     step = BackgroundStep(results, background_model=background_model,
                           output_dir=outdir)
-    results = step.run(save_results=save_results, force_redo=force_redo)
+    step_results = step.run(save_results=save_results, force_redo=force_redo)
+    results.datamodels = step_results[0]
+    results.background_models = step_results[1]
 
     # ===== 1/f Noise Correction Step =====
     # Custom DMS step.
-    step = OneOverFStep(results, out_frames=out_frames,
-                        scaling_curve=scaling_curve, output_dir=outdir,
-                        outlier_maps=outlier_maps, trace_mask=trace_mask)
-    results = step.run(save_results=save_results, force_redo=force_redo)
+    step = OneOverFStep(results, baseline_ints=baseline_ints,
+                        output_dir=outdir, outlier_maps=outlier_maps,
+                        trace_mask=trace_mask, smoothed_wlc=smoothed_wlc)
+    step_results = step.run(save_results=save_results, force_redo=force_redo)
+    results.datamodels = step_results
 
     # ===== Linearity Correction Step =====
     # Default DMS step.
     step = LinearityStep(results, output_dir=outdir)
-    results = step.run(save_results=save_results, force_redo=force_redo)
+    step_results = step.run(save_results=save_results, force_redo=force_redo)
+    results.datamodels = step_results
 
     # ===== Jump Detection Step =====
     # Default DMS step.
     step = JumpStep(results, output_dir=outdir)
-    results = step.run(save_results=save_results, force_redo=force_redo,
-                       rejection_threshold=rejection_threshold)
+    step_results = step.run(save_results=save_results, force_redo=force_redo,
+                            rejection_threshold=rejection_threshold)
+    results.datamodels = step_results
 
     # ===== Ramp Fit Step =====
     # Default DMS step.
     step = RampFitStep(results, output_dir=outdir)
-    results = step.run(save_results=save_results, force_redo=force_redo)
+    step_results = step.run(save_results=save_results, force_redo=force_redo)
+    results.datamodels = step_results
 
     # ===== Gain Scale Correcton Step =====
     # Default DMS step.
     step = GainScaleStep(results, output_dir=outdir)
-    results = step.run(save_results=save_results, force_redo=force_redo)
+    step_results = step.run(save_results=save_results, force_redo=force_redo)
+    results.datamodels = step_results
 
     return results

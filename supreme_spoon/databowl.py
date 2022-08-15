@@ -15,11 +15,13 @@ from jwst import datamodels
 from supreme_spoon import utils
 
 
+# TODO: reading and writing
 class DataBowl:
     def __init__(self, datafiles, occultation_type='transit',
-                 deepframe=None, tracemask=None, smoothed_lightcurve=None,
+                 deepframe=None, trace_mask=None, smoothed_wlc=None,
                  stellar_spectra=None, centroids=None, trace_profile=None,
-                 norm_frames=None, background_models=None):
+                 baseline_ints=None, background_models=None,
+                 outlier_maps=None):
         datafiles = np.atleast_1d(datafiles)
         self.datamodels = []
         for file in datafiles:
@@ -28,17 +30,18 @@ class DataBowl:
         self.fileroot_noseg = self.initialize_fileroot_noseg()
         self.time = utils.get_timestamps(self.datamodels)
         self.deepframe = deepframe
-        self.tracemask = tracemask
-        self.smoothed_lightcurve = smoothed_lightcurve
+        self.trace_mask = trace_mask
+        self.smoothed_lightcurve = smoothed_wlc
         self.stellar_spectra = stellar_spectra
         self.centroids = centroids
         self.trace_profile = trace_profile
         self.occultation_type = occultation_type
-        if norm_frames is not None:
-            norm_frames = utils.format_out_frames(norm_frames,
-                                                  self.occultation_type)
-        self.baseline_integrations = norm_frames
-        self.background_model = background_models
+        if baseline_ints is not None:
+            baseline_ints = utils.format_out_frames(baseline_ints,
+                                                    self.occultation_type)
+        self.baseline_ints = baseline_ints
+        self.background_models = background_models
+        self.outlier_maps = outlier_maps
 
     def initialize_fileroots(self):
         fileroots = []
