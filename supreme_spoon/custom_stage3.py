@@ -14,22 +14,15 @@ import numpy as np
 from tqdm import tqdm
 import warnings
 
+from applesoss import applesoss
+
 from jwst import datamodels
 from jwst.extract_1d.soss_extract import soss_solver
 from jwst.pipeline import calwebb_spec2
 
-from sys import path
-applesoss_path = '/home/radica/GitHub/APPLESOSS/'
-path.insert(1, applesoss_path)
-try:
-    from APPLESOSS import applesoss
-    use_applesoss = True
-except ModuleNotFoundError:
-    msg = 'APPLESOSS module not available. Some capabilities will be limited.'
-    warnings.warn(msg)
-    use_applesoss = False
-
 from supreme_spoon import plotting, utils
+
+use_applesoss = True
 
 
 def construct_lightcurves(datafiles, out_frames, output_dir=None,

@@ -20,18 +20,8 @@ import pandas as pd
 import pickle as pk
 import warnings
 
+from applesoss.edgetrigger_centroids import get_soss_centroids
 from jwst import datamodels
-
-from sys import path
-applesoss_path = '/home/radica/GitHub/APPLESOSS/'
-path.insert(1, applesoss_path)
-try:
-    from APPLESOSS.edgetrigger_centroids import get_soss_centroids
-    use_applesoss = True
-except ModuleNotFoundError:
-    msg = 'APPLESOSS module not available. Some capabilities will be limited.'
-    warnings.warn(msg)
-    use_applesoss = False
 
 
 def get_interp_box(data, box_size, i, j, dimx, dimy):
@@ -154,9 +144,6 @@ def verify_path(path):
 def get_trace_centroids(deepframe, subarray, output_dir=None,
                         save_results=True, save_filename=None):
 
-    if use_applesoss is False:
-        msg = 'APPLESOSS module not available.\n Cannot extract trace centroids.'
-        raise ModuleNotFoundError(msg)
     dimy, dimx = np.shape(deepframe)
     with warnings.catch_warnings():
         warnings.filterwarnings('ignore')
