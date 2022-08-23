@@ -3,18 +3,18 @@
 
 from setuptools import setup
 
-setup(name='supreme-spoon',
+setup(name='supreme_spoon',
       version='0.0.1',
       license='MIT',
       author='Michael Radica',
       author_email='michael.radica@umontreal.ca',
-      packages=['supreme-spoon'],
+      packages=['supreme_spoon'],
       include_package_data=True,
       url='https://github.com/radicamc/supreme-spoon',
       description='Tools for Reduction of NIRISS/SOSS TSOs',
       package_data={'': ['README.md', 'LICENSE']},
-      install_requires=['applesoss', 'astropy', 'jwst', 'matplotlib',
-                        'numpy', 'scipy', 'tqdm'],
+      install_requires=['applesoss', 'astropy', 'bottleneck', 'jwst',
+                        'matplotlib', 'numpy', 'pandas', 'scipy', 'tqdm'],
       classifiers=[
         'Development Status :: 3 - Alpha',
         'Intended Audience :: Science/Research',
