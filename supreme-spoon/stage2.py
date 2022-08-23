@@ -21,6 +21,96 @@ from jwst.pipeline import calwebb_spec2
 from supreme_spoon import plotting, utils
 
 
+class AssignWCSStep:
+    """Wrapper around default calwebb_spec2 Assign WCS step.
+    """
+
+    def __init__(self, datafiles, output_dir='./'):
+        self.tag = 'assignwcsstep.fits'
+        self.output_dir = output_dir
+        self.datafiles = np.atleast_1d(datafiles)
+        self.fileroots = utils.get_filename_root(self.datafiles)
+
+    def run(self, save_results=True, force_redo=False, **kwargs):
+        results = []
+        all_files = glob.glob(self.output_dir + '*')
+        for i, segment in enumerate(self.datafiles):
+            # If an output file for this segment already exists, skip the step.
+            expected_file = self.output_dir + self.fileroots[i] + self.tag
+            if expected_file in all_files and force_redo is False:
+                print('Output file {} already exists.'.format(expected_file))
+                print('Skipping Assign WCS Step.\n')
+                res = expected_file
+            # If no output files are detected, run the step.
+            else:
+                step = calwebb_spec2.assign_wcs_step.AssignWcsStep()
+                res = step.call(segment, output_dir=self.output_dir,
+                                save_results=save_results, **kwargs)
+            results.append(res)
+
+        return results
+
+
+class SourceTypeStep:
+    """Wrapper around default calwebb_spec2 Source Type Determination step.
+    """
+
+    def __init__(self, datafiles, output_dir='./'):
+        self.tag = 'sourcetypestep.fits'
+        self.output_dir = output_dir
+        self.datafiles = np.atleast_1d(datafiles)
+        self.fileroots = utils.get_filename_root(self.datafiles)
+
+    def run(self, save_results=True, force_redo=False, **kwargs):
+        results = []
+        all_files = glob.glob(self.output_dir + '*')
+        for i, segment in enumerate(self.datafiles):
+            # If an output file for this segment already exists, skip the step.
+            expected_file = self.output_dir + self.fileroots[i] + self.tag
+            if expected_file in all_files and force_redo is False:
+                print('Output file {} already exists.'.format(expected_file))
+                print('Skipping Source Type Determination Step.\n')
+                res = expected_file
+            # If no output files are detected, run the step.
+            else:
+                step = calwebb_spec2.srctype_step.SourceTypeStep()
+                res = step.call(segment, output_dir=self.output_dir,
+                                save_results=save_results, **kwargs)
+            results.append(res)
+
+        return results
+
+
+class FlatFieldStep:
+    """Wrapper around default calwebb_spec2 Flat Field Correction step.
+    """
+
+    def __init__(self, datafiles, output_dir='./'):
+        self.tag = 'flatfieldstep.fits'
+        self.output_dir = output_dir
+        self.datafiles = np.atleast_1d(datafiles)
+        self.fileroots = utils.get_filename_root(self.datafiles)
+
+    def run(self, save_results=True, force_redo=False, **kwargs):
+        results = []
+        all_files = glob.glob(self.output_dir + '*')
+        for i, segment in enumerate(self.datafiles):
+            # If an output file for this segment already exists, skip the step.
+            expected_file = self.output_dir + self.fileroots[i] + self.tag
+            if expected_file in all_files and force_redo is False:
+                print('Output file {} already exists.'.format(expected_file))
+                print('Skipping Flat Field Correction Step.\n')
+                res = expected_file
+            # If no output files are detected, run the step.
+            else:
+                step = calwebb_spec2.flat_field_step.FlatFieldStep()
+                res = step.call(segment, output_dir=self.output_dir,
+                                save_results=save_results, **kwargs)
+            results.append(res)
+
+        return results
+
+
 def badpixstep(datafiles, out_frames, thresh=3, box_size=5, max_iter=2,
                output_dir=None,  save_results=True):
     """Identify and correct bad pixels remaining in the dataset. Find outlier
@@ -289,6 +379,7 @@ def tracemaskstep(deepframe, result, output_dir=None, mask_width=30,
     return tracemask
 
 
+# TODO: Smooth
 def lcestimatestep(datafiles, out_frames, save_results=True, output_dir=None):
     """Construct a rough estimate of the TSO photometric light curve to use as
     a scaling factor for the median out-of-transit frame in 1/f noise
@@ -408,60 +499,18 @@ def run_stage2(results, out_frames, save_results=True, force_redo=False,
 
     # ===== Assign WCS Step =====
     # Default DMS step.
-    step_tag = 'assignwcsstep.fits'
-    new_results = []
-    for i, segment in enumerate(results):
-        # If an output file for this segment already exists, skip the step.
-        expected_file = outdir + fileroots[i] + step_tag
-        if expected_file in all_files and force_redo is False:
-            print('Output file {} already exists.'.format(expected_file))
-            print('Skipping Assign WCS Step.')
-            res = expected_file
-        # If no output files are detected, run the step.
-        else:
-            step = calwebb_spec2.assign_wcs_step.AssignWcsStep()
-            res = step.call(segment, output_dir=outdir,
-                            save_results=save_results)
-        new_results.append(res)
-    results = new_results
+    step = AssignWCSStep(results, output_dir=outdir)
+    results = step.run(save_results=save_results, force_redo=force_redo)
 
     # ===== Source Type Determination Step =====
     # Default DMS step.
-    step_tag = 'sourcetypestep.fits'
-    new_results = []
-    for i, segment in enumerate(results):
-        # If an output file for this segment already exists, skip the step.
-        expected_file = outdir + fileroots[i] + step_tag
-        if expected_file in all_files and force_redo is False:
-            print('Output file {} already exists.'.format(expected_file))
-            print('Skipping Source Type Determination Step.')
-            res = expected_file
-        # If no output files are detected, run the step.
-        else:
-            step = calwebb_spec2.srctype_step.SourceTypeStep()
-            res = step.call(segment, output_dir=outdir,
-                            save_results=save_results)
-        new_results.append(res)
-    results = new_results
+    step = SourceTypeStep(results, output_dir=outdir)
+    results = step.run(save_results=save_results, force_redo=force_redo)
 
     # ===== Flat Field Correction Step =====
     # Default DMS step.
-    step_tag = 'flatfieldstep.fits'
-    new_results = []
-    for i, segment in enumerate(results):
-        # If an output file for this segment already exists, skip the step.
-        expected_file = outdir + fileroots[i] + step_tag
-        if expected_file in all_files and force_redo is False:
-            print('Output file {} already exists.'.format(expected_file))
-            print('Skipping Flat Field Correction Step.')
-            res = expected_file
-        # If no output files are detected, run the step.
-        else:
-            step = calwebb_spec2.flat_field_step.FlatFieldStep()
-            res = step.call(segment, output_dir=outdir,
-                            save_results=save_results)
-        new_results.append(res)
-    results = new_results
+    step = FlatFieldStep(results, output_dir=outdir)
+    results = step.run(save_results=save_results, force_redo=force_redo)
 
     # ===== Bad Pixel Correction Step =====
     # Custom DMS step.

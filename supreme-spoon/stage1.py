@@ -213,12 +213,12 @@ class BackgroundStep:
         for i in range(len(self.datafiles)):
             # If an output file for this segment already exists, skip the step.
             expected_file = self.output_dir + self.fileroots[i] + self.tag
-            expected_file_bkg = self.output_dir + self.fileroots[i] + 'background.fits'
+            expected_bkg = self.output_dir + self.fileroots[i] + 'background.fits'
             if expected_file not in all_files:
                 do_step *= 0
             else:
                 results.append(datamodels.open(expected_file))
-                background_models.append(fits.getdata(expected_file_bkg))
+                background_models.append(fits.getdata(expected_bkg))
         if do_step == 1 and force_redo is False:
             print('Output files already exist.')
             print('Skipping Background Subtraction Step.')
@@ -509,10 +509,13 @@ def backgroundstep(datafiles, background_model, output_dir=None,
         # Ccalculate the scaling of the model background to the median stack.
         if dimy == 96:
             # Use area in bottom left corner of detector for SUBSTRIP96.
-            bkg_ratio = deepstack[i, 10:20, 10:200] / background_model[10:20, 10:200]
+            xl, xu = 10, 20
+            yl, yu = 10, 200
         else:
             # Use area in the top left corner of detector for SUBSTRIP256
-            bkg_ratio = deepstack[i, 210:250, 500:800] / background_model[210:250, 500:800]
+            xl, xu = 210, 250
+            yl, yu = 500, 800
+        bkg_ratio = deepstack[i, xl:xu, yl:yu] / background_model[xl:xu, yl:yu]
         # Instead of a straight median, use the median of the 2nd quartile to
         # limit the effect of any remaining illuminated pixels.
         q1 = np.nanpercentile(bkg_ratio, 25)
@@ -746,19 +749,23 @@ def oneoverfstep(datafiles, baseline_ints, smoothed_wlc=None,
         if save_results is True:
             # Inital difference image.
             hdu = fits.PrimaryHDU(sub)
-            hdu.writeto(output_dir + fileroots[n] + 'oneoverfstep_diffim.fits',
+            suffix = 'oneoverfstep_diffim.fits'
+            hdu.writeto(output_dir + fileroots[n] + suffix,
                         overwrite=True)
             # 1/f noise-corrected difference image.
             hdu = fits.PrimaryHDU(subcorr)
-            hdu.writeto(output_dir + fileroots[n] + 'oneoverfstep_diffimcorr.fits',
+            suffix = 'oneoverfstep_diffimcorr.fits'
+            hdu.writeto(output_dir + fileroots[n] + suffix,
                         overwrite=True)
             # DC noise map.
             hdu = fits.PrimaryHDU(dcmap)
-            hdu.writeto(output_dir + fileroots[n] + 'oneoverfstep_noisemap.fits',
+            suffix = 'oneoverfstep_noisemap.fits'
+            hdu.writeto(output_dir + fileroots[n] + suffix,
                         overwrite=True)
             corrected_rampmodels.append(rampmodel_corr)
             # Corrected ramp model.
-            rampmodel_corr.write(output_dir + fileroots[n] + 'oneoverfstep.fits')
+            suffix = 'oneoverfstep.fits'
+            rampmodel_corr.write(output_dir + fileroots[n] + suffix)
 
         # Close datamodel for current segment.
         datamodel.close()

@@ -12,7 +12,7 @@ from astropy.io import fits
 import glob
 import numpy as np
 
-from supreme_spoon import custom_stage1, custom_stage2, custom_stage3
+from supreme_spoon import stage1, stage2, custom_stage3
 from supreme_spoon import utils
 
 # ================== User Input ========================
@@ -59,10 +59,10 @@ if 1 in run_stages:
     background_model = np.load(background_file)
     if scaling_curve is not None:
         scaling_curve = np.load(scaling_curve)
-    stage1_results = custom_stage1.run_stage1(input_files,
-                                              out_frames=out_frames,
-                                              scaling_curve=scaling_curve,
+    stage1_results = stage1.run_stage1(input_files,
                                               background_model=background_model,
+                                              baseline_ints=out_frames,
+                                              smoothed_wlc=scaling_curve,
                                               save_results=save_results,
                                               outlier_maps=outlier_maps,
                                               trace_mask=trace_mask,
