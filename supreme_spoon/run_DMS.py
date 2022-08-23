@@ -39,8 +39,9 @@ run_stages = [1, 2, 3]  # Pipeline stages to run.
 exposure_type = 'CLEAR'  # Type of exposure; either CLEAR or F277W.
 extract_method = 'box'  # Extraction method, box or atoca.
 save_results = True  # Save results of each intermediate step to file.
-force_redo = False  # Force redo of steps which have already been completed.
-out_frames = [50, -50]  # Integrations of ingress and egress.
+force_redo = False  # Force redo of steps which have alreadsy been completed.
+baseline_ints = [50, -50]  # Integrations of ingress and egress.
+occultation_type = 'transit'  # Type of occultation: 'transit' or 'eclipse'.
 # ======================================================
 
 import os
@@ -60,27 +61,28 @@ if 1 in run_stages:
     if scaling_curve is not None:
         scaling_curve = np.load(scaling_curve)
     stage1_results = stage1.run_stage1(input_files,
-                                              background_model=background_model,
-                                              baseline_ints=out_frames,
-                                              smoothed_wlc=scaling_curve,
-                                              save_results=save_results,
-                                              outlier_maps=outlier_maps,
-                                              trace_mask=trace_mask,
-                                              force_redo=force_redo,
-                                              root_dir=root_dir,
-                                              output_tag=output_tag)
+                                       background_model=background_model,
+                                       baseline_ints=baseline_ints,
+                                       smoothed_wlc=scaling_curve,
+                                       save_results=save_results,
+                                       outlier_maps=outlier_maps,
+                                       trace_mask=trace_mask,
+                                       force_redo=force_redo,
+                                       root_dir=root_dir,
+                                       output_tag=output_tag,
+                                       occultation_type=occultation_type)
 else:
     stage1_results = input_files
 
 # Run Stage 2
 if 2 in run_stages:
     background_model = np.load(background_file)
-    stage2_results = custom_stage2.run_stage2(stage1_results,
-                                              out_frames=out_frames,
-                                              save_results=save_results,
-                                              force_redo=force_redo,
-                                              root_dir=root_dir,
-                                              output_tag=output_tag)
+    stage2_results = stage2.run_stage2(stage1_results,
+                                       out_frames=baseline_ints,
+                                       save_results=save_results,
+                                       force_redo=force_redo,
+                                       root_dir=root_dir,
+                                       output_tag=output_tag)
     stage2_results, deepframe = stage2_results[0], stage2_results[1]
 else:
     stage2_results = input_files
@@ -97,7 +99,7 @@ if 3 in run_stages:
                                               force_redo=force_redo,
                                               extract_method=extract_method,
                                               specprofile=specprofile,
-                                              out_frames=out_frames,
+                                              out_frames=baseline_ints,
                                               soss_estimate=soss_estimate,
                                               output_tag=output_tag)
     stellar_spectra = stage3_results

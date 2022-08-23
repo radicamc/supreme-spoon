@@ -24,6 +24,280 @@ from applesoss.edgetrigger_centroids import get_soss_centroids
 from jwst import datamodels
 
 
+def fix_filenames(old_files, to_remove, outdir, to_add=''):
+    """Hacky function to remove fle extensions that get added when running a
+    default JWST DMS step after a custom one.
+
+    Parameters
+    ----------
+    old_files : array[str], array[jwst.datamodel]
+        List of datamodels or paths to datamodels.
+    to_remove : str
+        File name extension to be removed.
+    outdir : str
+        Directory to which to save results.
+    to_add : str
+        Extention to add to the file name.
+
+    Returns
+    -------
+    new_files : array[str]
+        New file names.
+    """
+
+    old_files = np.atleast_1d(old_files)
+    new_files = []
+    # Open datamodel and get file name.
+    for file in old_files:
+        if isinstance(file, str):
+            file = datamodels.open(file)
+        old_filename = file.meta.filename
+
+        # Remove the unwanted extention.
+        split = old_filename.split(to_remove)
+        new_filename = split[0] + '_' + split[1]
+        # Add extension if necessary.
+        if to_add != '':
+            temp = new_filename.split('.fits')
+            new_filename = temp[0] + '_' + to_add + '.fits'
+
+        # Save file with new filename
+        file.write(outdir + new_filename)
+        new_files.append(outdir + new_filename)
+        file.close()
+
+        # Get rid of old file.
+        os.remove(outdir + old_filename)
+
+    return new_files
+
+
+def format_out_frames(out_frames, occultation_type='transit'):
+    """Create a mask of baseline flux frames for lightcurve normalization.
+    Either out-of-transit integrations for transits or in-eclipse integrations
+    for eclipses.
+
+    Parameters
+    ----------
+    out_frames : list[int]
+        Integration numbers of ingress and egress.
+    occultation_type : str
+        Type of occultation, either 'transit' or 'eclipse'.
+
+    Returns
+    -------
+    baseline_ints : array[int]
+        Array of out-of-transit, or in-eclipse frames for transits and
+        eclipses respectively.
+
+    Raises
+    ------
+    ValueError
+        If an unknown occultation type is passed.
+    """
+
+    if occultation_type == 'transit':
+        # Format the out-of-transit integration numbers.
+        out_frames = np.abs(out_frames)
+        out_frames = np.concatenate([np.arange(out_frames[0]),
+                                     np.arange(out_frames[1]) - out_frames[1]])
+    elif occultation_type == 'eclipse':
+        # Format the in-eclpse integration numbers.
+        out_frames = np.linspace(out_frames[0], out_frames[1],
+                                 out_frames[1] - out_frames[0] + 1).astype(int)
+    else:
+        msg = 'Unknown Occultaton Type: {}'.format(occultation_type)
+        raise ValueError(msg)
+
+    return out_frames
+
+
+def get_filename_root(datafiles):
+    """Get the file name roots for each segment.
+
+    Parameters
+    ----------
+    datafiles : array[str], array[jwst.datamodel]
+        Datamodels, or paths to datamodels for each segment.
+
+    Returns
+    -------
+    fileroots : list[str]
+        List of file name roots.
+    """
+
+    fileroots = []
+    for file in datafiles:
+        # Open the datamodel.
+        if isinstance(file, str):
+            data = datamodels.open(file)
+        else:
+            data = file
+        # Get the last part of the path, and split file name into chunks.
+        filename_split = file.meta.filename.split('/')[-1].split('_')
+        fileroot = ''
+        # Get the filename before the step info and save.
+        for chunk in filename_split[:-1]:
+            fileroot += chunk + '_'
+        fileroots.append(fileroot)
+
+    return fileroots
+
+
+def get_filename_root_noseg(fileroots):
+    """Get the file name root for a SOSS TSO woth noo segment information.
+
+    Parameters
+    ----------
+    fileroots : list[str]
+        File root names for each segment.
+
+    Returns
+    -------
+    fileroot_noseg : str
+        File name root with no segment information.
+    """
+
+    # Get total file root, with no segment info.
+    working_name = fileroots[0]
+    if 'seg' in working_name:
+        parts = working_name.split('seg')
+        part1, part2 = parts[0][:-1], parts[1][3:]
+        fileroot_noseg = part1 + part2
+    else:
+        fileroot_noseg = fileroots[0]
+
+    return fileroot_noseg
+
+
+def make_deepstack(cube):
+    """Make deep stack of a TSO.
+
+    Parameters
+    ----------
+    cube : array[float]
+        Stack of all integrations in a TSO
+
+    Returns
+    -------
+    deepstack : array[float]
+       Median of the input cube along the integration axis.
+    """
+
+    # Take median of input cube along the integration axis.
+    deepstack = bn.nanmedian(cube, axis=0)
+
+    return deepstack
+
+
+def open_filetype(datafile):
+    """Open a datamodel whether it is a path, or the datamodel itself.
+
+    Parameters
+    ----------
+    datafile : str, jwst.datamodel
+        Datamodel or path to datamodel.
+
+    Returns
+    -------
+    data : jwst.datamodel
+        Opened datamodel.
+
+    Raises
+    ------
+    ValueError
+        If the filetype passed is not str or jwst.datamodel.
+    """
+
+    if isinstance(datafile, str):
+        data = datamodels.open(datafile)
+    elif isinstance(datafile, (datamodels.CubeModel, datamodels.RampModel)):
+        data = datafile
+    else:
+        raise ValueError('Invalid filetype: {}'.format(type(datafile)))
+
+    return data
+
+
+def unpack_input_directory(indir, filetag='', exposure_type='CLEAR'):
+    """Get all segment files of a specified exposure type from an input data
+     directory.
+
+    Parameters
+    ----------
+    indir : str
+        Path to input directory.
+    filetag : str
+        File name extension of files to unpack.
+    exposure_type : str
+        Either 'CLEAR' or 'F277W'; unpacks the corresponding exposure type.
+
+    Returns
+    -------
+    segments: list[str]
+        File names of the requested exposure and file tag in chronological
+        order.
+    """
+
+    if indir[-1] != '/':
+        indir += '/'
+    all_files = glob.glob(indir + '*')
+    segments = []
+
+    # Check all files in the input directory to see if they match the
+    # specified exposure type and file tag.
+    for file in all_files:
+        try:
+            header = fits.getheader(file, 0)
+        # Skip directories or non-fits files.
+        except(OSError, IsADirectoryError):
+            continue
+        # Keep files of the correct exposure with the correct tag.
+        try:
+            if header['FILTER'] == exposure_type:
+                if filetag in file:
+                    segments.append(file)
+            else:
+                continue
+        except KeyError:
+            continue
+
+    # Ensure that segments are packed in chronological order
+    if len(segments) > 1:
+        segments = np.array(segments)
+        segment_numbers = []
+        for file in segments:
+            seg_no = fits.getheader(file, 0)['EXSEGNUM']
+            segment_numbers.append(seg_no)
+        correct_order = np.argsort(segment_numbers)
+        segments = segments[correct_order]
+
+    return segments
+
+
+def verify_path(path):
+    """Verify that a given directory exists. If not, create it.
+
+    Parameters
+    ----------
+    path : str
+        Path to directory.
+    """
+
+    if os.path.exists(path):
+        pass
+    else:
+        # If directory doesn't exist, create it.
+        os.mkdir(path)
+
+
+# ===============================================
+# ===============================================
+# ================= UNVERIFIED ==================
+# ===============================================
+# ===============================================
+
+
 def get_interp_box(data, box_size, i, j, dimx, dimy):
     """ Get median and standard deviation of a box centered on a specified
     pixel.
@@ -70,13 +344,6 @@ def do_replacement(frame, badpix_map, dq=None, box_size=5):
     return frame_out, dq_out
 
 
-def make_deepstack(cube):
-    """Make deepstack of a TSO.
-    """
-    deepstack = bn.nanmedian(cube, axis=0)
-    return deepstack
-
-
 def unpack_spectra(datafile, quantities=('WAVELENGTH', 'FLUX', 'FLUX_ERROR')):
 
     if isinstance(datafile, str):
@@ -108,37 +375,6 @@ def make_time_axis(filepath):
     t_start = Time(t_start, format='isot', scale='tdb')
     t = np.arange(nint) * tgroup * ngroup + t_start.mjd
     return t
-
-
-def fix_filenames(old_files, to_remove, outdir, to_add=''):
-    old_files = np.atleast_1d(old_files)
-    # Hack to fix file names
-    new_files = []
-    for file in old_files:
-        if isinstance(file, str):
-            file = datamodels.open(file)
-
-        old_filename = file.meta.filename
-
-        split = old_filename.split(to_remove)
-        new_filename = split[0] + '_' + split[1]
-        if to_add != '':
-            temp = new_filename.split('.fits')
-            new_filename = temp[0] + '_' + to_add + '.fits'
-        file.write(outdir + new_filename)
-
-        new_files.append(outdir + new_filename)
-        file.close()
-        os.remove(outdir + old_filename)
-
-    return new_files
-
-
-def verify_path(path):
-    if os.path.exists(path):
-        pass
-    else:
-        os.mkdir(path)
 
 
 def get_trace_centroids(deepframe, subarray, output_dir=None,
@@ -418,16 +654,6 @@ def get_wavebin_limits(wave):
     return bin_low, bin_up
 
 
-def open_filetype(datafile):
-    if isinstance(datafile, str):
-        data = datamodels.open(datafile)
-    elif isinstance(datafile, (datamodels.CubeModel, datamodels.RampModel)):
-        data = datafile
-    else:
-        raise ValueError('Invalid filetype: {}'.format(type(datafile)))
-    return data
-
-
 def get_ld_prior(order, wavebin_low, wavebin_up):
     rawprior = pd.read_csv('w96_order{}_lds_spam_quadratic.txt'.format(order),
                            sep=' ',
@@ -506,21 +732,6 @@ def package_ld_priors(wave, c1, c2, order, target, M_H, Teff, logg, outdir):
     f.close()
 
 
-def get_filename_root(datafiles):
-    fileroots = []
-    for file in datafiles:
-        if isinstance(file, str):
-            data = datamodels.open(file)
-        else:
-            data = file
-        filename_split = data.meta.filename.split('_')
-        fileroot = ''
-        for chunk in filename_split[:-1]:
-            fileroot += chunk + '_'
-        fileroots.append(fileroot)
-    return fileroots
-
-
 def get_timestamps(datafiles):
     datafiles = np.atleast_1d(datafiles)
     for i, data in enumerate(datafiles):
@@ -531,18 +742,4 @@ def get_timestamps(datafiles):
     return times
 
 
-def format_out_frames(out_frames, occultation_type='transit'):
-    if occultation_type == 'transit':
-        # Format the out-of-transit integration numbers.
-        out_frames = np.abs(out_frames)
-        out_frames = np.concatenate([np.arange(out_frames[0]),
-                                     np.arange(out_frames[1]) - out_frames[1]])
-    elif occultation_type == 'eclipse':
-        # Format the in-eclpse integration numbers.
-        out_frames = np.linspace(out_frames[0], out_frames[1],
-                                 out_frames[1] - out_frames[0] + 1).astype(int)
-    else:
-        msg = 'Unknown Occultaton Type: {}'.format(occultation_type)
-        raise ValueError(msg)
 
-    return out_frames

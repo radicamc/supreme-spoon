@@ -13,7 +13,7 @@ setup(name='supreme_spoon',
       url='https://github.com/radicamc/supreme-spoon',
       description='Tools for Reduction of NIRISS/SOSS TSOs',
       package_data={'': ['README.md', 'LICENSE']},
-      install_requires=['applesoss', 'astropy', 'bottleneck', 'jwst',
+      install_requires=['applesoss', 'astropy', 'bottleneck', 'juliet', 'jwst',
                         'matplotlib', 'numpy', 'pandas', 'scipy', 'tqdm'],
       classifiers=[
         'Development Status :: 3 - Alpha',

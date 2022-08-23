@@ -17,54 +17,51 @@ from supreme_spoon import utils
 
 # TODO: reading and writing
 class DataBowl:
-    def __init__(self, datafiles, occultation_type='transit',
-                 deepframe=None, trace_mask=None, smoothed_wlc=None,
-                 stellar_spectra=None, centroids=None, trace_profile=None,
-                 baseline_ints=None, background_models=None,
-                 outlier_maps=None):
+    """Storage class for intermediate dataproducts of the supreme-SPOON
+    pipeline.
+
+    Attributes
+    ----------
+    datamodels : array[jwst.datamodel]
+        Datamodels for each segement of a SOSS TSO.
+    deepframe
+    stellar_spectra
+    centroids
+    trace_profile
+    background_models : array[float]
+        Background models scaled to the flux level of the each group median.
+
+    Methods
+    -------
+
+    """
+    def __init__(self, datafiles, deepframe=None, stellar_spectra=None,
+                 centroids=None, trace_profile=None, background_models=None):
+        """Initializer for the DataBowl class.
+
+        Parameters
+        ----------
+        datafiles : list[str], list[jwst.datamodel]
+            Datamodoels, or paths to datamodels for all segments of a SOSS
+            TSO exposure.
+        deepframe
+        stellar_spectra
+        centroids
+        trace_profile
+        background_models : array[float]
+            Background models scaled to the flux level of the each group
+            median.
+        """
+
         datafiles = np.atleast_1d(datafiles)
         self.datamodels = []
         for file in datafiles:
             self.datamodels.append(datamodels.open(file))
-        self.fileroots = self.initialize_fileroots()
-        self.fileroot_noseg = self.initialize_fileroot_noseg()
+        self.fileroots = utils.get_filename_root(self.datamodels)
+        self.fileroot_noseg = utils.get_filename_root_noseg(self.fileroots)
         self.time = utils.get_timestamps(self.datamodels)
         self.deepframe = deepframe
-        self.trace_mask = trace_mask
-        self.smoothed_lightcurve = smoothed_wlc
         self.stellar_spectra = stellar_spectra
         self.centroids = centroids
         self.trace_profile = trace_profile
-        self.occultation_type = occultation_type
-        if baseline_ints is not None:
-            baseline_ints = utils.format_out_frames(baseline_ints,
-                                                    self.occultation_type)
-        self.baseline_ints = baseline_ints
         self.background_models = background_models
-        self.outlier_maps = outlier_maps
-
-    def initialize_fileroots(self):
-        fileroots = []
-        # Load in datamodels from all segments.
-        for i, file in enumerate(self.datamodels):
-            # Get file name root.
-            filename_split = file.meta.filename.split('/')[-1].split('_')
-            fileroot = ''
-            for seg, segment in enumerate(filename_split):
-                if seg == len(filename_split) - 1:
-                    break
-                segment += '_'
-                fileroot += segment
-            fileroots.append(fileroot)
-        return fileroots
-
-    def initialize_fileroot_noseg(self):
-        # Get total file root, with no segment info.
-        working_name = self.fileroots[0]
-        if 'seg' in working_name:
-            parts = working_name.split('seg')
-            part1, part2 = parts[0][:-1], parts[1][3:]
-            fileroot_noseg = part1 + part2
-        else:
-            fileroot_noseg = self.fileroots[0]
-        return fileroot_noseg
