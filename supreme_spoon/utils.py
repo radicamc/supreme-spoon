@@ -134,7 +134,7 @@ def get_filename_root(datafiles):
         else:
             data = file
         # Get the last part of the path, and split file name into chunks.
-        filename_split = file.meta.filename.split('/')[-1].split('_')
+        filename_split = data.meta.filename.split('/')[-1].split('_')
         fileroot = ''
         # Get the filename before the step info and save.
         for chunk in filename_split[:-1]:
