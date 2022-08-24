@@ -170,6 +170,31 @@ def get_filename_root_noseg(fileroots):
     return fileroot_noseg
 
 
+def get_timestamps(datafiles):
+    """Get the mid-time stamp for each integration in BJD,
+
+    Parameters
+    ----------
+    datafiles : array[jwst.datamodel], list[jwst.datamodel], jwst.datamodel
+        Datamodels for each segment in a TSO.
+
+    Returns
+    -------
+    times : array[float]
+        Mid-integration times for each integraton in BJD.
+    """
+
+    datafiles = np.atleast_1d(datafiles)
+    # Loop over all data files and get mid integration time stamps.
+    for i, data in enumerate(datafiles):
+        if i == 0:
+            times = data.int_times['int_mid_BJD_TDB']
+        else:
+            times = np.concatenate([times, data.int_times['int_mid_BJD_TDB']])
+
+    return times
+
+
 def make_deepstack(cube):
     """Make deep stack of a TSO.
 
@@ -730,16 +755,3 @@ def package_ld_priors(wave, c1, c2, order, target, M_H, Teff, logg, outdir):
     f.write('#\n')
     df.to_csv(f, index=False)
     f.close()
-
-
-def get_timestamps(datafiles):
-    datafiles = np.atleast_1d(datafiles)
-    for i, data in enumerate(datafiles):
-        if i == 0:
-            times = data.int_times['int_mid_BJD_TDB']
-        else:
-            times = np.concatenate([times, data.int_times['int_mid_BJD_TDB']])
-    return times
-
-
-

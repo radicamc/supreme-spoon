@@ -68,7 +68,7 @@ class DQInitStep:
     """
 
     def __init__(self, input_data, output_dir='./'):
-        self.tag = 'dqnitstep.fits'
+        self.tag = 'dqinitstep.fits'
         self.output_dir = output_dir
         if isinstance(input_data, DataBowl):
             self.datafiles = input_data.datamodels

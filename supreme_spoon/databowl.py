@@ -24,6 +24,8 @@ class DataBowl:
     ----------
     datamodels : array[jwst.datamodel]
         Datamodels for each segement of a SOSS TSO.
+    time : array[float]
+        Mid-integration time stamps in BJD.
     deepframe
     stellar_spectra
     centroids
@@ -35,6 +37,7 @@ class DataBowl:
     -------
 
     """
+
     def __init__(self, datafiles, deepframe=None, stellar_spectra=None,
                  centroids=None, trace_profile=None, background_models=None):
         """Initializer for the DataBowl class.
@@ -48,7 +51,7 @@ class DataBowl:
         stellar_spectra
         centroids
         trace_profile
-        background_models : array[float]
+        background_models : array[float], None
             Background models scaled to the flux level of the each group
             median.
         """
