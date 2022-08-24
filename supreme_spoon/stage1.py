@@ -19,7 +19,6 @@ from jwst import datamodels
 from jwst.pipeline import calwebb_detector1
 
 from supreme_spoon import utils, plotting
-from supreme_spoon.databowl import DataBowl
 
 
 class GroupScaleStep:
@@ -29,14 +28,8 @@ class GroupScaleStep:
     def __init__(self, input_data, output_dir='./'):
         self.tag = 'groupscalestep.fits'
         self.output_dir = output_dir
-        if isinstance(input_data, DataBowl):
-            self.datafiles = input_data.datamodels
-            self.fileroots = input_data.fileroots
-            self.input_databowl = input_data
-        else:
-            self.datafiles = np.atleast_1d(input_data)
-            self.fileroots = utils.get_filename_root(self.datafiles)
-            self.input_databowl = None
+        self.datafiles = np.atleast_1d(input_data)
+        self.fileroots = utils.get_filename_root(self.datafiles)
 
     def run(self, save_results=True, force_redo=False, **kwargs):
         results = []
@@ -55,11 +48,6 @@ class GroupScaleStep:
                                 save_results=save_results, **kwargs)
             results.append(res)
 
-        # If a DataBowl was passed, return a DataBowl with the updated results.
-        if self.input_databowl is not None:
-            self.input_databowl.datamodels = results
-            results = self.input_databowl
-
         return results
 
 
@@ -71,14 +59,8 @@ class DQInitStep:
     def __init__(self, input_data, output_dir='./'):
         self.tag = 'dqinitstep.fits'
         self.output_dir = output_dir
-        if isinstance(input_data, DataBowl):
-            self.datafiles = input_data.datamodels
-            self.fileroots = input_data.fileroots
-            self.input_databowl = input_data
-        else:
-            self.datafiles = np.atleast_1d(input_data)
-            self.fileroots = utils.get_filename_root(self.datafiles)
-            self.input_databowl = None
+        self.datafiles = np.atleast_1d(input_data)
+        self.fileroots = utils.get_filename_root(self.datafiles)
 
     def run(self, save_results=True, force_redo=False, **kwargs):
         results = []
@@ -97,11 +79,6 @@ class DQInitStep:
                                 save_results=save_results, **kwargs)
             results.append(res)
 
-        # If a DataBowl was passed, return a DataBowl with the updated results.
-        if self.input_databowl is not None:
-            self.input_databowl.datamodels = results
-            results = self.input_databowl
-
         return results
 
 
@@ -112,14 +89,8 @@ class SaturationStep:
     def __init__(self, input_data, output_dir='./'):
         self.tag = 'saturationstep.fits'
         self.output_dir = output_dir
-        if isinstance(input_data, DataBowl):
-            self.datafiles = input_data.datamodels
-            self.fileroots = input_data.fileroots
-            self.input_databowl = input_data
-        else:
-            self.datafiles = np.atleast_1d(input_data)
-            self.fileroots = utils.get_filename_root(self.datafiles)
-            self.input_databowl = None
+        self.datafiles = np.atleast_1d(input_data)
+        self.fileroots = utils.get_filename_root(self.datafiles)
 
     def run(self, save_results=True, force_redo=False, **kwargs):
         results = []
@@ -138,11 +109,6 @@ class SaturationStep:
                                 save_results=save_results, **kwargs)
             results.append(res)
 
-        # If a DataBowl was passed, return a DataBowl with the updated results.
-        if self.input_databowl is not None:
-            self.input_databowl.datamodels = results
-            results = self.input_databowl
-
         return results
 
 
@@ -153,14 +119,8 @@ class SuperBiasStep:
     def __init__(self, input_data, output_dir='./'):
         self.tag = 'superbiasstep.fits'
         self.output_dir = output_dir
-        if isinstance(input_data, DataBowl):
-            self.datafiles = input_data.datamodels
-            self.fileroots = input_data.fileroots
-            self.input_databowl = input_data
-        else:
-            self.datafiles = np.atleast_1d(input_data)
-            self.fileroots = utils.get_filename_root(self.datafiles)
-            self.input_databowl = None
+        self.datafiles = np.atleast_1d(input_data)
+        self.fileroots = utils.get_filename_root(self.datafiles)
 
     def run(self, save_results=True, force_redo=False, **kwargs):
         results = []
@@ -179,11 +139,6 @@ class SuperBiasStep:
                                 save_results=save_results, **kwargs)
             results.append(res)
 
-        # If a DataBowl was passed, return a DataBowl with the updated results.
-        if self.input_databowl is not None:
-            self.input_databowl.datamodels = results
-            results = self.input_databowl
-
         return results
 
 
@@ -195,14 +150,8 @@ class RefPixStep:
     def __init__(self, input_data, output_dir='./'):
         self.tag = 'refpixstep.fits'
         self.output_dir = output_dir
-        if isinstance(input_data, DataBowl):
-            self.datafiles = input_data.datamodels
-            self.fileroots = input_data.fileroots
-            self.input_databowl = input_data
-        else:
-            self.datafiles = np.atleast_1d(input_data)
-            self.fileroots = utils.get_filename_root(self.datafiles)
-            self.input_databowl = None
+        self.datafiles = np.atleast_1d(input_data)
+        self.fileroots = utils.get_filename_root(self.datafiles)
 
     def run(self, save_results=True, force_redo=False, **kwargs):
         results = []
@@ -221,11 +170,6 @@ class RefPixStep:
                                 save_results=save_results, **kwargs)
             results.append(res)
 
-        # If a DataBowl was passed, return a DataBowl with the updated results.
-        if self.input_databowl is not None:
-            self.input_databowl.datamodels = results
-            results = self.input_databowl
-
         return results
 
 
@@ -237,14 +181,8 @@ class BackgroundStep:
         self.tag = 'backgroundstep.fits'
         self.background_model = background_model
         self.output_dir = output_dir
-        if isinstance(input_data, DataBowl):
-            self.datafiles = input_data.datamodels
-            self.fileroots = input_data.fileroots
-            self.input_databowl = input_data
-        else:
-            self.datafiles = np.atleast_1d(input_data)
-            self.fileroots = utils.get_filename_root(self.datafiles)
-            self.input_databowl = None
+        self.datafiles = np.atleast_1d(input_data)
+        self.fileroots = utils.get_filename_root(self.datafiles)
 
     def run(self, save_results=True, force_redo=False):
         all_files = glob.glob(self.output_dir + '*')
@@ -273,12 +211,6 @@ class BackgroundStep:
                                               fileroots=self.fileroots)
                 results, background_models = step_results
 
-        # If a DataBowl was passed, return a DataBowl with the updated results.
-        if self.input_databowl is not None:
-            self.input_databowl.datamodels = results
-            self.input_databowl.background_models = background_models
-            results = self.input_databowl
-
         return results, background_models
 
 
@@ -296,14 +228,8 @@ class OneOverFStep:
         self.trace_mask = trace_mask
         self.outlier_maps = outlier_maps
         self.occultation_type = occultation_type
-        if isinstance(input_data, DataBowl):
-            self.datafiles = input_data.datamodels
-            self.fileroots = input_data.fileroots
-            self.input_databowl = input_data
-        else:
-            self.datafiles = np.atleast_1d(input_data)
-            self.fileroots = utils.get_filename_root(self.datafiles)
-            self.input_databowl = None
+        self.datafiles = np.atleast_1d(input_data)
+        self.fileroots = utils.get_filename_root(self.datafiles)
 
     def run(self, save_results=True, force_redo=False):
         all_files = glob.glob(self.output_dir + '*')
@@ -331,11 +257,6 @@ class OneOverFStep:
                                    fileroots=self.fileroots,
                                    occultation_type=self.occultation_type)
 
-        # If a DataBowl was passed, return a DataBowl with the updated results.
-        if self.input_databowl is not None:
-            self.input_databowl.datamodels = results
-            results = self.input_databowl
-
         return results
 
 
@@ -346,14 +267,8 @@ class LinearityStep:
     def __init__(self, input_data, output_dir='./'):
         self.tag = 'linearitystep.fits'
         self.output_dir = output_dir
-        if isinstance(input_data, DataBowl):
-            self.datafiles = input_data.datamodels
-            self.fileroots = input_data.fileroots
-            self.input_databowl = input_data
-        else:
-            self.datafiles = np.atleast_1d(input_data)
-            self.fileroots = utils.get_filename_root(self.datafiles)
-            self.input_databowl = None
+        self.datafiles = np.atleast_1d(input_data)
+        self.fileroots = utils.get_filename_root(self.datafiles)
 
     def run(self, save_results=True, force_redo=False, **kwargs):
         results = []
@@ -379,11 +294,6 @@ class LinearityStep:
                     pass
             results.append(res)
 
-        # If a DataBowl was passed, return a DataBowl with the updated results.
-        if self.input_databowl is not None:
-            self.input_databowl.datamodels = results
-            results = self.input_databowl
-
         return results
 
 
@@ -394,14 +304,8 @@ class JumpStep:
     def __init__(self, input_data, output_dir='./'):
         self.tag = 'jump.fits'
         self.output_dir = output_dir
-        if isinstance(input_data, DataBowl):
-            self.datafiles = input_data.datamodels
-            self.fileroots = input_data.fileroots
-            self.input_databowl = input_data
-        else:
-            self.datafiles = np.atleast_1d(input_data)
-            self.fileroots = utils.get_filename_root(self.datafiles)
-            self.input_databowl = None
+        self.datafiles = np.atleast_1d(input_data)
+        self.fileroots = utils.get_filename_root(self.datafiles)
 
     def run(self, save_results=True, force_redo=False, rejection_threshold=5,
             **kwargs):
@@ -423,11 +327,6 @@ class JumpStep:
                                 maximum_cores='quarter', **kwargs)
             results.append(res)
 
-        # If a DataBowl was passed, return a DataBowl with the updated results.
-        if self.input_databowl is not None:
-            self.input_databowl.datamodels = results
-            results = self.input_databowl
-
         return results
 
 
@@ -438,14 +337,8 @@ class RampFitStep:
     def __init__(self, input_data, output_dir='./'):
         self.tag = 'rampfitstep.fits'
         self.output_dir = output_dir
-        if isinstance(input_data, DataBowl):
-            self.datafiles = input_data.datamodels
-            self.fileroots = input_data.fileroots
-            self.input_databowl = input_data
-        else:
-            self.datafiles = np.atleast_1d(input_data)
-            self.fileroots = utils.get_filename_root(self.datafiles)
-            self.input_databowl = None
+        self.datafiles = np.atleast_1d(input_data)
+        self.fileroots = utils.get_filename_root(self.datafiles)
 
     def run(self, save_results=True, force_redo=False, **kwargs):
         results = []
@@ -472,11 +365,6 @@ class RampFitStep:
                 res = utils.fix_filenames(res, '_1_', self.output_dir)[0]
             results.append(res)
 
-        # If a DataBowl was passed, return a DataBowl with the updated results.
-        if self.input_databowl is not None:
-            self.input_databowl.datamodels = results
-            results = self.input_databowl
-
         return results
 
 
@@ -487,14 +375,8 @@ class GainScaleStep:
     def __init__(self, input_data, output_dir='./'):
         self.tag = 'gainscalestep.fits'
         self.output_dir = output_dir
-        if isinstance(input_data, DataBowl):
-            self.datafiles = input_data.datamodels
-            self.fileroots = input_data.fileroots
-            self.input_databowl = input_data
-        else:
-            self.datafiles = np.atleast_1d(input_data)
-            self.fileroots = utils.get_filename_root(self.datafiles)
-            self.input_databowl = None
+        self.datafiles = np.atleast_1d(input_data)
+        self.fileroots = utils.get_filename_root(self.datafiles)
 
     def run(self, save_results=True, force_redo=False, **kwargs):
         results = []
@@ -512,11 +394,6 @@ class GainScaleStep:
                 res = step.call(segment, output_dir=self.output_dir,
                                 save_results=save_results, **kwargs)
             results.append(res)
-
-        # If a DataBowl was passed, return a DataBowl with the updated results.
-        if self.input_databowl is not None:
-            self.input_databowl.datamodels = results
-            results = self.input_databowl
 
         return results
 
@@ -869,9 +746,9 @@ def run_stage1(results, background_model, baseline_ints=None,
 
     Parameters
     ----------
-    results : DataBowl, list[str]
+    results : list[str]
         List of paths to input uncalibrated datafiles for all segments in an
-        exposure, or supreme-SPOON DataBowl object.
+        exposure.
     background_model : np.array
         SOSS background model.
     baseline_ints : list[int]
@@ -901,7 +778,7 @@ def run_stage1(results, background_model, baseline_ints=None,
 
     Returns
     -------
-    results : DataBowl
+    results : list[RampModel]
         Datafiles for each segment processed through Stage 1.
     """
 
@@ -916,9 +793,6 @@ def run_stage1(results, background_model, baseline_ints=None,
     utils.verify_path(root_dir + 'pipeline_outputs_directory' + output_tag)
     utils.verify_path(root_dir + 'pipeline_outputs_directory' + output_tag + '/Stage1')
     outdir = root_dir + 'pipeline_outputs_directory' + output_tag + '/Stage1/'
-
-    if not isinstance(results, DataBowl):
-        results = DataBowl(results)
 
     # ===== Group Scale Step =====
     # Default DMS step.
