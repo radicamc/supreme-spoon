@@ -233,13 +233,10 @@ class BackgroundStep:
     """Wrapper around custom Background Subtraction step.
     """
 
-    def __init__(self, input_data, background_model, baseline_ints,
-                 output_dir='./', occultation_type='transit'):
+    def __init__(self, input_data, background_model, output_dir='./'):
         self.tag = 'backgroundstep.fits'
         self.background_model = background_model
         self.output_dir = output_dir
-        self.baseline_ints = baseline_ints
-        self.occultation_type = occultation_type
         if isinstance(input_data, DataBowl):
             self.datafiles = input_data.datamodels
             self.fileroots = input_data.fileroots
@@ -271,11 +268,9 @@ class BackgroundStep:
                 warnings.filterwarnings('ignore')
                 step_results = backgroundstep(self.datafiles,
                                               self.background_model,
-                                              self.baseline_ints,
                                               output_dir=self.output_dir,
                                               save_results=save_results,
-                                              fileroots=self.fileroots,
-                                              occultation_type=self.occultation_type)
+                                              fileroots=self.fileroots)
                 results, background_models = step_results
 
         # If a DataBowl was passed, return a DataBowl with the updated results.
@@ -526,9 +521,8 @@ class GainScaleStep:
         return results
 
 
-def backgroundstep(datafiles, background_model, baseline_ints, output_dir=None,
-                   save_results=True, show_plots=False, fileroots=None,
-                   occultation_type='transit'):
+def backgroundstep(datafiles, background_model, output_dir=None,
+                   save_results=True, show_plots=False, fileroots=None):
     """Background subtraction must be carefully treated with SOSS observations.
     Due to the extent of the PSF wings, there are very few, if any,
     non-illuminated pixels to serve as a sky region. Furthermore, the zodi
@@ -545,8 +539,6 @@ def backgroundstep(datafiles, background_model, baseline_ints, output_dir=None,
         themselves.
     background_model : np.array
         Background model. Should be 2D (dimy, dimx)
-    baseline_ints : list[int]
-        Integration numbers of ingress and egress.
     output_dir : str, None
         Directory to which to save outputs.
     save_results : bool
@@ -555,8 +547,6 @@ def backgroundstep(datafiles, background_model, baseline_ints, output_dir=None,
         If True, show plots.
     fileroots : list[str]
         Root names for output files.
-    occultation_type : str
-        Type of occultation, either 'transit' or 'eclipse'.
 
     Returns
     -------
@@ -571,10 +561,6 @@ def backgroundstep(datafiles, background_model, baseline_ints, output_dir=None,
     if output_dir is not None:
         if output_dir[-1] != '/':
             output_dir += '/'
-
-    # Format the baseline frames - either out-of-transit or in-eclipse.
-    baseline_ints = utils.format_out_frames(baseline_ints,
-                                            occultation_type)
 
     datafiles = np.atleast_1d(datafiles)
     opened_datafiles = []
@@ -592,8 +578,8 @@ def backgroundstep(datafiles, background_model, baseline_ints, output_dir=None,
     # Make median stack of all integrations to use for background scaling.
     # This is to limit the influence of cosmic rays, which can greatly effect
     # the background scaling factor calculated for an individual inegration.
-    print('Generating a deep stack using baseline integrations.')
-    deepstack = utils.make_deepstack(cube[baseline_ints])
+    print('Generating a deep stack using all integrations.')
+    deepstack = utils.make_deepstack(cube)
     ngroup, dimy, dimx = np.shape(deepstack)
 
     print('Calculating background model scaling.')
@@ -617,7 +603,7 @@ def backgroundstep(datafiles, background_model, baseline_ints, output_dir=None,
         ii = np.where((bkg_ratio > q1) & (bkg_ratio < q2))
         scale_factor = np.nanmedian(bkg_ratio[ii])
         model_scaled[i] = background_model * scale_factor
-        print('Group {0}: {1:.5f}'.format(i+1, scale_factor))
+        print('  Group {0}: {1:.5f}'.format(i+1, scale_factor))
 
     # Loop over all segments in the exposure and subtract the background from
     # each of them.
