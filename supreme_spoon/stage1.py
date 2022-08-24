@@ -25,6 +25,7 @@ from supreme_spoon.databowl import DataBowl
 class GroupScaleStep:
     """Wrapper around default calwebb_detector1 Group Scale Correction step.
     """
+
     def __init__(self, input_data, output_dir='./'):
         self.tag = 'groupscalestep.fits'
         self.output_dir = output_dir
@@ -231,9 +232,14 @@ class RefPixStep:
 class BackgroundStep:
     """Wrapper around custom Background Subtraction step.
     """
-    def __init__(self, input_data, background_model, output_dir='./'):
+
+    def __init__(self, input_data, background_model, baseline_ints,
+                 output_dir='./', occultation_type='transit'):
         self.tag = 'backgroundstep.fits'
+        self.background_model = background_model
         self.output_dir = output_dir
+        self.baseline_ints = baseline_ints
+        self.occultation_type = occultation_type
         if isinstance(input_data, DataBowl):
             self.datafiles = input_data.datamodels
             self.fileroots = input_data.fileroots
@@ -242,7 +248,6 @@ class BackgroundStep:
             self.datafiles = np.atleast_1d(input_data)
             self.fileroots = utils.get_filename_root(self.datafiles)
             self.input_databowl = None
-        self.background_model = background_model
 
     def run(self, save_results=True, force_redo=False):
         all_files = glob.glob(self.output_dir + '*')
@@ -266,9 +271,11 @@ class BackgroundStep:
                 warnings.filterwarnings('ignore')
                 step_results = backgroundstep(self.datafiles,
                                               self.background_model,
+                                              self.baseline_ints,
                                               output_dir=self.output_dir,
                                               save_results=save_results,
-                                              fileroots=self.fileroots)
+                                              fileroots=self.fileroots,
+                                              occultation_type=self.occultation_type)
                 results, background_models = step_results
 
         # If a DataBowl was passed, return a DataBowl with the updated results.
@@ -283,6 +290,7 @@ class BackgroundStep:
 class OneOverFStep:
     """Wrapper around custom 1/f Correction Step.
     """
+
     def __init__(self, input_data, baseline_ints, output_dir='./',
                  smoothed_wlc=None, outlier_maps=None, trace_mask=None,
                  occultation_type='transit'):
@@ -293,7 +301,6 @@ class OneOverFStep:
         self.trace_mask = trace_mask
         self.outlier_maps = outlier_maps
         self.occultation_type = occultation_type
-
         if isinstance(input_data, DataBowl):
             self.datafiles = input_data.datamodels
             self.fileroots = input_data.fileroots
@@ -432,6 +439,7 @@ class JumpStep:
 class RampFitStep:
     """Wrapper around default calwebb_detector1 Ramp Fit step.
     """
+
     def __init__(self, input_data, output_dir='./'):
         self.tag = 'rampfitstep.fits'
         self.output_dir = output_dir
@@ -518,8 +526,9 @@ class GainScaleStep:
         return results
 
 
-def backgroundstep(datafiles, background_model, output_dir=None,
-                   save_results=True, show_plots=False, fileroots=None):
+def backgroundstep(datafiles, background_model, baseline_ints, output_dir=None,
+                   save_results=True, show_plots=False, fileroots=None,
+                   occultation_type='transit'):
     """Background subtraction must be carefully treated with SOSS observations.
     Due to the extent of the PSF wings, there are very few, if any,
     non-illuminated pixels to serve as a sky region. Furthermore, the zodi
@@ -536,6 +545,8 @@ def backgroundstep(datafiles, background_model, output_dir=None,
         themselves.
     background_model : np.array
         Background model. Should be 2D (dimy, dimx)
+    baseline_ints : list[int]
+        Integration numbers of ingress and egress.
     output_dir : str, None
         Directory to which to save outputs.
     save_results : bool
@@ -544,6 +555,8 @@ def backgroundstep(datafiles, background_model, output_dir=None,
         If True, show plots.
     fileroots : list[str]
         Root names for output files.
+    occultation_type : str
+        Type of occultation, either 'transit' or 'eclipse'.
 
     Returns
     -------
@@ -558,6 +571,10 @@ def backgroundstep(datafiles, background_model, output_dir=None,
     if output_dir is not None:
         if output_dir[-1] != '/':
             output_dir += '/'
+
+    # Format the baseline frames - either out-of-transit or in-eclipse.
+    baseline_ints = utils.format_out_frames(baseline_ints,
+                                            occultation_type)
 
     datafiles = np.atleast_1d(datafiles)
     opened_datafiles = []
@@ -575,11 +592,13 @@ def backgroundstep(datafiles, background_model, output_dir=None,
     # Make median stack of all integrations to use for background scaling.
     # This is to limit the influence of cosmic rays, which can greatly effect
     # the background scaling factor calculated for an individual inegration.
-    print('Generating a deep stack using all integrations.')
-    deepstack = utils.make_deepstack(cube)
+    print('Generating a deep stack using baseline integrations.')
+    deepstack = utils.make_deepstack(cube[baseline_ints])
     ngroup, dimy, dimx = np.shape(deepstack)
 
+    print('Calculating background model scaling.')
     model_scaled = np.zeros_like(deepstack)
+    print(' Scale factors:')
     for i in range(ngroup):
         # Calculate the scaling of the model background to the median stack.
         if dimy == 96:
@@ -598,6 +617,7 @@ def backgroundstep(datafiles, background_model, output_dir=None,
         ii = np.where((bkg_ratio > q1) & (bkg_ratio < q2))
         scale_factor = np.nanmedian(bkg_ratio[ii])
         model_scaled[i] = background_model * scale_factor
+        print('Group {0}: {1:.5f}'.format(i+1, scale_factor))
 
     # Loop over all segments in the exposure and subtract the background from
     # each of them.
