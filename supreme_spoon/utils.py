@@ -331,13 +331,12 @@ def get_trace_centroids(deepframe, tracetable, subarray, save_results=True,
 
     if save_results is True:
         yyy2 = np.ones_like(xx1) * np.nan
-        yyy2[:len(y2)] = yy2
+        yyy2[:len(yy2)] = yy2
         yyy3 = np.ones_like(xx1) * np.nan
-        yyy3[:len(y3)] = yy3
+        yyy3[:len(yy3)] = yy3
 
-        centroids_dict = {'xcen o1': xx1, 'ycen o1': yy1,
-                          'xcen o2': xx1, 'ycen o2': yyy2,
-                          'xcen o3': xx1, 'ycen o3': yyy3}
+        centroids_dict = {'xpos': xx1, 'ypos o1': yy1, 'ypos o2': yyy2,
+                          'ypos o3': yyy3}
         df = pd.DataFrame(data=centroids_dict)
         if save_filename[-1] != '_':
             save_filename += '_'

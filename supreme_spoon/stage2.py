@@ -11,6 +11,7 @@ Custom JWST DMS pipeline steps for Stage 2 (Spectroscopic processing).
 from astropy.io import fits
 import glob
 import numpy as np
+import pandas as pd
 from scipy.ndimage import median_filter
 from tqdm import tqdm
 import warnings
@@ -47,7 +48,7 @@ class AssignWCSStep:
             if expected_file in all_files and force_redo is False:
                 print('Output file {} already exists.'.format(expected_file))
                 print('Skipping Assign WCS Step.\n')
-                res = expected_file
+                res = datamodels.open(expected_file)
             # If no output files are detected, run the step.
             else:
                 step = calwebb_spec2.assign_wcs_step.AssignWcsStep()
@@ -83,7 +84,7 @@ class SourceTypeStep:
             if expected_file in all_files and force_redo is False:
                 print('Output file {} already exists.'.format(expected_file))
                 print('Skipping Source Type Determination Step.\n')
-                res = expected_file
+                res = datamodels.open(expected_file)
             # If no output files are detected, run the step.
             else:
                 step = calwebb_spec2.srctype_step.SourceTypeStep()
@@ -119,7 +120,7 @@ class FlatFieldStep:
             if expected_file in all_files and force_redo is False:
                 print('Output file {} already exists.'.format(expected_file))
                 print('Skipping Flat Field Correction Step.\n')
-                res = expected_file
+                res = datamodels.open(expected_file)
             # If no output files are detected, run the step.
             else:
                 step = calwebb_spec2.flat_field_step.FlatFieldStep()
@@ -212,8 +213,8 @@ class TracingStep:
         if expected_file in all_files and force_redo is False:
             print('Output file {} already exists.'.format(expected_file))
             print('Skipping Tracing Step.\n')
-            tracemask = expected_file
-            centroids = expected_cen
+            tracemask = fits.getdata(expected_file)
+            centroids = pd.read_csv(expected_cen, comment='#')
         # If no output files are detected, run the step.
         else:
             step_results = tracingstep(self.datafiles, self.deepframe,
@@ -254,7 +255,7 @@ class LightCurveEstimateStep:
         if expected_file in all_files and force_redo is False:
             print('Output file {} already exists.'.format(expected_file))
             print('Skipping Light Curve Estimation Step.\n')
-            smoothed_lc = expected_file
+            smoothed_lc = np.load(expected_file)
         # If no output files are detected, run the step.
         else:
             smoothed_lc = lcestimatestep(self.datafiles,
@@ -661,7 +662,7 @@ def run_stage2(results, baseline_ints=None, save_results=True,
     step_results = step.run(save_results=save_results, force_redo=force_redo)
     results, deepframe = step_results[0], step_results[2]
 
-    # ===== Trace Mask Creation Step =====
+    # ===== Tracing Step =====
     # Custom DMS step.
     step = TracingStep(results, deepframe=deepframe, output_dir=outdir)
     step_results = step.run(mask_width=mask_width, save_results=save_results,
