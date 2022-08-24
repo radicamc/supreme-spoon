@@ -24,13 +24,58 @@ from applesoss.edgetrigger_centroids import get_soss_centroids
 from jwst import datamodels
 
 
+def do_replacement(frame, badpix_map, dq=None, box_size=5):
+    """Replace flagged pixels with the median of a surrounding box.
+
+    Parameters
+    ----------
+    frame : array-like[float]
+        Data frame.
+    badpix_map : array-like[bool]
+        Map of pixels to be replaced.
+    dq : array-like[int]
+        Data quality flags.
+    box_size : int
+        Size of box to consider.
+
+    Returns
+    -------
+    frame_out : ndarray[float]
+        Input frame wth pixels interpolated.
+    dq_out : ndarray[int]
+        Input dq map with interpolated pixels set to zero.
+    """
+
+    dimy, dimx = np.shape(frame)
+    frame_out = np.copy(frame)
+    # Get the data quality flags.
+    if dq is not None:
+        dq_out = np.copy(dq)
+    else:
+        dq_out = np.zeros_like(frame)
+
+    # Loop over all flagged pixels.
+    for i in range(dimx):
+        for j in range(dimy):
+            if badpix_map[j, i] == 0:
+                continue
+            # If pixel is flagged, replace it with the box median.
+            else:
+                med = get_interp_box(frame, box_size, i, j, dimx, dimy)[0]
+                frame_out[j, i] = med
+                # Set dq flag of inerpolated pixel to zero (use the pixel).
+                dq_out[j, i] = 0
+
+    return frame_out, dq_out
+
+
 def fix_filenames(old_files, to_remove, outdir, to_add=''):
     """Hacky function to remove fle extensions that get added when running a
     default JWST DMS step after a custom one.
 
     Parameters
     ----------
-    old_files : array[str], array[jwst.datamodel]
+    old_files : array-like[str], array-like[jwst.datamodel]
         List of datamodels or paths to datamodels.
     to_remove : str
         File name extension to be removed.
@@ -41,7 +86,7 @@ def fix_filenames(old_files, to_remove, outdir, to_add=''):
 
     Returns
     -------
-    new_files : array[str]
+    new_files : ndarray[str]
         New file names.
     """
 
@@ -79,14 +124,14 @@ def format_out_frames(out_frames, occultation_type='transit'):
 
     Parameters
     ----------
-    out_frames : list[int]
+    out_frames : array-like[int]
         Integration numbers of ingress and egress.
     occultation_type : str
         Type of occultation, either 'transit' or 'eclipse'.
 
     Returns
     -------
-    baseline_ints : array[int]
+    baseline_ints : ndarray[int]
         Array of out-of-transit, or in-eclipse frames for transits and
         eclipses respectively.
 
@@ -117,7 +162,7 @@ def get_filename_root(datafiles):
 
     Parameters
     ----------
-    datafiles : array[str], array[jwst.datamodel]
+    datafiles : array-like[str], array-like[jwst.datamodel]
         Datamodels, or paths to datamodels for each segment.
 
     Returns
@@ -149,7 +194,7 @@ def get_filename_root_noseg(fileroots):
 
     Parameters
     ----------
-    fileroots : list[str]
+    fileroots : array-like[str]
         File root names for each segment.
 
     Returns
@@ -170,17 +215,58 @@ def get_filename_root_noseg(fileroots):
     return fileroot_noseg
 
 
+def get_interp_box(data, box_size, i, j, dimx, dimy):
+    """Get median and standard deviation of a box centered on a specified
+    pixel.
+
+    Parameters
+    ----------
+    data : array-like[float]
+        Data frame.
+    box_size : int
+        Size of box to consider.
+    i : int
+        X pixel.
+    j : int
+        Y pixel.
+    dimx : int
+        Size of x dimension.
+    dimy : int
+        Size of y dimension.
+
+    Returns
+    -------
+    box_properties : ndarray
+        Median and standard deviation of pixels in the box.
+    """
+
+    # Get the box limits.
+    low_x = np.max([i - box_size, 0])
+    up_x = np.min([i + box_size, dimx - 1])
+    low_y = np.max([j - box_size, 0])
+    up_y = np.min([j + box_size, dimy - 1])
+
+    # Calculate median and std deviation of box.
+    median = np.nanmedian(data[low_y:up_y, low_x:up_x])
+    stddev = np.nanstd(data[low_y:up_y, low_x:up_x])
+
+    # Pack into array.
+    box_properties = np.array([median, stddev])
+
+    return box_properties
+
+
 def get_timestamps(datafiles):
     """Get the mid-time stamp for each integration in BJD,
 
     Parameters
     ----------
-    datafiles : array[jwst.datamodel], list[jwst.datamodel], jwst.datamodel
+    datafiles : array-like[jwst.datamodel], jwst.datamodel
         Datamodels for each segment in a TSO.
 
     Returns
     -------
-    times : array[float]
+    times : ndarray
         Mid-integration times for each integraton in BJD.
     """
 
@@ -193,6 +279,82 @@ def get_timestamps(datafiles):
             times = np.concatenate([times, data.int_times['int_mid_BJD_TDB']])
 
     return times
+
+
+def get_trace_centroids(deepframe, tracetable, subarray, save_results=True,
+                        save_filename=''):
+    """Get the trace centroids for all three orders via the edgetrigger method.
+
+    Parameters
+    ----------
+    deepframe : ndarray
+        Median stack.
+    tracetable : str
+        Path to SpecTrace reference file.
+    subarray : str
+        Subarray identifier.
+    save_results : bool
+        If True, save results to file.
+    save_filename : str
+        Filename of save file.
+
+    Returns
+    -------
+    cen_o1 : ndarray
+        Order 1 X and Y centroids.
+    cen_o2 : ndarray
+        Order 2 X and Y centroids.
+    cen_o3 : ndarray
+        Order 3 X and Y centroids.
+    """
+
+    dimy, dimx = np.shape(deepframe)
+    with warnings.catch_warnings():
+        warnings.filterwarnings('ignore')
+        centroids = get_soss_centroids(deepframe, tracetable,
+                                       subarray=subarray)
+
+    x1, y1 = centroids['order 1']['X centroid'], centroids['order 1']['Y centroid']
+    x2, y2 = centroids['order 2']['X centroid'], centroids['order 2']['Y centroid']
+    x3, y3 = centroids['order 3']['X centroid'], centroids['order 3']['Y centroid']
+    ii = np.where((x1 >= 0) & (y1 <= dimx - 1))
+    ii2 = np.where((x2 >= 0) & (x2 <= dimx - 1) & (y2 <= dimy - 1))
+    ii3 = np.where((x3 >= 0) & (x3 <= dimx - 1) & (y3 <= dimy - 1))
+
+    # Interpolate onto native pixel grid
+    xx1 = np.arange(dimx)
+    yy1 = np.interp(xx1, x1[ii], y1[ii])
+    xx2 = np.arange(np.max(np.floor(x2[ii2]).astype(int)))
+    yy2 = np.interp(xx2, x2[ii2], y2[ii2])
+    xx3 = np.arange(np.max(np.floor(x3[ii3]).astype(int)))
+    yy3 = np.interp(xx3, x3[ii3], y3[ii3])
+
+    if save_results is True:
+        yyy2 = np.ones_like(xx1) * np.nan
+        yyy2[:len(y2)] = yy2
+        yyy3 = np.ones_like(xx1) * np.nan
+        yyy3[:len(y3)] = yy3
+
+        centroids_dict = {'xcen o1': xx1, 'ycen o1': yy1,
+                          'xcen o2': xx1, 'ycen o2': yyy2,
+                          'xcen o3': xx1, 'ycen o3': yyy3}
+        df = pd.DataFrame(data=centroids_dict)
+        if save_filename[-1] != '_':
+            save_filename += '_'
+        outfile_name = save_filename + 'centroids.csv'
+        outfile = open(outfile_name, 'a')
+        outfile.write('# File Contents: Edgetrigger trace centroids\n')
+        outfile.write('# File Creation Date: {}\n'.format(datetime.utcnow().replace(microsecond=0).isoformat()))
+        outfile.write('# File Author: MCR\n')
+        df.to_csv(outfile, index=False)
+        outfile.close()
+        print('Centroids saved to {}'.format(outfile_name))
+
+    cen_o1 = np.array([xx1, yy1])
+    cen_o2 = np.array([xx2, yy2])
+    cen_o3 = np.array([xx3, yy3])
+
+    return cen_o1, cen_o2, cen_o3
 
 
 def make_deepstack(cube):
@@ -242,6 +404,59 @@ def open_filetype(datafile):
         raise ValueError('Invalid filetype: {}'.format(type(datafile)))
 
     return data
+
+
+def open_stage2_secondary_outputs(deep_file, centroid_file, root_dir,
+                                  output_tag=''):
+    """Utlity to locate and read in secondary outputs from stage 2.
+
+    Parameters
+    ----------
+    deep_file : str, None
+        Path to deep frame file.
+    centroid_file : str, None
+        Path to centroids file.
+    root_dir : str
+        Root directory.
+    output_tag : str
+        Tag given to pipeline_outputs_directory.
+
+    Returns
+    -------
+    deepframe : ndarray[float]
+        Deep frame.
+    centroids : ndarray[float]
+        Centroids foor all orders.
+    """
+
+    input_dir = root_dir + 'pipeline_outputs_drectory_{}/Stage2/'.format(output_tag)
+    # Locate and read in the deepframe.
+    if deep_file is None:
+        deep_file = glob.glob(input_dir + '*deepframe*')
+        if len(deep_file) > 1:
+            msg = 'Multiple deep frame files detected.'
+            raise ValueError(msg)
+        elif len(deep_file) == 0:
+            msg = 'No deep frame file found.'
+            raise FileNotFoundError(msg)
+        else:
+            deep_file = deep_file[0]
+    deepframe = fits.getdata(deep_file)
+
+    # Locate and read in the centroids.
+    if centroid_file is None:
+        centroid_file = glob.glob(input_dir + '*centroids*')
+        if len(centroid_file) > 1:
+            msg = 'Multiple centroid files detected.'
+            raise ValueError(msg)
+        elif len(centroid_file) == 0:
+            msg = 'No centroid file found.'
+            raise FileNotFoundError(msg)
+        else:
+            centroid_file = centroid_file[0]
+    centroids = pd.read_csv(centroid_file, comment='#')
+
+    return deepframe, centroids
 
 
 def unpack_input_directory(indir, filetag='', exposure_type='CLEAR'):
@@ -323,52 +538,6 @@ def verify_path(path):
 # ===============================================
 
 
-def get_interp_box(data, box_size, i, j, dimx, dimy):
-    """ Get median and standard deviation of a box centered on a specified
-    pixel.
-    """
-
-    # Get the box limits.
-    low_x = np.max([i - box_size, 0])
-    up_x = np.min([i + box_size, dimx - 1])
-    low_y = np.max([j - box_size, 0])
-    up_y = np.min([j + box_size, dimy - 1])
-
-    # Calculate median and std deviation of box.
-    median = np.nanmedian(data[low_y:up_y, low_x:up_x])
-    stddev = np.nanstd(data[low_y:up_y, low_x:up_x])
-
-    # Pack into array.
-    box_properties = np.array([median, stddev])
-
-    return box_properties
-
-
-def do_replacement(frame, badpix_map, dq=None, box_size=5):
-    """Replace flagged pixels with the median of a surrounding box.
-    """
-
-    dimy, dimx = np.shape(frame)
-    frame_out = np.copy(frame)
-    if dq is not None:
-        dq_out = np.copy(dq)
-    else:
-        dq_out = np.zeros_like(frame)
-
-    # Loop over all flagged pixels.
-    for i in range(dimx):
-        for j in range(dimy):
-            if badpix_map[j, i] == 0:
-                continue
-            # If pixel is flagged, replace it with the box median.
-            else:
-                med = get_interp_box(frame, box_size, i, j, dimx, dimy)[0]
-                frame_out[j, i] = med
-                dq_out[j, i] = 0
-
-    return frame_out, dq_out
-
-
 def unpack_spectra(datafile, quantities=('WAVELENGTH', 'FLUX', 'FLUX_ERROR')):
 
     if isinstance(datafile, str):
@@ -400,55 +569,6 @@ def make_time_axis(filepath):
     t_start = Time(t_start, format='isot', scale='tdb')
     t = np.arange(nint) * tgroup * ngroup + t_start.mjd
     return t
-
-
-def get_trace_centroids(deepframe, subarray, output_dir=None,
-                        save_results=True, save_filename=None):
-
-    dimy, dimx = np.shape(deepframe)
-    with warnings.catch_warnings():
-        warnings.filterwarnings('ignore')
-        centroids = get_soss_centroids(deepframe, subarray=subarray)
-
-    X1, Y1 = centroids['order 1']['X centroid'], centroids['order 1']['Y centroid']
-    X2, Y2 = centroids['order 2']['X centroid'], centroids['order 2']['Y centroid']
-    X3, Y3 = centroids['order 3']['X centroid'], centroids['order 3']['Y centroid']
-    ii = np.where((X1 >= 0) & (X1 <= dimx - 1))
-    ii2 = np.where((X2 >= 0) & (X2 <= dimx - 1) & (Y2 <= dimy - 1))
-    ii3 = np.where((X3 >= 0) & (X3 <= dimx - 1) & (Y3 <= dimy - 1))
-
-    # Interpolate onto native pixel grid
-    x1 = np.arange(dimx)
-    y1 = np.interp(x1, X1[ii], Y1[ii])
-    x2 = np.arange(np.max(np.floor(X2[ii2]).astype(int)))
-    y2 = np.interp(x2, X2[ii2], Y2[ii2])
-    x3 = np.arange(np.max(np.floor(X3[ii3]).astype(int)))
-    y3 = np.interp(x3, X3[ii3], Y3[ii3])
-
-    if save_results is True:
-        yy2 = np.ones_like(x1) * np.nan
-        yy2[:len(y2)] = y2
-        yy3 = np.ones_like(x1) * np.nan
-        yy3[:len(y3)] = y3
-
-        centroids_dict = {'xcen o1': x1, 'ycen o1': y1,
-                          'xcen o2': x1, 'ycen o2': yy2,
-                          'xcen o3': x1, 'ycen o3': yy3}
-        df = pd.DataFrame(data=centroids_dict)
-        if save_filename[-1] != '_':
-            save_filename += '_'
-        outfile_name = output_dir + save_filename + 'centroids.csv'
-        outfile = open(outfile_name, 'a')
-        outfile.write('# File Contents: Edgetrigger trace centroids\n')
-        outfile.write('# File Creation Date: {}\n'.format(datetime.utcnow().replace(microsecond=0).isoformat()))
-        outfile.write('# File Author: MCR\n')
-        df.to_csv(outfile, index=False)
-        outfile.close()
-        print('Centroids saved to {}'.format(outfile_name))
-
-    cen_o1, cen_o2, cen_o3 = [x1, y1], [x2, y2], [x3, y3]
-
-    return cen_o1, cen_o2, cen_o3
 
 
 # TODO: reformat

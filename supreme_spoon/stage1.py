@@ -26,12 +26,18 @@ class GroupScaleStep:
     """
 
     def __init__(self, input_data, output_dir='./'):
+        """Step initializer.
+        """
+
         self.tag = 'groupscalestep.fits'
         self.output_dir = output_dir
         self.datafiles = np.atleast_1d(input_data)
         self.fileroots = utils.get_filename_root(self.datafiles)
 
     def run(self, save_results=True, force_redo=False, **kwargs):
+        """Method to run the step.
+        """
+
         results = []
         all_files = glob.glob(self.output_dir + '*')
         for i, segment in enumerate(self.datafiles):
@@ -57,12 +63,18 @@ class DQInitStep:
     """
 
     def __init__(self, input_data, output_dir='./'):
+        """Step initializer.
+        """
+
         self.tag = 'dqinitstep.fits'
         self.output_dir = output_dir
         self.datafiles = np.atleast_1d(input_data)
         self.fileroots = utils.get_filename_root(self.datafiles)
 
     def run(self, save_results=True, force_redo=False, **kwargs):
+        """Method to run the step.
+        """
+
         results = []
         all_files = glob.glob(self.output_dir + '*')
         for i, segment in enumerate(self.datafiles):
@@ -87,12 +99,18 @@ class SaturationStep:
     """
 
     def __init__(self, input_data, output_dir='./'):
+        """Step initializer.
+        """
+
         self.tag = 'saturationstep.fits'
         self.output_dir = output_dir
         self.datafiles = np.atleast_1d(input_data)
         self.fileroots = utils.get_filename_root(self.datafiles)
 
     def run(self, save_results=True, force_redo=False, **kwargs):
+        """Method to run the step.
+        """
+
         results = []
         all_files = glob.glob(self.output_dir + '*')
         for i, segment in enumerate(self.datafiles):
@@ -117,12 +135,18 @@ class SuperBiasStep:
     """
 
     def __init__(self, input_data, output_dir='./'):
+        """Step initializer.
+        """
+
         self.tag = 'superbiasstep.fits'
         self.output_dir = output_dir
         self.datafiles = np.atleast_1d(input_data)
         self.fileroots = utils.get_filename_root(self.datafiles)
 
     def run(self, save_results=True, force_redo=False, **kwargs):
+        """Method to run the step.
+        """
+
         results = []
         all_files = glob.glob(self.output_dir + '*')
         for i, segment in enumerate(self.datafiles):
@@ -148,12 +172,18 @@ class RefPixStep:
     """
 
     def __init__(self, input_data, output_dir='./'):
+        """Step initializer.
+        """
+
         self.tag = 'refpixstep.fits'
         self.output_dir = output_dir
         self.datafiles = np.atleast_1d(input_data)
         self.fileroots = utils.get_filename_root(self.datafiles)
 
     def run(self, save_results=True, force_redo=False, **kwargs):
+        """Method to run the step.
+        """
+
         results = []
         all_files = glob.glob(self.output_dir + '*')
         for i, segment in enumerate(self.datafiles):
@@ -178,6 +208,9 @@ class BackgroundStep:
     """
 
     def __init__(self, input_data, background_model, output_dir='./'):
+        """Step initializer.
+        """
+
         self.tag = 'backgroundstep.fits'
         self.background_model = background_model
         self.output_dir = output_dir
@@ -185,6 +218,9 @@ class BackgroundStep:
         self.fileroots = utils.get_filename_root(self.datafiles)
 
     def run(self, save_results=True, force_redo=False):
+        """Method to run the step.
+        """
+
         all_files = glob.glob(self.output_dir + '*')
         do_step = 1
         results, background_models = [], []
@@ -221,6 +257,9 @@ class OneOverFStep:
     def __init__(self, input_data, baseline_ints, output_dir='./',
                  smoothed_wlc=None, outlier_maps=None, trace_mask=None,
                  occultation_type='transit'):
+        """Step initializer.
+        """
+
         self.tag = 'oneoverfstep.fits'
         self.output_dir = output_dir
         self.baseline_ints = baseline_ints
@@ -232,6 +271,9 @@ class OneOverFStep:
         self.fileroots = utils.get_filename_root(self.datafiles)
 
     def run(self, save_results=True, force_redo=False):
+        """Method to run the step.
+        """
+
         all_files = glob.glob(self.output_dir + '*')
         do_step = 1
         results = []
@@ -265,12 +307,18 @@ class LinearityStep:
     """
 
     def __init__(self, input_data, output_dir='./'):
+        """Step initializer.
+        """
+
         self.tag = 'linearitystep.fits'
         self.output_dir = output_dir
         self.datafiles = np.atleast_1d(input_data)
         self.fileroots = utils.get_filename_root(self.datafiles)
 
     def run(self, save_results=True, force_redo=False, **kwargs):
+        """Method to run the step.
+        """
+
         results = []
         all_files = glob.glob(self.output_dir + '*')
         for i, segment in enumerate(self.datafiles):
@@ -302,6 +350,9 @@ class JumpStep:
     """
 
     def __init__(self, input_data, output_dir='./'):
+        """Step initializer.
+        """
+
         self.tag = 'jump.fits'
         self.output_dir = output_dir
         self.datafiles = np.atleast_1d(input_data)
@@ -309,6 +360,9 @@ class JumpStep:
 
     def run(self, save_results=True, force_redo=False, rejection_threshold=5,
             **kwargs):
+        """Method to run the step.
+        """
+
         results = []
         all_files = glob.glob(self.output_dir + '*')
         for i, segment in enumerate(self.datafiles):
@@ -335,12 +389,18 @@ class RampFitStep:
     """
 
     def __init__(self, input_data, output_dir='./'):
+        """Step initializer.
+        """
+
         self.tag = 'rampfitstep.fits'
         self.output_dir = output_dir
         self.datafiles = np.atleast_1d(input_data)
         self.fileroots = utils.get_filename_root(self.datafiles)
 
     def run(self, save_results=True, force_redo=False, **kwargs):
+        """Method to run the step.
+        """
+
         results = []
         all_files = glob.glob(self.output_dir + '*')
         for i, segment in enumerate(self.datafiles):
@@ -373,12 +433,18 @@ class GainScaleStep:
     """
 
     def __init__(self, input_data, output_dir='./'):
+        """Step initializer.
+        """
+
         self.tag = 'gainscalestep.fits'
         self.output_dir = output_dir
         self.datafiles = np.atleast_1d(input_data)
         self.fileroots = utils.get_filename_root(self.datafiles)
 
     def run(self, save_results=True, force_redo=False, **kwargs):
+        """Method to run the step.
+        """
+
         results = []
         all_files = glob.glob(self.output_dir + '*')
         for i, segment in enumerate(self.datafiles):
@@ -398,7 +464,7 @@ class GainScaleStep:
         return results
 
 
-def backgroundstep(datafiles, background_model, output_dir=None,
+def backgroundstep(datafiles, background_model, output_dir='./',
                    save_results=True, show_plots=False, fileroots=None):
     """Background subtraction must be carefully treated with SOSS observations.
     Due to the extent of the PSF wings, there are very few, if any,
@@ -411,12 +477,12 @@ def backgroundstep(datafiles, background_model, output_dir=None,
 
     Parameters
     ----------
-    datafiles : list[str], list[CubeModel], np.ndarray[str]
+    datafiles : array-like[str], array-like[CubeModel]
         Paths to data segments for a SOSS exposure, or the datamodels
         themselves.
     background_model : np.array
         Background model. Should be 2D (dimy, dimx)
-    output_dir : str, None
+    output_dir : str
         Directory to which to save outputs.
     save_results : bool
         If True, save outputs to file.
@@ -511,7 +577,7 @@ def backgroundstep(datafiles, background_model, output_dir=None,
 
 
 def oneoverfstep(datafiles, baseline_ints, smoothed_wlc=None,
-                 output_dir=None, save_results=True, outlier_maps=None,
+                 output_dir='./', save_results=True, outlier_maps=None,
                  trace_mask=None, use_dq=True, fileroots=None,
                  occultation_type='transit'):
     """Custom 1/f correction routine to be applied at the group level. A
@@ -523,14 +589,14 @@ def oneoverfstep(datafiles, baseline_ints, smoothed_wlc=None,
 
     Parameters
     ----------
-    datafiles : list[str], or list[RampModel], np.ndarray[str]
+    datafiles : array-like[str], array-like[RampModel]
         List of paths to data files, or RampModels themselves for each segment
         of the TSO. Should be 4D ramps and not rate files.
     baseline_ints : list[int]
         Integration numbers of ingress and egress.
     smoothed_wlc : None, np.array
         Estimate of the out-of-transit normalized light curve.
-    output_dir : str, None
+    output_dir : str
         Directory to which to save results.
     save_results : bool
         If True, save results to disk.
@@ -542,7 +608,7 @@ def oneoverfstep(datafiles, baseline_ints, smoothed_wlc=None,
         dimx), or 2D (dimy, dimx).
     use_dq : bool
         If True, mask all pixels currently flagged in the DQ array.
-    fileroots : list[str]
+    fileroots : list[str], None
         Root names for output files.
     occultation_type : str
         Type of occultation, either 'transit' or 'eclipse'.
@@ -746,7 +812,7 @@ def run_stage1(results, background_model, baseline_ints=None,
 
     Parameters
     ----------
-    results : list[str]
+    results : array-like[str]
         List of paths to input uncalibrated datafiles for all segments in an
         exposure.
     background_model : np.array

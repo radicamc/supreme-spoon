@@ -11,6 +11,7 @@ Custom JWST DMS pipeline steps for Stage 2 (Spectroscopic processing).
 from astropy.io import fits
 import glob
 import numpy as np
+from scipy.ndimage import median_filter
 from tqdm import tqdm
 import warnings
 
@@ -26,12 +27,18 @@ class AssignWCSStep:
     """
 
     def __init__(self, datafiles, output_dir='./'):
+        """Step initializer.
+        """
+
         self.tag = 'assignwcsstep.fits'
         self.output_dir = output_dir
         self.datafiles = np.atleast_1d(datafiles)
         self.fileroots = utils.get_filename_root(self.datafiles)
 
     def run(self, save_results=True, force_redo=False, **kwargs):
+        """Method to run the step.
+        """
+
         results = []
         all_files = glob.glob(self.output_dir + '*')
         for i, segment in enumerate(self.datafiles):
@@ -56,12 +63,18 @@ class SourceTypeStep:
     """
 
     def __init__(self, datafiles, output_dir='./'):
+        """Step initializer.
+        """
+
         self.tag = 'sourcetypestep.fits'
         self.output_dir = output_dir
         self.datafiles = np.atleast_1d(datafiles)
         self.fileroots = utils.get_filename_root(self.datafiles)
 
     def run(self, save_results=True, force_redo=False, **kwargs):
+        """Method to run the step.
+        """
+
         results = []
         all_files = glob.glob(self.output_dir + '*')
         for i, segment in enumerate(self.datafiles):
@@ -86,12 +99,18 @@ class FlatFieldStep:
     """
 
     def __init__(self, datafiles, output_dir='./'):
+        """Step initializer.
+        """
+
         self.tag = 'flatfieldstep.fits'
         self.output_dir = output_dir
         self.datafiles = np.atleast_1d(datafiles)
         self.fileroots = utils.get_filename_root(self.datafiles)
 
     def run(self, save_results=True, force_redo=False, **kwargs):
+        """Method to run the step.
+        """
+
         results = []
         all_files = glob.glob(self.output_dir + '*')
         for i, segment in enumerate(self.datafiles):
@@ -111,18 +130,157 @@ class FlatFieldStep:
         return results
 
 
-def badpixstep(datafiles, out_frames, thresh=3, box_size=5, max_iter=2,
-               output_dir=None,  save_results=True):
+class BadPixStep:
+    """Wrapper around custom Bad Pixel Correction Step.
+    """
+
+    def __init__(self, input_data, baseline_ints, output_dir='./',
+                 occultation_type='transit'):
+        """Step initializer.
+        """
+
+        self.tag = 'badpixstep.fits'
+        self.output_dir = output_dir
+        self.baseline_ints = baseline_ints
+        self.occultation_type = occultation_type
+        self.datafiles = np.atleast_1d(input_data)
+        self.fileroots = utils.get_filename_root(self.datafiles)
+        self.fileroot_noseg = utils.get_filename_root_noseg(self.fileroots)
+
+    def run(self, thresh=3, box_size=5, max_iter=2, save_results=True,
+            force_redo=False):
+        """Method to run the step.
+        """
+
+        all_files = glob.glob(self.output_dir + '*')
+        do_step = 1
+        results = []
+        for i in range(len(self.datafiles)):
+            # If an output file for this segment already exists, skip the step.
+            expected_file = self.output_dir + self.fileroots[i] + self.tag
+            expected_mask = self.output_dir + self.fileroot_noseg + 'badpixmap.fits'
+            expected_deep = self.output_dir + self.fileroot_noseg + 'deepframe.fits'
+            if expected_file not in all_files:
+                do_step *= 0
+            else:
+                results.append(datamodels.open(expected_file))
+        if do_step == 1 and force_redo is False:
+            print('Output files already exist.')
+            print('Skipping Bad Pixel Correction Step.\n')
+            badpix_mask = fits.getdata(expected_mask)
+            deepframe = fits.getdata(expected_deep)
+        # If no output files are detected, run the step.
+        else:
+            step_results = badpixstep(self.datafiles,
+                                      baseline_ints=self.baseline_ints,
+                                      output_dir=self.output_dir,
+                                      save_results=save_results,
+                                      fileroots=self.fileroots,
+                                      fileroot_noseg=self.fileroot_noseg,
+                                      occultation_type=self.occultation_type,
+                                      max_iter=max_iter, thresh=thresh,
+                                      box_size=box_size)
+            results, badpix_mask, deepframe = step_results
+
+        return results, badpix_mask, deepframe
+
+
+class TracingStep:
+    """Wrapper around custom Tracing Step.
+    """
+
+    def __init__(self, input_data, deepframe, output_dir='./'):
+        """Step initializer.
+        """
+
+        self.output_dir = output_dir
+        self.deepframe = deepframe
+        self.datafiles = np.atleast_1d(input_data)
+        self.fileroots = utils.get_filename_root(self.datafiles)
+        self.fileroot_noseg = utils.get_filename_root_noseg(self.fileroots)
+
+    def run(self, mask_width, save_results=True, force_redo=False,
+            show_plots=False):
+        """Method to run the step.
+        """
+
+        all_files = glob.glob(self.output_dir + '*')
+        # If an output file for this segment already exists, skip the step.
+        suffix = 'tracemask_width{}.fits'.format(mask_width)
+        expected_file = self.output_dir + self.fileroot_noseg + suffix
+        expected_cen = self.output_dir + self.fileroot_noseg + 'centroids.csv'
+        if expected_file in all_files and force_redo is False:
+            print('Output file {} already exists.'.format(expected_file))
+            print('Skipping Tracing Step.\n')
+            tracemask = expected_file
+            centroids = expected_cen
+        # If no output files are detected, run the step.
+        else:
+            step_results = tracingstep(self.datafiles, self.deepframe,
+                                       output_dir=self.output_dir,
+                                       mask_width=mask_width,
+                                       save_results=save_results,
+                                       show_plots=show_plots,
+                                       fileroot_noseg=self.fileroot_noseg)
+            tracemask, centroids = step_results
+
+        return tracemask, centroids
+
+
+class LightCurveEstimateStep:
+    """Wrapper around custom Light Curve Estimation Step.
+    """
+
+    def __init__(self, input_data, baseline_ints, output_dir='./',
+                 occultation_type='transit'):
+        """Step initializer.
+        """
+
+        self.output_dir = output_dir
+        self.baseline_ints = baseline_ints
+        self.occultation_type = occultation_type
+        self.datafiles = np.atleast_1d(input_data)
+        self.fileroots = utils.get_filename_root(self.datafiles)
+        self.fileroot_noseg = utils.get_filename_root_noseg(self.fileroots)
+
+    def run(self, smoothing_scale=None, save_results=True, force_redo=False):
+        """Method to run the step.
+        """
+
+        all_files = glob.glob(self.output_dir + '*')
+        # If an output file for this segment already exists, skip the step.
+        suffix = 'lcestimate.npy'
+        expected_file = self.output_dir + self.fileroot_noseg + suffix
+        if expected_file in all_files and force_redo is False:
+            print('Output file {} already exists.'.format(expected_file))
+            print('Skipping Light Curve Estimation Step.\n')
+            smoothed_lc = expected_file
+        # If no output files are detected, run the step.
+        else:
+            smoothed_lc = lcestimatestep(self.datafiles,
+                                         baseline_ints=self.baseline_ints,
+                                         save_results=save_results,
+                                         output_dir=self.output_dir,
+                                         occultation_type=self.occultation_type,
+                                         fileroot_noseg=self.fileroot_noseg,
+                                         smoothing_scale=smoothing_scale)
+
+        return smoothed_lc
+
+
+def badpixstep(datafiles, baseline_ints, thresh=3, box_size=5, max_iter=2,
+               output_dir='./', save_results=True, fileroots=None,
+               fileroot_noseg='', occultation_type='transit'):
     """Identify and correct bad pixels remaining in the dataset. Find outlier
     pixels in the median stack and correct them via the median of a box of
     surrounding pixels in each integration.
 
     Parameters
     ----------
-    datafiles : list[str], list[CubeModel]
+    datafiles : array-like[str], array-like[RampModel]
         List of paths to datafiles for each segment, or the datamodels
         themselves.
-    out_frames : list[int]
+    baseline_ints : list[int]
         Integrations of ingress and egress.
     thresh : int
         Sigma threshold for a deviant pixel to be flagged.
@@ -130,10 +288,16 @@ def badpixstep(datafiles, out_frames, thresh=3, box_size=5, max_iter=2,
         Size of box around each pixel to test for deviations.
     max_iter : int
         Maximum number of outlier flagging iterations.
-    output_dir : str, None
+    output_dir : str
         Directory to which to output results.
     save_results : bool
         If True, save results to file.
+    fileroots : list[str], None
+        Root names for output files.
+    fileroot_noseg : str
+        Root file name with no segment information.
+    occultation_type : str
+        Type of occultation, either 'transit' or 'eclipse'.
 
     Returns
     -------
@@ -145,35 +309,24 @@ def badpixstep(datafiles, out_frames, thresh=3, box_size=5, max_iter=2,
         Final median stack of all outlier corrected integrations.
     """
 
-    print('Starting custom outlier interpolation step.')
+    print('Starting custom hot pixel interpolation step.')
 
     # Output directory formatting.
     if output_dir is not None:
         if output_dir[-1] != '/':
             output_dir += '/'
 
-    # Format out of transit frames.
-    out_frames = np.abs(out_frames)
-    out_trans = np.concatenate([np.arange(out_frames[0]),
-                                np.arange(out_frames[1]) - out_frames[1]])
+    # Format the baseline frames - either out-of-transit or in-eclipse.
+    baseline_ints = utils.format_out_frames(baseline_ints,
+                                            occultation_type)
 
     datafiles = np.atleast_1d(datafiles)
 
-    data, fileroots = [], []
+    data = []
     # Load in datamodels from all segments.
     for i, file in enumerate(datafiles):
         currentfile = utils.open_filetype(file)
         data.append(currentfile)
-        # Hack to get filename root.
-        filename = currentfile.meta.filename
-        filename_split = filename.split('/')[-1].split('_')
-        fileroot = ''
-        for seg, segment in enumerate(filename_split):
-            if seg == len(filename_split) - 1:
-                break
-            segment += '_'
-            fileroot += segment
-        fileroots.append(fileroot)
 
         # To create the deepstack, join all segments together.
         # Also stack all the dq arrays from each segement.
@@ -183,15 +336,6 @@ def badpixstep(datafiles, out_frames, thresh=3, box_size=5, max_iter=2,
         else:
             cube = np.concatenate([cube, currentfile.data], axis=0)
             dq_cube = np.concatenate([dq_cube, currentfile.dq], axis=0)
-
-    # Get total file root, with no segment info.
-    working_name = fileroots[0]
-    if 'seg' in working_name:
-        parts = working_name.split('seg')
-        part1, part2 = parts[0][:-1], parts[1][3:]
-        fileroot_noseg = part1 + part2
-    else:
-        fileroot_noseg = fileroots[0]
 
     # Initialize starting loop variables.
     badpix_mask = np.copy(cube)
@@ -249,7 +393,8 @@ def badpixstep(datafiles, out_frames, thresh=3, box_size=5, max_iter=2,
             break
         # Add bad pixels flagged this iteration to total mask.
         badpix_mask += badpix
-        # Replace the flagged pixels in each individual integration.
+        # Replace the flagged pixels in each individual integration, and set
+        # the dq flags to 0.
         for itg in tqdm(range(nint)):
             to_replace = badpix + nanpix[itg]
             newdata[itg], newdq[itg] = utils.do_replacement(newdata[itg],
@@ -261,7 +406,7 @@ def badpixstep(datafiles, out_frames, thresh=3, box_size=5, max_iter=2,
     # Ensure that the bad pixel mask remains zeros or ones.
     badpix_mask = np.where(badpix_mask == 0, 0, 1)
     # Generate a final corrected deep frame for out-of-transit.
-    deepframe = utils.make_deepstack(newdata[out_trans])
+    deepframe = utils.make_deepstack(newdata[baseline_ints])
 
     current_int = 0
     # Save interpolated data.
@@ -290,20 +435,20 @@ def badpixstep(datafiles, out_frames, thresh=3, box_size=5, max_iter=2,
     return data, badpix_mask, deepframe
 
 
-# TODO: needs to work for str, datamodel or np.array
-def tracemaskstep(deepframe, result, output_dir=None, mask_width=30,
-                  save_results=True, show_plots=False):
-    """Create a mask of a user-specified width around each of the SOSS
-    diffraction orders.
-    Note that the centroiding algorithm requires the APPLESOSS module, and
-    will fail if it is not available.
+def tracingstep(datafiles, deepframe, output_dir='./', mask_width=30,
+                save_results=True, show_plots=False, fileroot_noseg=''):
+    """Locate the centroids of all three SOSS orders via the edgetrigger
+    algorithm. Then create a mask of a given width around the centroids.
 
     Parameters
     ----------
-    deepframe : str, np.array, RampModel
+    datafiles : array-like[str], array-like[RampModel]
+        List of paths to datafiles for each segment, or the datamodels
+        themselves.
+    deepframe : str, ndarray
         Path to median stack file, or the median stack itself. Should be 2D
         (dimy, dimx).
-    output_dir : str, None
+    output_dir : str
         Directory to which to save outputs.
     mask_width : int
         Mask width, in pixels, around the trace centroids.
@@ -311,28 +456,20 @@ def tracemaskstep(deepframe, result, output_dir=None, mask_width=30,
         If Tre, save results to file.
     show_plots : bool
         If True, display plots.
+    fileroot_noseg : str
+        Root file name with no segment information.
 
     Returns
     -------
-    tracemask : np.array
-        3D (norder, dimy, dimx) trace mask.
+    tracemask : ndarray
+        3D (order, dimy, dimx) trace mask.
+    centroids : ndarray
+        Trace centroids for all three orders.
     """
 
-    # get the median stack data.
-    # deepframe = utils.open_filetype(deepframe)
-    # deepframe = deepframe.extra_fits.PRIMARY.data
-
-    result = utils.open_filetype(result)
-    working_name = result.meta.filename
-    # Get total file root, with no segment info.
-    if 'seg' in working_name:
-        parts = working_name.split('seg')
-        part1, part2 = parts[0][:-1], parts[1][3:8]
-        fileroot = part1 + part2
-    else:
-        fileroot = working_name
-
     # Get centroids for orders one to three.
+    if isinstance(deepframe, str):
+        deepframe = fits.getdata(deepframe)
     dimy, dimx = np.shape(deepframe)
     if dimy == 256:
         subarray = 'SUBSTRIP256'
@@ -340,9 +477,15 @@ def tracemaskstep(deepframe, result, output_dir=None, mask_width=30,
         subarray = 'SUBSTRIP96'
     else:
         raise NotImplementedError
+
+    # Get the most up to date trace table file
+    step = calwebb_spec2.extract_1d_step.Extract1dStep()
+    tracetable = step.get_reference_file(datafiles[0], 'spectrace')
     # Get centroids via the edgetrigger method
-    centroids = utils.get_trace_centroids(deepframe, subarray,
-                                          save_results=False)
+    save_filename = output_dir + fileroot_noseg
+    centroids = utils.get_trace_centroids(deepframe, tracetable, subarray,
+                                          save_results=save_results,
+                                          save_filename=save_filename)
     x1, y1 = centroids[0][0], centroids[0][1]
     x2, y2 = centroids[1][0], centroids[1][1]
     x3, y3 = centroids[2][0], centroids[2][1]
@@ -373,39 +516,44 @@ def tracemaskstep(deepframe, result, output_dir=None, mask_width=30,
     # Save the trace mask to file if requested.
     if save_results is True:
         hdu = fits.PrimaryHDU(tracemask)
-        hdu.writeto(output_dir + fileroot + 'tracemask_width{}.fits'.format(mask_width),
-                    overwrite=True)
+        suffix = 'tracemask_width{}.fits'.format(mask_width)
+        hdu.writeto(output_dir + fileroot_noseg + suffix, overwrite=True)
 
-    return tracemask
+    return tracemask, centroids
 
 
-# TODO: Smooth
-def lcestimatestep(datafiles, out_frames, save_results=True, output_dir=None):
+def lcestimatestep(datafiles, baseline_ints, save_results=True,
+                   output_dir='./', occultation_type='transit',
+                   fileroot_noseg='', smoothing_scale=None):
     """Construct a rough estimate of the TSO photometric light curve to use as
-    a scaling factor for the median out-of-transit frame in 1/f noise
-    correction.
+    a scaling factor in 1/f noise correction.
 
     Parameters
     ----------
-    datafiles : list[str], list[CubeModel]
+    datafiles : array-like[str], array-like[CubeModel]
         Input data files.
-    out_frames : list[int]
+    baseline_ints : array-like[int]
         Integrations of ingress and egress.
     save_results : bool
-        Whether to save outputs.
+        If True, save results to file.
     output_dir : str
-        Directory to which to save outputs
+        Directory to which to save outputs.
+    occultation_type : str
+        Type of occultation, either 'transit' or 'eclipse'.
+    fileroot_noseg : str
+        Root file name with no segment information.
+    smoothing_scale : int, None
+        Timescale on which to smooth the lightcurve.
 
     Returns
     -------
-    curve : np.array
+    smoothed_lc : ndarray
         Estimate of the TSO photometric light curve.
     """
 
-    # Format out of transit frames.
-    out_frames = np.abs(out_frames)
-    out_trans = np.concatenate([np.arange(out_frames[0]),
-                                np.arange(out_frames[1]) - out_frames[1]])
+    # Format the baseline frames - either out-of-transit or in-eclipse.
+    baseline_ints = utils.format_out_frames(baseline_ints,
+                                            occultation_type)
 
     # Open datafiles and pack into datacube.
     datafiles = np.atleast_1d(datafiles)
@@ -416,27 +564,28 @@ def lcestimatestep(datafiles, out_frames, save_results=True, output_dir=None):
         else:
             cube = np.concatenate([cube, current_data.data], axis=0)
 
-    # Get file root name.
-    filename = current_data.meta.filename.split('/')[-1]
-    fileroot_noseg = filename.split('-')[0]
-    fileroot_noseg += '_nis_'
-
     # Use an area centered on the peak of the order 1 blaze to estimate the
     # photometric light curve.
     postage = cube[:, 20:60, 1500:1550]
     timeseries = np.sum(postage, axis=(1, 2))
-    # Normalize by the out-of-transit flux level.
-    curve = timeseries / np.median(timeseries[out_trans])
+    # Normalize by the baseline flux level.
+    timeseries = timeseries / np.median(timeseries[baseline_ints])
+    # If not smoothing scale is provided, smooth the time series on a
+    # timescale of roughly 2% of the total length.
+    if smoothing_scale is None:
+        smoothing_scale = int(0.02 * np.shape(cube)[0])
+    smoothed_lc = median_filter(timeseries, smoothing_scale)
 
     if save_results is True:
-        outfile = output_dir + fileroot_noseg + 'lcscaling.npy'
-        np.save(outfile, curve)
+        outfile = output_dir + fileroot_noseg + 'lcestimate.npy'
+        np.save(outfile, smoothed_lc)
 
-    return curve
+    return smoothed_lc
 
 
-def run_stage2(results, out_frames, save_results=True, force_redo=False,
-               max_iter=2, mask_width=30, root_dir='./', output_tag=''):
+def run_stage2(results, baseline_ints=None, save_results=True,
+               force_redo=False, mask_width=30, root_dir='./', output_tag='',
+               occultation_type='transit', smoothing_scale=None):
     """Run the supreme-SPOON Stage 2 pipeline: spectroscopic processing,
     using a combination of official STScI DMS and custom steps. Documentation
     for the official DMS steps can be found here:
@@ -444,32 +593,37 @@ def run_stage2(results, out_frames, save_results=True, force_redo=False,
 
     Parameters
     ----------
-    results : list[str], list[CubeModel]
+    results : array-like[str], array-like[CubeModel]
         supreme-SPOON Stage 1 output files.
-    out_frames : list[int]
-        Integration numbers for transit ingress and egress.
+    baseline_ints : list[int], None
+        Integrations of ingress and egress.
     save_results : bool
         If True, save results of each step to file.
     force_redo : bool
         If True, redo steps even if outputs files are already present.
-    max_iter : int
-        maximum number of iterations for bad pixel flagging.
     mask_width : int
         Width, in pixels, of trace mask to generate
     root_dir : str
         Directory from which all relative paths are defined.
     output_tag : str
         Name tag to append to pipeline outputs directory.
+    occultation_type : str
+        Type of occultation: transit or eclipse.
+    smoothing_scale : int, None
+        Timescale on which to smooth the lightcurve.
 
     Returns
     -------
     results : list[CubeModel]
         Datafiles for each segment processed through Stage 2.
-    deepframe : np.array
-        Out-of-transit median stack.
-    mask : np.array
+    deepframe : ndarray
+        Median stack of the baseline flux level integrations (i.e.,
+        out-of-transit or in-eclipse).
+    tracemask : ndarray
         Trace mask.
-    scaling : np.array
+    centroids : ndarray
+        Trace centroids for all three orders.
+    smoothed_lc : ndarray
         Estimate of the photometric light curve.
     """
 
@@ -484,18 +638,6 @@ def run_stage2(results, out_frames, save_results=True, force_redo=False,
     utils.verify_path(root_dir + 'pipeline_outputs_directory' + output_tag)
     utils.verify_path(root_dir + 'pipeline_outputs_directory' + output_tag + '/Stage2')
     outdir = root_dir + 'pipeline_outputs_directory' + output_tag + '/Stage2/'
-
-    all_files = glob.glob(outdir + '*')
-    results = np.atleast_1d(results)
-    # Get file root
-    fileroots = []
-    for file in results:
-        data = utils.open_filetype(file)
-        filename_split = data.meta.filename.split('_')
-        fileroot = ''
-        for chunk in filename_split[:-1]:
-            fileroot += chunk + '_'
-        fileroots.append(fileroot)
 
     # ===== Assign WCS Step =====
     # Default DMS step.
@@ -514,71 +656,24 @@ def run_stage2(results, out_frames, save_results=True, force_redo=False,
 
     # ===== Bad Pixel Correction Step =====
     # Custom DMS step.
-    step_tag = 'badpixstep.fits'
-    do_step = 1
-    new_results = []
-    for i in range(len(results)):
-        # If an output file for this segment already exists, skip the step.
-        expected_file = outdir + fileroots[i] + step_tag
-        if expected_file not in all_files:
-            do_step *= 0
-        else:
-            existing_data = datamodels.open(expected_file)
-            new_results.append(existing_data)
-    if do_step == 1 and force_redo is False:
-        print('Output files already exist.')
-        print('Skipping Bad Pixel Correction Step.')
-        results = new_results
-        # Get total file root, with no segment info.
-        working_name = fileroots[0]
-        if 'seg' in working_name:
-            parts = working_name.split('seg')
-            part1, part2 = parts[0][:-1], parts[1][3:]
-            fileroot_noseg = part1 + part2
-        else:
-            fileroot_noseg = fileroots[0]
-        # Also get the median stack.
-        existing_deep = fileroot_noseg + 'deepframe.fits'
-        deepframe = fits.getdata(outdir + existing_deep, 0)
-    # If no output files are detected, run the step.
-    else:
-        with warnings.catch_warnings():
-            warnings.simplefilter('ignore')
-            res = badpixstep(results, out_frames=out_frames, output_dir=outdir,
-                             save_results=save_results, max_iter=max_iter)
-            results, deepframe = res[0], res[2]
+    step = BadPixStep(results, baseline_ints=baseline_ints, output_dir=outdir,
+                      occultation_type=occultation_type)
+    step_results = step.run(save_results=save_results, force_redo=force_redo)
+    results, deepframe = step_results[0], step_results[2]
 
     # ===== Trace Mask Creation Step =====
     # Custom DMS step.
-    step_tag = 'tracemask_width{}.fits'.format(mask_width)
-    # If an output file for this segment already exists, skip the step.
-    fileroot_split = fileroots[0].split('-seg')
-    fileroot_noseg = fileroot_split[0] + fileroot_split[1][3:]
-    expected_file = outdir + fileroot_noseg + step_tag
-    if expected_file in all_files and force_redo is False:
-        print('Output file {} already exists.'.format(expected_file))
-        print('Skipping Trace Mask Creation Step.')
-        mask = expected_file
-    else:
-        print('Starting Trace Mask Creation Step.')
-        mask = tracemaskstep(deepframe, results[0], output_dir=outdir,
-                             mask_width=mask_width, save_results=save_results,
-                             show_plots=False)
+    step = TracingStep(results, deepframe=deepframe, output_dir=outdir)
+    step_results = step.run(mask_width=mask_width, save_results=save_results,
+                            force_redo=force_redo)
+    tracemask, centroids = step_results
 
-    # ===== Light Curve Scaling Estimation Step =====
+    # ===== Light Curve Estimation Step =====
     # Custom DMS step.
-    step_tag = 'lcscaling.npy'.format(mask_width)
-    # If an output file for this segment already exists, skip the step.
-    fileroot_split = fileroots[0].split('-seg')
-    fileroot_noseg = fileroot_split[0] + fileroot_split[1][3:]
-    expected_file = outdir + fileroot_noseg + step_tag
-    if expected_file in all_files and force_redo is False:
-        print('Output file {} already exists.'.format(expected_file))
-        print('Skipping Light Curve Estimation Step.')
-        scaling = expected_file
-    else:
-        print('Starting Trace Mask Creation Step.')
-        scaling = lcestimatestep(results, out_frames=out_frames,
-                                 save_results=save_results, output_dir=outdir)
+    step = LightCurveEstimateStep(results, baseline_ints=baseline_ints,
+                                  output_dir=outdir,
+                                  occultation_type=occultation_type)
+    smoothed_lc = step.run(smoothing_scale=smoothing_scale,
+                           save_results=save_results, force_redo=force_redo)
 
-    return results, deepframe, mask, scaling
+    return results, deepframe, tracemask, centroids, smoothed_lc
