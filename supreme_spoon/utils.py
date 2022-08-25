@@ -9,7 +9,6 @@ Miscellaneous pipeline tools.
 """
 
 from astropy.io import fits
-from astropy.time import Time
 import bottleneck as bn
 from datetime import datetime
 import glob
@@ -17,7 +16,6 @@ import juliet
 import numpy as np
 import os
 import pandas as pd
-import pickle as pk
 import warnings
 
 from applesoss.edgetrigger_centroids import get_soss_centroids
@@ -40,9 +38,9 @@ def do_replacement(frame, badpix_map, dq=None, box_size=5):
 
     Returns
     -------
-    frame_out : ndarray[float]
+    frame_out : array-like[float]
         Input frame wth pixels interpolated.
-    dq_out : ndarray[int]
+    dq_out : array-like[int]
         Input dq map with interpolated pixels set to zero.
     """
 
@@ -86,7 +84,7 @@ def fix_filenames(old_files, to_remove, outdir, to_add=''):
 
     Returns
     -------
-    new_files : ndarray[str]
+    new_files : array-like[str]
         New file names.
     """
 
@@ -131,7 +129,7 @@ def format_out_frames(out_frames, occultation_type='transit'):
 
     Returns
     -------
-    baseline_ints : ndarray[int]
+    baseline_ints : array-like[int]
         Array of out-of-transit, or in-eclipse frames for transits and
         eclipses respectively.
 
@@ -236,7 +234,7 @@ def get_filename_root(datafiles):
 
     Returns
     -------
-    fileroots : list[str]
+    fileroots : array-like[str]
         List of file name roots.
     """
 
@@ -305,7 +303,7 @@ def get_interp_box(data, box_size, i, j, dimx, dimy):
 
     Returns
     -------
-    box_properties : ndarray
+    box_properties : array-like
         Median and standard deviation of pixels in the box.
     """
 
@@ -365,7 +363,7 @@ def get_timestamps(datafiles):
 
     Returns
     -------
-    times : ndarray
+    times : array-like[float]
         Mid-integration times for each integraton in BJD.
     """
 
@@ -386,7 +384,7 @@ def get_trace_centroids(deepframe, tracetable, subarray, save_results=True,
 
     Parameters
     ----------
-    deepframe : ndarray
+    deepframe : array-like[float]
         Median stack.
     tracetable : str
         Path to SpecTrace reference file.
@@ -399,11 +397,11 @@ def get_trace_centroids(deepframe, tracetable, subarray, save_results=True,
 
     Returns
     -------
-    cen_o1 : ndarray
+    cen_o1 : array-like[float]
         Order 1 X and Y centroids.
-    cen_o2 : ndarray
+    cen_o2 : array-like[float]
         Order 2 X and Y centroids.
-    cen_o3 : ndarray
+    cen_o3 : array-like[float]
         Order 3 X and Y centroids.
     """
 
@@ -466,9 +464,9 @@ def get_wavebin_limits(wave):
 
     Returns
     -------
-    bin_low : ndarray[float]
+    bin_low : array-like[float]
         Lower edge of wavelength bin.
-    bin_up : ndarray[float]
+    bin_up : array-like[float]
         Upper edge of wavelength bin.
     """
 
@@ -493,12 +491,12 @@ def make_deepstack(cube):
 
     Parameters
     ----------
-    cube : array[float]
+    cube : array-like[float]
         Stack of all integrations in a TSO
 
     Returns
     -------
-    deepstack : array[float]
+    deepstack : array-like[float]
        Median of the input cube along the integration axis.
     """
 
@@ -537,8 +535,8 @@ def open_filetype(datafile):
     return data
 
 
-def open_stage2_secondary_outputs(deep_file, centroid_file, root_dir,
-                                  output_tag=''):
+def open_stage2_secondary_outputs(deep_file, centroid_file, smoothed_wlc_file,
+                                  root_dir, output_tag=''):
     """Utlity to locate and read in secondary outputs from stage 2.
 
     Parameters
@@ -547,6 +545,8 @@ def open_stage2_secondary_outputs(deep_file, centroid_file, root_dir,
         Path to deep frame file.
     centroid_file : str, None
         Path to centroids file.
+    smoothed_wlc_file : str, None
+        Path to smoothed wlc scaling file.
     root_dir : str
         Root directory.
     output_tag : str
@@ -554,10 +554,12 @@ def open_stage2_secondary_outputs(deep_file, centroid_file, root_dir,
 
     Returns
     -------
-    deepframe : ndarray[float]
+    deepframe : array-like[float]
         Deep frame.
-    centroids : ndarray[float]
+    centroids : array-like[float]
         Centroids foor all orders.
+    smoothed_wlc : array-like[float]
+        Smoothed wlc scaling.
     """
 
     input_dir = root_dir + 'pipeline_outputs_drectory_{}/Stage2/'.format(output_tag)
@@ -587,7 +589,20 @@ def open_stage2_secondary_outputs(deep_file, centroid_file, root_dir,
             centroid_file = centroid_file[0]
     centroids = pd.read_csv(centroid_file, comment='#')
 
-    return deepframe, centroids
+    # Locate and read in the smoothed wlc.
+    if smoothed_wlc_file is None:
+        smoothed_wlc_file = glob.glob(input_dir + '*lcestimate*')
+        if len(smoothed_wlc_file) > 1:
+            msg = 'Multiple WLC scaling files detected.'
+            raise ValueError(msg)
+        elif len(smoothed_wlc_file) == 0:
+            msg = 'No WLC scaling file found.'
+            raise FileNotFoundError(msg)
+        else:
+            smoothed_wlc_file = smoothed_wlc_file[0]
+    smoothed_wlc = np.load(smoothed_wlc_file)
+
+    return deepframe, centroids, smoothed_wlc
 
 
 def pack_spectra(filename, wl1, wu1, f1, e1, wl2, wu2, f2, e2, t,
@@ -735,7 +750,7 @@ def sigma_clip_lightcurves(flux, ferr, thresh=5):
 
     Returns
     -------
-    flux_clipped : ndarray[float]
+    flux_clipped : array-like[float]
         Flux array with outliers
     """
 
@@ -770,7 +785,7 @@ def unpack_input_directory(indir, filetag='', exposure_type='CLEAR'):
 
     Returns
     -------
-    segments: list[str]
+    segments: array-like[str]
         File names of the requested exposure and file tag in chronological
         order.
     """

@@ -87,7 +87,8 @@ class Extract1DStep:
     custom modifications.
     """
 
-    def __init__(self, input_data, extract_method, output_dir='./'):
+    def __init__(self, input_data, extract_method, deepframe, smoothed_wlc,
+                 output_dir='./'):
         """Step initializer.
         """
 
@@ -96,6 +97,7 @@ class Extract1DStep:
         self.datafiles = np.atleast_1d(input_data)
         self.fileroots = utils.get_filename_root(self.datafiles)
         self.extract_method = extract_method
+        self.scaled_deep = deepframe[None, :, :] * smoothed_wlc[:, None, None]
 
     def run(self, soss_transform, soss_width=25, specprofile=None,
             soss_estimate=None, save_results=True, force_redo=False):
@@ -150,14 +152,14 @@ class Extract1DStep:
                     soss_atoca = False
                     soss_modelname = None
                     soss_bad_pix = 'masking'
-                    # Interpolate all remaining bad pixels
-                    print('Interpolating remaining bad pixels.')
-                    # TODO: do by scaling the median to the level of each int and
-                    #  replace with median values
-                    for itg in tqdm(range(segment.dq.shape[0])):
-                        segment.data[itg] = utils.do_replacement(segment.data[itg],
-                                                                 segment.dq[itg])[0]
-                    segment.dq = np.zeros_like(segment.dq)
+                    # Replace all remaining bad pixels using scaled median,
+                    # and set dq values to zero.
+                    to_replace = np.where(segment.dq != 0)
+                    istart = segment.meta.exposure.integration_start - 1
+                    iend = segment.meta.exposure.integration_end
+                    for itg in range(istart, iend):
+                        segment.data[itg][to_replace] = self.scaled_deep[itg][to_replace]
+                    segment.dq[:, to_replace] = 0
                 else:
                     msg = ('Invalid extraction: {}'.format(self.extract_method))
                     raise ValueError(msg)
@@ -402,65 +404,13 @@ def lightcurvestep(datafiles, baseline_ints, extract_params, output_dir='./',
     return stellar_spectra
 
 
-def specprofilestep(datafiles, deepframe, save_results=True, output_dir='./'):
-    """Wrapper around the APPLESOSS module to construct a specprofile
-    reference file tailored to the particular TSO being analyzed.
-
-    Parameters
-    ----------
-    datafiles : array-like[str], array-like[jwst.RampModel]
-        Input datamodels or paths to datamodels for each segment.
-    deepframe : ndarray[float]
-        Median out-of-transit stack.
-    save_results : bool
-        If True, save results to file.
-    output_dir : str
-        Directory to which to save outputs.
-
-    Returns
-    -------
-    spat_prof : applesoss.EmpiricalProfile object
-        Modelled spatial profiles for all orders.
-    filename : str
-        Name of the output file.
-    """
-
-    print('Starting SpecProfile Construction Step.')
-    datafiles = np.atleast_1d(datafiles)
-
-    # Get the most up to date trace table file.
-    step = calwebb_spec2.extract_1d_step.Extract1dStep()
-    tracetable = step.get_reference_file(datafiles[0], 'spectrace')
-    # Get the most up to date 2D wavemap file.
-    step = calwebb_spec2.extract_1d_step.Extract1dStep()
-    wavemap = step.get_reference_file(datafiles[0], 'wavemap')
-
-    # Initialize and run the APPLESOSS module with the median stack.
-    spat_prof = applesoss.EmpiricalProfile(deepframe, tracetable=tracetable,
-                                           wavemap=wavemap)
-    spat_prof.build_empirical_profile(verbose=1, wave_increment=0.1)
-
-    # Save results to file if requested.
-    if save_results is True:
-        if np.shape(deepframe)[0] == 96:
-            subarray = 'SUBSTRIP96'
-        else:
-            subarray = 'SUBSTRIP256'
-        filename = spat_prof.write_specprofile_reference(subarray,
-                                                         output_dir=output_dir)
-    else:
-        filename = None
-
-    return spat_prof, filename
-
-
 def sosssolverstep(deepframe, datafile, show_plots=False, centroids=None):
     """Determine the rotation, as well as vertical and horizontal offsets
     necessary to match the observed trace to the reference files.
 
     Parameters
     ----------
-    deepframe : ndarray[float]
+    deepframe : array-like[float]
         Median baseline stack.
     datafile : str, jwst.datamodel
         Datamodel, or path to datamodel for one segment.
@@ -530,22 +480,76 @@ def sosssolverstep(deepframe, datafile, show_plots=False, centroids=None):
     return transform
 
 
-def run_stage3(results, deepframe, baseline_ints, save_results=True,
-               show_plots=False, root_dir='./', force_redo=False,
-               extract_method='box', specprofile=None, soss_estimate=None,
-               soss_width=25, output_tag='', use_applesoss=True,
-               occultation_type='transit'):
+def specprofilestep(datafiles, deepframe, save_results=True, output_dir='./'):
+    """Wrapper around the APPLESOSS module to construct a specprofile
+    reference file tailored to the particular TSO being analyzed.
+
+    Parameters
+    ----------
+    datafiles : array-like[str], array-like[jwst.RampModel]
+        Input datamodels or paths to datamodels for each segment.
+    deepframe : array-like[float]
+        Median out-of-transit stack.
+    save_results : bool
+        If True, save results to file.
+    output_dir : str
+        Directory to which to save outputs.
+
+    Returns
+    -------
+    spat_prof : applesoss.EmpiricalProfile object
+        Modelled spatial profiles for all orders.
+    filename : str
+        Name of the output file.
+    """
+
+    print('Starting SpecProfile Construction Step.')
+    datafiles = np.atleast_1d(datafiles)
+
+    # Get the most up to date trace table file.
+    step = calwebb_spec2.extract_1d_step.Extract1dStep()
+    tracetable = step.get_reference_file(datafiles[0], 'spectrace')
+    # Get the most up to date 2D wavemap file.
+    step = calwebb_spec2.extract_1d_step.Extract1dStep()
+    wavemap = step.get_reference_file(datafiles[0], 'wavemap')
+
+    # Initialize and run the APPLESOSS module with the median stack.
+    spat_prof = applesoss.EmpiricalProfile(deepframe, tracetable=tracetable,
+                                           wavemap=wavemap)
+    spat_prof.build_empirical_profile(verbose=1, wave_increment=0.1)
+
+    # Save results to file if requested.
+    if save_results is True:
+        if np.shape(deepframe)[0] == 96:
+            subarray = 'SUBSTRIP96'
+        else:
+            subarray = 'SUBSTRIP256'
+        filename = spat_prof.write_specprofile_reference(subarray,
+                                                         output_dir=output_dir)
+    else:
+        filename = None
+
+    return spat_prof, filename
+
+
+def run_stage3(results, deepframe, baseline_ints, smoothed_wlc,
+               save_results=True, show_plots=False, root_dir='./',
+               force_redo=False, extract_method='box', specprofile=None,
+               soss_estimate=None, soss_width=25, output_tag='',
+               use_applesoss=True, occultation_type='transit'):
     """Run the supreme-SPOON Stage 3 pipeline: 1D spectral extraction, using
     a combination of official STScI DMS and custom steps.
 
     Parameters
     ----------
-    results : list[str], list[CubeModel]
+    results : array-like[str], array-like[CubeModel]
         supreme-SPOON Stage 2 outputs for each segment.
-    deepframe : np.array
+    deepframe : array-like[float]
         Median out-of-transit stack.
-    baseline_ints : list[int]
+    baseline_ints : array-like[int]
         Integration number of ingress and egress.
+    smoothed_wlc : array-like[float]
+        Estimate of the normalized light curve.
     save_results : bool
         If True, save the results of each step to file.
     show_plots : bool
@@ -614,8 +618,9 @@ def run_stage3(results, deepframe, baseline_ints, save_results=True,
 
     # ===== 1D Extraction Step =====
     # Custom/default DMS step.
-    step = Extract1DStep(results, extract_method=extract_method,
-                         output_dir=outdir)
+    step = Extract1DStep(results, deepframe=deepframe,
+                         smoothed_wlc=smoothed_wlc,
+                         extract_method=extract_method, output_dir=outdir)
     step_results = step.run(soss_transform=soss_transform,
                             soss_width=soss_width, specprofile=specprofile,
                             soss_estimate=soss_estimate,

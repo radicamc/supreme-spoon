@@ -135,13 +135,14 @@ class BadPixStep:
     """Wrapper around custom Bad Pixel Correction Step.
     """
 
-    def __init__(self, input_data, baseline_ints, output_dir='./',
-                 occultation_type='transit'):
+    def __init__(self, input_data, smoothed_wlc, baseline_ints,
+                 output_dir='./', occultation_type='transit'):
         """Step initializer.
         """
 
         self.tag = 'badpixstep.fits'
         self.output_dir = output_dir
+        self.smoothed_wlc = smoothed_wlc
         self.baseline_ints = baseline_ints
         self.occultation_type = occultation_type
         self.datafiles = np.atleast_1d(input_data)
@@ -174,6 +175,7 @@ class BadPixStep:
         else:
             step_results = badpixstep(self.datafiles,
                                       baseline_ints=self.baseline_ints,
+                                      smoothed_wlc=self.smoothed_wlc,
                                       output_dir=self.output_dir,
                                       save_results=save_results,
                                       fileroots=self.fileroots,
@@ -269,10 +271,10 @@ class LightCurveEstimateStep:
         return smoothed_lc
 
 
-def badpixstep(datafiles, baseline_ints, thresh=3, box_size=5, max_iter=2,
-               output_dir='./', save_results=True, fileroots=None,
-               fileroot_noseg='', occultation_type='transit'):
-    """Identify and correct bad pixels remaining in the dataset. Find outlier
+def badpixstep(datafiles, baseline_ints, smoothed_wlc=None, thresh=3,
+               box_size=5, max_iter=2, output_dir='./', save_results=True,
+               fileroots=None, fileroot_noseg='', occultation_type='transit'):
+    """Identify and correct hot pixels remaining in the dataset. Find outlier
     pixels in the median stack and correct them via the median of a box of
     surrounding pixels in each integration.
 
@@ -281,8 +283,10 @@ def badpixstep(datafiles, baseline_ints, thresh=3, box_size=5, max_iter=2,
     datafiles : array-like[str], array-like[RampModel]
         List of paths to datafiles for each segment, or the datamodels
         themselves.
-    baseline_ints : list[int]
+    baseline_ints : array-like[int]
         Integrations of ingress and egress.
+    smoothed_wlc : array-like[float]
+        Estimate of the normalized light curve.
     thresh : int
         Sigma threshold for a deviant pixel to be flagged.
     box_size : int
@@ -293,7 +297,7 @@ def badpixstep(datafiles, baseline_ints, thresh=3, box_size=5, max_iter=2,
         Directory to which to output results.
     save_results : bool
         If True, save results to file.
-    fileroots : list[str], None
+    fileroots : array-like[str], None
         Root names for output files.
     fileroot_noseg : str
         Root file name with no segment information.
@@ -304,9 +308,7 @@ def badpixstep(datafiles, baseline_ints, thresh=3, box_size=5, max_iter=2,
     -------
     data : list[CubeModel]
         Input datamodels for each segment, corrected for outlier pixels.
-    badpix_mask : np.array
-        Mask of all pixels flagged by the outlier routine.
-    deepframe : np.array
+    deepframe : array-like[float]
         Final median stack of all outlier corrected integrations.
     """
 
@@ -317,11 +319,10 @@ def badpixstep(datafiles, baseline_ints, thresh=3, box_size=5, max_iter=2,
         if output_dir[-1] != '/':
             output_dir += '/'
 
+    datafiles = np.atleast_1d(datafiles)
     # Format the baseline frames - either out-of-transit or in-eclipse.
     baseline_ints = utils.format_out_frames(baseline_ints,
                                             occultation_type)
-
-    datafiles = np.atleast_1d(datafiles)
 
     data = []
     # Load in datamodels from all segments.
@@ -339,7 +340,6 @@ def badpixstep(datafiles, baseline_ints, thresh=3, box_size=5, max_iter=2,
             dq_cube = np.concatenate([dq_cube, currentfile.dq], axis=0)
 
     # Initialize starting loop variables.
-    badpix_mask = np.copy(cube)
     newdata = np.copy(cube)
     newdq = np.copy(dq_cube)
     it = 0
@@ -349,17 +349,10 @@ def badpixstep(datafiles, baseline_ints, thresh=3, box_size=5, max_iter=2,
 
         # Generate the deepstack.
         print(' Generating a deep stack using all integrations...')
-        deepframe = utils.make_deepstack(newdata)
+        deepframe = utils.make_deepstack(newdata[baseline_ints])
         badpix = np.zeros_like(deepframe)
         count = 0
         nint, dimy, dimx = np.shape(newdata)
-
-        # On the first iteration only - also interpolate any NaNs in
-        # individual integrations.
-        if it == 0:
-            nanpix = np.isnan(newdata).astype(int)
-        else:
-            nanpix = np.zeros_like(newdata)
 
         # Loop over whole deepstack and flag deviant pixels.
         for i in tqdm(range(dimx)):
@@ -376,8 +369,7 @@ def badpixstep(datafiles, baseline_ints, thresh=3, box_size=5, max_iter=2,
                 med, std = box_prop[0], box_prop[1]
 
                 # If central pixel is too deviant (or nan) flag it.
-                if np.abs(deepframe[j, i] - med) > thresh * std or np.isnan(
-                        deepframe[j, i]):
+                if np.abs(deepframe[j, i] - med) > thresh * std or np.isnan(deepframe[j, i]):
                     mini, maxi = np.max([0, i - 1]), np.min([dimx - 1, i + 1])
                     minj, maxj = np.max([0, j - 1]), np.min([dimy - 1, j + 1])
                     badpix[j, i] = 1
@@ -392,21 +384,31 @@ def badpixstep(datafiles, baseline_ints, thresh=3, box_size=5, max_iter=2,
         # End if no bad pixels are found.
         if count == 0:
             break
-        # Add bad pixels flagged this iteration to total mask.
-        badpix_mask += badpix
-        # Replace the flagged pixels in each individual integration, and set
-        # the dq flags to 0.
-        for itg in tqdm(range(nint)):
-            to_replace = badpix + nanpix[itg]
-            newdata[itg], newdq[itg] = utils.do_replacement(newdata[itg],
-                                                            to_replace,
-                                                            dq=newdq[itg],
-                                                            box_size=box_size)
+        # Replace the flagged pixels in the median integration.
+        newdeep, deepdq = utils.do_replacement(deepframe, badpix,
+                                               dq=np.ones_like(deepframe),
+                                               box_size=box_size)
+
+        # If no lightcurve is provided, estimate it from the current data.
+        if smoothed_wlc is None:
+            postage = cube[:, 20:60, 1500:1550]
+            timeseries = np.sum(postage, axis=(1, 2))
+            timeseries = timeseries / np.median(timeseries[baseline_ints])
+            # Smooth the time series on a timescale of roughly 2%.
+            smoothed_wlc = median_filter(timeseries,
+                                         int(0.02 * np.shape(cube)[0]))
+        # Replace hot pixels in each integration using a scaled median.
+        newdeep = np.repeat(newdeep, nint).reshape(dimy, dimx, nint)
+        newdeep = newdeep.transpose(2, 0, 1) * smoothed_wlc[:, None, None]
+        mask = badpix.astype(bool)
+        newdata[:, mask] = newdeep[:, mask]
+        # Set DQ flags for these pixels to zero (use the pixel).
+        deepdq = ~deepdq.astype(bool)
+        newdq[:, deepdq] = 0
+
         it += 1
 
-    # Ensure that the bad pixel mask remains zeros or ones.
-    badpix_mask = np.where(badpix_mask == 0, 0, 1)
-    # Generate a final corrected deep frame for out-of-transit.
+    # Generate a final corrected deep frame for the baseline integrations.
     deepframe = utils.make_deepstack(newdata[baseline_ints])
 
     current_int = 0
@@ -423,17 +425,12 @@ def badpixstep(datafiles, baseline_ints, thresh=3, box_size=5, max_iter=2,
                 file.write(output_dir + fileroots[n] + 'badpixstep.fits')
 
     if save_results is True:
-        # Save bad pixel mask.
-        hdu = fits.PrimaryHDU(badpix_mask)
-        hdu.writeto(output_dir + fileroot_noseg + 'badpixmap.fits',
-                    overwrite=True)
-
         # Save deep frame.
         hdu = fits.PrimaryHDU(deepframe)
         hdu.writeto(output_dir + fileroot_noseg + 'deepframe.fits',
                     overwrite=True)
 
-    return data, badpix_mask, deepframe
+    return data, deepframe
 
 
 def lcestimatestep(datafiles, baseline_ints, save_results=True,
@@ -461,7 +458,7 @@ def lcestimatestep(datafiles, baseline_ints, save_results=True,
 
     Returns
     -------
-    smoothed_lc : ndarray
+    smoothed_wlc : array-like[float]
         Estimate of the TSO photometric light curve.
     """
 
@@ -507,7 +504,7 @@ def tracingstep(datafiles, deepframe, output_dir='./', mask_width=30,
     datafiles : array-like[str], array-like[RampModel]
         List of paths to datafiles for each segment, or the datamodels
         themselves.
-    deepframe : str, ndarray
+    deepframe : str, array-like[float]
         Path to median stack file, or the median stack itself. Should be 2D
         (dimy, dimx).
     output_dir : str
@@ -523,9 +520,9 @@ def tracingstep(datafiles, deepframe, output_dir='./', mask_width=30,
 
     Returns
     -------
-    tracemask : ndarray
+    tracemask : array-like[bool]
         3D (order, dimy, dimx) trace mask.
-    centroids : ndarray
+    centroids : array-like[float]
         Trace centroids for all three orders.
     """
 
@@ -584,7 +581,7 @@ def tracingstep(datafiles, deepframe, output_dir='./', mask_width=30,
     return tracemask, centroids
 
 
-def run_stage2(results, baseline_ints=None, save_results=True,
+def run_stage2(results, baseline_ints, smoothed_wlc=None, save_results=True,
                force_redo=False, mask_width=30, root_dir='./', output_tag='',
                occultation_type='transit', smoothing_scale=None):
     """Run the supreme-SPOON Stage 2 pipeline: spectroscopic processing,
@@ -596,8 +593,10 @@ def run_stage2(results, baseline_ints=None, save_results=True,
     ----------
     results : array-like[str], array-like[CubeModel]
         supreme-SPOON Stage 1 output files.
-    baseline_ints : list[int], None
+    baseline_ints : array-like[int]
         Integrations of ingress and egress.
+    smoothed_wlc : array-like[float], None
+        Estimate of the normalized light curve.
     save_results : bool
         If True, save results of each step to file.
     force_redo : bool
@@ -615,16 +614,16 @@ def run_stage2(results, baseline_ints=None, save_results=True,
 
     Returns
     -------
-    results : list[CubeModel]
+    results : array-like[CubeModel]
         Datafiles for each segment processed through Stage 2.
-    deepframe : ndarray
+    deepframe : array-like[float]
         Median stack of the baseline flux level integrations (i.e.,
         out-of-transit or in-eclipse).
-    tracemask : ndarray
+    tracemask : array-like[float]
         Trace mask.
-    centroids : ndarray
+    centroids : array-like[float]
         Trace centroids for all three orders.
-    smoothed_lc : ndarray
+    smoothed_wlc : array-like[float]
         Estimate of the photometric light curve.
     """
 
@@ -657,7 +656,8 @@ def run_stage2(results, baseline_ints=None, save_results=True,
 
     # ===== Bad Pixel Correction Step =====
     # Custom DMS step.
-    step = BadPixStep(results, baseline_ints=baseline_ints, output_dir=outdir,
+    step = BadPixStep(results, baseline_ints=baseline_ints,
+                      smoothed_wlc=smoothed_wlc, output_dir=outdir,
                       occultation_type=occultation_type)
     step_results = step.run(save_results=save_results, force_redo=force_redo)
     results, deepframe = step_results[0], step_results[2]
@@ -674,7 +674,7 @@ def run_stage2(results, baseline_ints=None, save_results=True,
     step = LightCurveEstimateStep(results, baseline_ints=baseline_ints,
                                   output_dir=outdir,
                                   occultation_type=occultation_type)
-    smoothed_lc = step.run(smoothing_scale=smoothing_scale,
-                           save_results=save_results, force_redo=force_redo)
+    smoothed_wlc = step.run(smoothing_scale=smoothing_scale,
+                            save_results=save_results, force_redo=force_redo)
 
-    return results, deepframe, tracemask, centroids, smoothed_lc
+    return results, deepframe, tracemask, centroids, smoothed_wlc

@@ -480,7 +480,7 @@ def backgroundstep(datafiles, background_model, output_dir='./',
     datafiles : array-like[str], array-like[CubeModel]
         Paths to data segments for a SOSS exposure, or the datamodels
         themselves.
-    background_model : np.array
+    background_model : array-like[float]
         Background model. Should be 2D (dimy, dimx)
     output_dir : str
         Directory to which to save outputs.
@@ -488,14 +488,14 @@ def backgroundstep(datafiles, background_model, output_dir='./',
         If True, save outputs to file.
     show_plots : bool
         If True, show plots.
-    fileroots : list[str]
+    fileroots : array-like[str]
         Root names for output files.
 
     Returns
     -------
-    results : list[CubeModel]
+    results : array-like[CubeModel]
         Input data segments, corrected for the background.
-    model_scaled : np.array
+    model_scaled : array-like[float]
         Background model, scaled to the flux level of each group median.
     """
 
@@ -592,15 +592,15 @@ def oneoverfstep(datafiles, baseline_ints, smoothed_wlc=None,
     datafiles : array-like[str], array-like[RampModel]
         List of paths to data files, or RampModels themselves for each segment
         of the TSO. Should be 4D ramps and not rate files.
-    baseline_ints : list[int]
+    baseline_ints : array-like[int]
         Integration numbers of ingress and egress.
-    smoothed_wlc : None, np.array
-        Estimate of the out-of-transit normalized light curve.
+    smoothed_wlc : array-like[float], None
+        Estimate of the normalized light curve.
     output_dir : str
         Directory to which to save results.
     save_results : bool
         If True, save results to disk.
-    outlier_maps : list[str], None
+    outlier_maps : array-like[str], None
         List of paths to outlier maps for each data segment. Can be
         3D (nints, dimy, dimx), or 2D (dimy, dimx) files.
     trace_mask : str, None
@@ -608,14 +608,14 @@ def oneoverfstep(datafiles, baseline_ints, smoothed_wlc=None,
         dimx), or 2D (dimy, dimx).
     use_dq : bool
         If True, mask all pixels currently flagged in the DQ array.
-    fileroots : list[str], None
+    fileroots : array-like[str], None
         Root names for output files.
     occultation_type : str
         Type of occultation, either 'transit' or 'eclipse'.
 
     Returns
     -------
-    corrected_rampmodels : list
+    corrected_rampmodels : array-like
         RampModels for each segment, corrected for 1/f noise.
     """
 
@@ -815,18 +815,18 @@ def run_stage1(results, background_model, baseline_ints=None,
     results : array-like[str]
         List of paths to input uncalibrated datafiles for all segments in an
         exposure.
-    background_model : np.array
+    background_model : array-like[float]
         SOSS background model.
-    baseline_ints : list[int]
+    baseline_ints : array-like[int]
         Integration numbers for transit ingress and egress.
-    smoothed_wlc : np.array, None
+    smoothed_wlc : array-like[float], None
         Estimate of the out-of-transit normalized light curve.
     save_results : bool
         If True, save results of each step to file.
-    outlier_maps : list[str], None
+    outlier_maps : array-like[str], None
         For improved 1/f noise corecton. List of paths to outlier maps for each
         data segment. Can be 3D (nints, dimy, dimx), or 2D (dimy, dimx) files.
-    trace_mask : str, np.array, None
+    trace_mask : str, array-like[bool], None
         For improved 1/f noise correcton. Trace mask, or path to file
         containing a trace mask. Should be 3D (norder, dimy, dimx), or 2D
         (dimy, dimx).
@@ -844,7 +844,7 @@ def run_stage1(results, background_model, baseline_ints=None,
 
     Returns
     -------
-    results : list[RampModel]
+    results : array-like[RampModel]
         Datafiles for each segment processed through Stage 1.
     """
 
