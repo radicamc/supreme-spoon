@@ -10,7 +10,7 @@ Script to run JWST DMS with custom reduction steps.
 
 import numpy as np
 
-from supreme_spoon import stage1, stage2, custom_stage3
+from supreme_spoon import stage1, stage2, stage3
 from supreme_spoon import utils
 
 # ================== User Input ========================
@@ -22,7 +22,7 @@ input_dir = root_dir + 'DMS_uncal/'
 # Input file tag.
 input_filetag = 'uncal'
 
-# === Stage 1 Input Files & Parameters ===
+# ===== Stage 1 Input Files & Parameters =====
 # For 1/f correction; outlier pixel maps (optional).
 outlier_maps = None
 # For 1/f correcton; trace mask (optional).
@@ -33,13 +33,13 @@ scaling_curve = None
 # https://jwst-docs.stsci.edu/jwst-calibration-pipeline-caveats/jwst-time-series-observations-pipeline-caveats/niriss-time-series-observation-pipeline-caveats#NIRISSTimeSeriesObservationPipelineCaveats-SOSSskybackground
 background_file = root_dir + 'model_background256.npy'
 
-# === Stage 2 Input Parameters ===
+# ===== Stage 2 Input Parameters =====
 # Timescale on which to smooth lightcurve estimate  (optional).
 smoothing_scale = None
 # Size of box to mask for 1/f correction. Should be wider than extraction box.
 mask_width = 30
 
-# === Stage 3 Input Files & Parameters ===
+# ===== Stage 3 Input Files & Parameters =====
 # Specprofile reference file for ATOCA (optional).
 specprofile = None
 # SOSS estmate file for ATOCA (optional).
@@ -48,8 +48,10 @@ soss_estimate = None
 deepframe = None
 # Centroids for all three orders (optional; not necessary if running Stage 2).
 centroids = None
+# Box width to extract around the trace center.
+soss_width = 25
 
-# === Other Parameters ===
+# ===== Other Parameters =====
 # Name tag for output file directory.
 output_tag = ''
 # Pipeline stages to run.
@@ -58,6 +60,9 @@ run_stages = [1, 2, 3]
 exposure_type = 'CLEAR'
 # Extraction method, box or atoca.
 extract_method = 'box'
+# For ATOCA extractions only: if True, construct a SpecProfile reference
+# tailored to this TSO. If False, use the default.
+use_applesoss = True
 # Save results of each intermediate step to file.
 save_results = True
 # Force redo of steps which have already been completed.
@@ -120,18 +125,18 @@ elif 3 in run_stages:
 
 # === Run Stage 3 ===
 if 3 in run_stages:
-    stage3_results = custom_stage3.run_stage3(stage2_results,
-                                              deepframe=deepframe,
-                                              save_results=save_results,
-                                              root_dir=root_dir,
-                                              force_redo=force_redo,
-                                              extract_method=extract_method,
-                                              specprofile=specprofile,
-                                              out_frames=baseline_ints,
-                                              soss_estimate=soss_estimate,
-                                              output_tag=output_tag)
+    stage3_results = stage3.run_stage3(stage2_results, deepframe=deepframe,
+                                       baseline_ints=baseline_ints,
+                                       save_results=save_results,
+                                       root_dir=root_dir,
+                                       force_redo=force_redo,
+                                       extract_method=extract_method,
+                                       soss_width=soss_width,
+                                       specprofile=specprofile,
+                                       soss_estimate=soss_estimate,
+                                       output_tag=output_tag,
+                                       use_applesoss=use_applesoss,
+                                       occultation_type=occultation_type)
     stellar_spectra = stage3_results
-else:
-    pass
 
 print('Done')
