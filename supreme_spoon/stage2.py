@@ -658,7 +658,7 @@ def run_stage2(results, baseline_ints, smoothed_wlc=None, save_results=True,
                       smoothed_wlc=smoothed_wlc, output_dir=outdir,
                       occultation_type=occultation_type)
     step_results = step.run(save_results=save_results, force_redo=force_redo)
-    results, deepframe = step_results[0], step_results[2]
+    results, deepframe = step_results
 
     # ===== Tracing Step =====
     # Custom DMS step.
