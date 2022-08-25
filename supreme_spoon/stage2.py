@@ -436,6 +436,67 @@ def badpixstep(datafiles, baseline_ints, thresh=3, box_size=5, max_iter=2,
     return data, badpix_mask, deepframe
 
 
+def lcestimatestep(datafiles, baseline_ints, save_results=True,
+                   output_dir='./', occultation_type='transit',
+                   fileroot_noseg='', smoothing_scale=None):
+    """Construct a rough estimate of the TSO photometric light curve to use as
+    a scaling factor in 1/f noise correction.
+
+    Parameters
+    ----------
+    datafiles : array-like[str], array-like[CubeModel]
+        Input data files.
+    baseline_ints : array-like[int]
+        Integrations of ingress and egress.
+    save_results : bool
+        If True, save results to file.
+    output_dir : str
+        Directory to which to save outputs.
+    occultation_type : str
+        Type of occultation, either 'transit' or 'eclipse'.
+    fileroot_noseg : str
+        Root file name with no segment information.
+    smoothing_scale : int, None
+        Timescale on which to smooth the lightcurve.
+
+    Returns
+    -------
+    smoothed_lc : ndarray
+        Estimate of the TSO photometric light curve.
+    """
+
+    # Format the baseline frames - either out-of-transit or in-eclipse.
+    baseline_ints = utils.format_out_frames(baseline_ints,
+                                            occultation_type)
+
+    # Open datafiles and pack into datacube.
+    datafiles = np.atleast_1d(datafiles)
+    for i, file in enumerate(datafiles):
+        current_data = utils.open_filetype(file)
+        if i == 0:
+            cube = current_data.data
+        else:
+            cube = np.concatenate([cube, current_data.data], axis=0)
+
+    # Use an area centered on the peak of the order 1 blaze to estimate the
+    # photometric light curve.
+    postage = cube[:, 20:60, 1500:1550]
+    timeseries = np.sum(postage, axis=(1, 2))
+    # Normalize by the baseline flux level.
+    timeseries = timeseries / np.median(timeseries[baseline_ints])
+    # If not smoothing scale is provided, smooth the time series on a
+    # timescale of roughly 2% of the total length.
+    if smoothing_scale is None:
+        smoothing_scale = int(0.02 * np.shape(cube)[0])
+    smoothed_lc = median_filter(timeseries, smoothing_scale)
+
+    if save_results is True:
+        outfile = output_dir + fileroot_noseg + 'lcestimate.npy'
+        np.save(outfile, smoothed_lc)
+
+    return smoothed_lc
+
+
 def tracingstep(datafiles, deepframe, output_dir='./', mask_width=30,
                 save_results=True, show_plots=False, fileroot_noseg=''):
     """Locate the centroids of all three SOSS orders via the edgetrigger
@@ -521,67 +582,6 @@ def tracingstep(datafiles, deepframe, output_dir='./', mask_width=30,
         hdu.writeto(output_dir + fileroot_noseg + suffix, overwrite=True)
 
     return tracemask, centroids
-
-
-def lcestimatestep(datafiles, baseline_ints, save_results=True,
-                   output_dir='./', occultation_type='transit',
-                   fileroot_noseg='', smoothing_scale=None):
-    """Construct a rough estimate of the TSO photometric light curve to use as
-    a scaling factor in 1/f noise correction.
-
-    Parameters
-    ----------
-    datafiles : array-like[str], array-like[CubeModel]
-        Input data files.
-    baseline_ints : array-like[int]
-        Integrations of ingress and egress.
-    save_results : bool
-        If True, save results to file.
-    output_dir : str
-        Directory to which to save outputs.
-    occultation_type : str
-        Type of occultation, either 'transit' or 'eclipse'.
-    fileroot_noseg : str
-        Root file name with no segment information.
-    smoothing_scale : int, None
-        Timescale on which to smooth the lightcurve.
-
-    Returns
-    -------
-    smoothed_lc : ndarray
-        Estimate of the TSO photometric light curve.
-    """
-
-    # Format the baseline frames - either out-of-transit or in-eclipse.
-    baseline_ints = utils.format_out_frames(baseline_ints,
-                                            occultation_type)
-
-    # Open datafiles and pack into datacube.
-    datafiles = np.atleast_1d(datafiles)
-    for i, file in enumerate(datafiles):
-        current_data = utils.open_filetype(file)
-        if i == 0:
-            cube = current_data.data
-        else:
-            cube = np.concatenate([cube, current_data.data], axis=0)
-
-    # Use an area centered on the peak of the order 1 blaze to estimate the
-    # photometric light curve.
-    postage = cube[:, 20:60, 1500:1550]
-    timeseries = np.sum(postage, axis=(1, 2))
-    # Normalize by the baseline flux level.
-    timeseries = timeseries / np.median(timeseries[baseline_ints])
-    # If not smoothing scale is provided, smooth the time series on a
-    # timescale of roughly 2% of the total length.
-    if smoothing_scale is None:
-        smoothing_scale = int(0.02 * np.shape(cube)[0])
-    smoothed_lc = median_filter(timeseries, smoothing_scale)
-
-    if save_results is True:
-        outfile = output_dir + fileroot_noseg + 'lcestimate.npy'
-        np.save(outfile, smoothed_lc)
-
-    return smoothed_lc
 
 
 def run_stage2(results, baseline_ints=None, save_results=True,
