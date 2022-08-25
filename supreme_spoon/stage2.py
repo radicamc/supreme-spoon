@@ -160,7 +160,6 @@ class BadPixStep:
         for i in range(len(self.datafiles)):
             # If an output file for this segment already exists, skip the step.
             expected_file = self.output_dir + self.fileroots[i] + self.tag
-            expected_mask = self.output_dir + self.fileroot_noseg + 'badpixmap.fits'
             expected_deep = self.output_dir + self.fileroot_noseg + 'deepframe.fits'
             if expected_file not in all_files:
                 do_step *= 0
@@ -169,7 +168,6 @@ class BadPixStep:
         if do_step == 1 and force_redo is False:
             print('Output files already exist.')
             print('Skipping Bad Pixel Correction Step.\n')
-            badpix_mask = fits.getdata(expected_mask)
             deepframe = fits.getdata(expected_deep)
         # If no output files are detected, run the step.
         else:
