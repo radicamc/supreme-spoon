@@ -183,9 +183,9 @@ class BadPixStep:
                                       occultation_type=self.occultation_type,
                                       max_iter=max_iter, thresh=thresh,
                                       box_size=box_size)
-            results, badpix_mask, deepframe = step_results
+            results, deepframe = step_results
 
-        return results, badpix_mask, deepframe
+        return results, deepframe
 
 
 class TracingStep:

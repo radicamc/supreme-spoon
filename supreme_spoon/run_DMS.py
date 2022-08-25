@@ -7,7 +7,7 @@ Created on Wed Jul 20 11:12 2022
 
 Script to run JWST DMS with custom reduction steps.
 """
-
+# TODO: Add something to verify all passed paths before starting.
 import numpy as np
 
 from supreme_spoon import stage1, stage2, stage3
