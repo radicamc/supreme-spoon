@@ -229,7 +229,7 @@ class Extract1DStep:
                         raise err
                 # Hack to fix file names
                 res = utils.fix_filenames(res, '_badpixstep_', self.output_dir,
-                                          to_add=self.extract_method)
+                                          to_add=self.extract_method)[0]
             results.append(utils.open_filetype(res))
             # If segment was correctly processed, note the segment.
             completed_segments.append(i)
