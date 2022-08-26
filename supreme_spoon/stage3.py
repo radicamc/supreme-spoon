@@ -77,7 +77,7 @@ class SossSolverStep:
         """Method to run the step.
         """
 
-        transform = sosssolverstep(self.datafiles, self.deepframe)
+        transform = sosssolverstep(self.datafiles[0], self.deepframe)
 
         return transform
 
@@ -404,7 +404,7 @@ def lightcurvestep(datafiles, baseline_ints, extract_params, output_dir='./',
     return stellar_spectra
 
 
-def sosssolverstep(deepframe, datafile, show_plots=False, centroids=None):
+def sosssolverstep(datafile, deepframe, show_plots=False, centroids=None):
     """Determine the rotation, as well as vertical and horizontal offsets
     necessary to match the observed trace to the reference files.
 

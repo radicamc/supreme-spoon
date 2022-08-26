@@ -524,6 +524,8 @@ def tracingstep(datafiles, deepframe, output_dir='./', mask_width=30,
         Trace centroids for all three orders.
     """
 
+    print('Starting Tracing Step.')
+
     # Get centroids for orders one to three.
     if isinstance(deepframe, str):
         deepframe = fits.getdata(deepframe)
