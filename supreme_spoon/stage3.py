@@ -11,7 +11,6 @@ Custom JWST DMS pipeline steps for Stage 3 (1D spectral extraction).
 from astropy.io import fits
 import glob
 import numpy as np
-from tqdm import tqdm
 import warnings
 
 from applesoss import applesoss
@@ -58,6 +57,7 @@ class SpecProfileStep:
                                            save_results=save_results,
                                            output_dir=self.output_dir)
             specprofile, filename = step_results
+            filename = self.output_dir + filename
 
         return specprofile, filename
 
@@ -104,7 +104,7 @@ class Extract1DStep:
         """Method to run the step.
         """
 
-        print('Starting 1D extraction using the {} method.'.format(self.extract_method))
+        print('\nStarting 1D extraction using the {} method.\n'.format(self.extract_method))
 
         # Initialize loop and storange variables.
         i = 0
@@ -128,7 +128,7 @@ class Extract1DStep:
                 i += 1
                 continue
 
-            segment = self.datafiles[i]
+            segment = utils.open_filetype(self.datafiles[i])
             # If an output file for this segment already exists, skip the step.
             expected_file = self.output_dir + self.fileroots[i] + self.tag
             if expected_file in all_files and force_redo is False:
