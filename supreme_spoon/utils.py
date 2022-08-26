@@ -527,7 +527,8 @@ def open_filetype(datafile):
 
     if isinstance(datafile, str):
         data = datamodels.open(datafile)
-    elif isinstance(datafile, (datamodels.CubeModel, datamodels.RampModel)):
+    elif isinstance(datafile, (datamodels.CubeModel, datamodels.RampModel,
+                               datamodels.MultiSpecModel)):
         data = datafile
     else:
         raise ValueError('Invalid filetype: {}'.format(type(datafile)))
