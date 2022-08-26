@@ -563,7 +563,7 @@ def open_stage2_secondary_outputs(deep_file, centroid_file, smoothed_wlc_file,
         Smoothed wlc scaling.
     """
 
-    input_dir = root_dir + 'pipeline_outputs_drectory{}/Stage2/'.format(output_tag)
+    input_dir = root_dir + 'pipeline_outputs_directory{}/Stage2/'.format(output_tag)
     # Locate and read in the deepframe.
     if deep_file is None:
         deep_file = glob.glob(input_dir + '*deepframe*')
