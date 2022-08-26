@@ -104,6 +104,8 @@ class Extract1DStep:
         """Method to run the step.
         """
 
+        print('Starting 1D extraction using the {} method.'.format(self.extract_method))
+
         # Initialize loop and storange variables.
         i = 0
         redo = False
@@ -154,12 +156,12 @@ class Extract1DStep:
                     soss_bad_pix = 'masking'
                     # Replace all remaining bad pixels using scaled median,
                     # and set dq values to zero.
-                    to_replace = np.where(segment.dq != 0)
                     istart = segment.meta.exposure.integration_start - 1
                     iend = segment.meta.exposure.integration_end
-                    for itg in range(istart, iend):
-                        segment.data[itg][to_replace] = self.scaled_deep[itg][to_replace]
-                    segment.dq[:, to_replace] = 0
+                    for ii, itg in enumerate(range(istart, iend)):
+                        to_replace = np.where(segment.dq[ii] != 0)
+                        segment.data[ii][to_replace] = self.scaled_deep[itg][to_replace]
+                        segment.dq[ii][to_replace] = 0
                 else:
                     msg = ('Invalid extraction: {}'.format(self.extract_method))
                     raise ValueError(msg)
