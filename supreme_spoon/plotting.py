@@ -5,10 +5,9 @@ Created on Wed Jul 20 14:02 2022
 
 @author: MCR
 
-JWST data analysis plotting routines.
+Plotting routines.
 """
 
-# TODO: Save plotting to file instead of showing
 import corner
 import matplotlib.backends.backend_pdf
 from matplotlib.gridspec import GridSpec
@@ -17,65 +16,54 @@ import numpy as np
 import warnings
 
 
-def plot_2dlightcurves(wave1, flux1, wave2=None, flux2=None, outpdf=None,
-                       title='', **kwargs):
-    with warnings.catch_warnings():
-        warnings.filterwarnings('ignore')
+def do_backgroundsubtraction_plot(data, model, scale_factor):
+    """Plot background subtraction results.
+    """
 
-        if 'vmax' not in kwargs:
-            kwargs['vmax'] = np.nanpercentile(flux1, 95)
-        if 'vmin' not in kwargs:
-            kwargs['vmin'] = np.nanpercentile(flux1, 5)
+    plt.figure(figsize=(7, 5), facecolor='white')
+    tt = data + model*scale_factor
+    plt.plot(tt[10, 220], label='Before Subtraction', c='salmon')
+    plt.plot(data[10, 220], label='After Subtraction', c='royalblue')
+    plt.plot((model[220]*scale_factor), c='black', label='Background Model')
+    plt.ylim(-100, 600)
+    plt.xlabel('Spectral Pixel', fontsize=16)
+    plt.ylabel('Counts', fontsize=16)
+    plt.legend(fontsize=12, loc=4)
+    plt.show()
 
-        if title != '':
-            title = ': ' + title
 
-        fig = plt.figure(figsize=(12, 5), facecolor='white')
-        gs = GridSpec(1, 2, width_ratios=[1, 1])
+def do_centroid_plot(deepstack, x1, y1, x2, y2, x3, y3, labels=None):
+    """Plot centroiding results.
+    """
 
-        ax1 = fig.add_subplot(gs[0, 0])
-        pp = ax1.imshow(flux1.T, aspect='auto', origin='lower',
-                        extent=(0, flux1.shape[0]-1, wave1[0], wave1[-1]),
-                        **kwargs)
-        if wave2 is None:
-            cax = ax1.inset_axes([1.05, 0.005, 0.03, 0.99],
-                                 transform=ax1.transAxes)
-            cb = fig.colorbar(pp, ax=ax1, cax=cax)
-            cb.set_label('Normalized Flux', labelpad=15, rotation=270,
-                         fontsize=16)
-        ax1.set_ylabel('Wavelength [µm]', fontsize=16)
-        ax1.set_xlabel('Integration Number', fontsize=16)
-        plt.title('Order 1' + title, fontsize=18)
-        plt.xticks(fontsize=12)
-        plt.yticks(fontsize=12)
+    x1, y1 = np.atleast_2d(x1), np.atleast_2d(y1)
+    x2, y2 = np.atleast_2d(x2), np.atleast_2d(y2)
+    x3, y3 = np.atleast_2d(x3), np.atleast_2d(y3)
+    colours = ['red', 'blue', 'white', 'green']
+    if labels is None:
+        labels = [None for xx in x1]
 
-        if wave2 is not None:
-            ax2 = fig.add_subplot(gs[0, 1])
-            pp = ax2.imshow(flux2.T, aspect='auto', origin='lower',
-                            extent=(0, flux2.shape[0]-1, wave2[0], wave2[-1]), **kwargs)
-            cax = ax2.inset_axes([1.05, 0.005, 0.03, 0.99],
-                                 transform=ax2.transAxes)
-            cb = fig.colorbar(pp, ax=ax2, cax=cax)
-            cb.set_label('Normalized Flux', labelpad=15, rotation=270, fontsize=16)
-            ax2.set_xlabel('Integration Number', fontsize=16)
-            plt.title('Order 2' + title, fontsize=18)
-            plt.xticks(fontsize=12)
-            plt.yticks(fontsize=12)
+    plt.figure(figsize=(10, 4), facecolor='white')
+    plt.imshow(deepstack, origin='lower', aspect='auto', vmin=0, vmax=25)
+    for i in range(x1.shape[0]):
+        plt.plot(x1[i], y1[i], c=colours[i], ls='--', label=labels[i])
+    for i in range(x2.shape[0]):
+        plt.plot(x2[i], y2[i], c=colours[i], ls='--')
+    for i in range(x3.shape[0]):
+        plt.plot(x3[i], y3[i], c=colours[i], ls='--')
 
-            gs.update(wspace=0.1)
-
-    if outpdf is not None:
-        if isinstance(outpdf, matplotlib.backends.backend_pdf.PdfPages):
-            outpdf.savefig(fig)
-        else:
-            fig.savefig(outpdf)
-        plt.close()
-    else:
-        plt.show()
+    plt.colorbar()
+    plt.xlim(0, 2047)
+    plt.ylim(0, 255)
+    plt.legend(fontsize=12)
+    plt.show()
 
 
 def do_lightcurve_plot(t, data, model, scatter, out_dev, outpdf=None,
                        title=None, nfit=8):
+    """Plot results of lightcurve fit.
+    """
+
     def gaus(x, m, s):
         return np.exp(-0.5 * (x - m) ** 2 / s ** 2) / np.sqrt(
             2 * np.pi * s ** 2)
@@ -137,8 +125,20 @@ def do_lightcurve_plot(t, data, model, scatter, out_dev, outpdf=None,
         plt.show()
 
 
+def do_tracemask_plot(tracemask, **kwargs):
+    """Plot results of trace mask construction.
+    """
+
+    plt.figure(figsize=(8, 4), facecolor='white')
+    plt.imshow(tracemask, origin='lower', aspect='auto', **kwargs)
+    plt.show()
+
+
 def make_corner(fit_params, results, posterior_names=None, outpdf=None,
                 truths=None):
+    """make corner plot for lightcurve fitting.
+    """
+
     first_time = True
     for param in fit_params:
         if first_time:
@@ -163,47 +163,61 @@ def make_corner(fit_params, results, posterior_names=None, outpdf=None,
         plt.show()
 
 
-def do_backgroundsubtraction_plot(data, model, scale_factor):
+def plot_2dlightcurves(wave1, flux1, wave2=None, flux2=None, outpdf=None,
+                       title='', **kwargs):
+    """Plot 2D spectroscopic light curves.
+    """
 
-    plt.figure(figsize=(7, 5), facecolor='white')
-    tt = data + model*scale_factor
-    plt.plot(tt[10, 220], label='Before Subtraction', c='salmon')
-    plt.plot(data[10, 220], label='After Subtraction', c='royalblue')
-    plt.plot((model[220]*scale_factor), c='black', label='Background Model')
-    plt.ylim(-100, 600)
-    plt.xlabel('Spectral Pixel', fontsize=16)
-    plt.ylabel('Counts', fontsize=16)
-    plt.legend(fontsize=12, loc=4)
-    plt.show()
+    with warnings.catch_warnings():
+        warnings.filterwarnings('ignore')
 
+        if 'vmax' not in kwargs:
+            kwargs['vmax'] = np.nanpercentile(flux1, 95)
+        if 'vmin' not in kwargs:
+            kwargs['vmin'] = np.nanpercentile(flux1, 5)
 
-def do_tracemask_plot(tracemask, **kwargs):
-    plt.figure(figsize=(8, 4), facecolor='white')
-    plt.imshow(tracemask, origin='lower', aspect='auto', **kwargs)
-    plt.show()
+        if title != '':
+            title = ': ' + title
 
+        fig = plt.figure(figsize=(12, 5), facecolor='white')
+        gs = GridSpec(1, 2, width_ratios=[1, 1])
 
-# TODO: some bug here in how centroids are looped over and plotted
-def do_centroid_plot(deepstack, x1, y1, x2, y2, x3, y3, labels=None):
-    x1, y1 = np.atleast_2d(x1), np.atleast_2d(y1)
-    x2, y2 = np.atleast_2d(x2), np.atleast_2d(y2)
-    x3, y3 = np.atleast_2d(x3), np.atleast_2d(y3)
-    colours = ['red', 'blue', 'white', 'green']
-    if labels is None:
-        labels = [None for xx in x1]
+        ax1 = fig.add_subplot(gs[0, 0])
+        pp = ax1.imshow(flux1.T, aspect='auto', origin='lower',
+                        extent=(0, flux1.shape[0]-1, wave1[0], wave1[-1]),
+                        **kwargs)
+        if wave2 is None:
+            cax = ax1.inset_axes([1.05, 0.005, 0.03, 0.99],
+                                 transform=ax1.transAxes)
+            cb = fig.colorbar(pp, ax=ax1, cax=cax)
+            cb.set_label('Normalized Flux', labelpad=15, rotation=270,
+                         fontsize=16)
+        ax1.set_ylabel('Wavelength [µm]', fontsize=16)
+        ax1.set_xlabel('Integration Number', fontsize=16)
+        plt.title('Order 1' + title, fontsize=18)
+        plt.xticks(fontsize=12)
+        plt.yticks(fontsize=12)
 
-    plt.figure(figsize=(10, 4), facecolor='white')
-    plt.imshow(deepstack, origin='lower', aspect='auto', vmin=0, vmax=25)
-    for i in range(x1.shape[1]):
-        plt.plot(x1[:, i][0], y1[:, i][0], c=colours[i], ls='--', label=labels[i])
-    for i in range(x2.shape[1]):
-        plt.plot(x2[:, i][0], y2[:, i][0], c=colours[i], ls='--')
-    for i in range(x3.shape[0]):
-        plt.plot(x3[i], y3[i], c=colours[i], ls='--')
+        if wave2 is not None:
+            ax2 = fig.add_subplot(gs[0, 1])
+            pp = ax2.imshow(flux2.T, aspect='auto', origin='lower',
+                            extent=(0, flux2.shape[0]-1, wave2[0], wave2[-1]), **kwargs)
+            cax = ax2.inset_axes([1.05, 0.005, 0.03, 0.99],
+                                 transform=ax2.transAxes)
+            cb = fig.colorbar(pp, ax=ax2, cax=cax)
+            cb.set_label('Normalized Flux', labelpad=15, rotation=270, fontsize=16)
+            ax2.set_xlabel('Integration Number', fontsize=16)
+            plt.title('Order 2' + title, fontsize=18)
+            plt.xticks(fontsize=12)
+            plt.yticks(fontsize=12)
 
-    plt.colorbar()
-    plt.xlim(0, 2047)
-    plt.ylim(0, 255)
-    plt.legend(fontsize=12)
-    plt.show()
+            gs.update(wspace=0.1)
 
+    if outpdf is not None:
+        if isinstance(outpdf, matplotlib.backends.backend_pdf.PdfPages):
+            outpdf.savefig(fig)
+        else:
+            fig.savefig(outpdf)
+        plt.close()
+    else:
+        plt.show()

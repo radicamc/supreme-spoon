@@ -9,7 +9,6 @@ Miscellaneous pipeline tools.
 """
 
 from astropy.io import fits
-from astropy.time import Time
 import bottleneck as bn
 from datetime import datetime
 import glob
@@ -17,26 +16,295 @@ import juliet
 import numpy as np
 import os
 import pandas as pd
-import pickle as pk
 import warnings
 
+from applesoss.edgetrigger_centroids import get_soss_centroids
 from jwst import datamodels
 
-from sys import path
-applesoss_path = '/home/radica/GitHub/APPLESOSS/'
-path.insert(1, applesoss_path)
-try:
-    from APPLESOSS.edgetrigger_centroids import get_soss_centroids
-    use_applesoss = True
-except ModuleNotFoundError:
-    msg = 'APPLESOSS module not available. Some capabilities will be limited.'
-    warnings.warn(msg)
-    use_applesoss = False
+
+def do_replacement(frame, badpix_map, dq=None, box_size=5):
+    """Replace flagged pixels with the median of a surrounding box.
+
+    Parameters
+    ----------
+    frame : array-like[float]
+        Data frame.
+    badpix_map : array-like[bool]
+        Map of pixels to be replaced.
+    dq : array-like[int]
+        Data quality flags.
+    box_size : int
+        Size of box to consider.
+
+    Returns
+    -------
+    frame_out : array-like[float]
+        Input frame wth pixels interpolated.
+    dq_out : array-like[int]
+        Input dq map with interpolated pixels set to zero.
+    """
+
+    dimy, dimx = np.shape(frame)
+    frame_out = np.copy(frame)
+    # Get the data quality flags.
+    if dq is not None:
+        dq_out = np.copy(dq)
+    else:
+        dq_out = np.zeros_like(frame)
+
+    # Loop over all flagged pixels.
+    for i in range(dimx):
+        for j in range(dimy):
+            if badpix_map[j, i] == 0:
+                continue
+            # If pixel is flagged, replace it with the box median.
+            else:
+                med = get_interp_box(frame, box_size, i, j, dimx, dimy)[0]
+                frame_out[j, i] = med
+                # Set dq flag of inerpolated pixel to zero (use the pixel).
+                dq_out[j, i] = 0
+
+    return frame_out, dq_out
+
+
+def fix_filenames(old_files, to_remove, outdir, to_add=''):
+    """Hacky function to remove fle extensions that get added when running a
+    default JWST DMS step after a custom one.
+
+    Parameters
+    ----------
+    old_files : array-like[str], array-like[jwst.datamodel]
+        List of datamodels or paths to datamodels.
+    to_remove : str
+        File name extension to be removed.
+    outdir : str
+        Directory to which to save results.
+    to_add : str
+        Extention to add to the file name.
+
+    Returns
+    -------
+    new_files : array-like[str]
+        New file names.
+    """
+
+    old_files = np.atleast_1d(old_files)
+    new_files = []
+    # Open datamodel and get file name.
+    for file in old_files:
+        if isinstance(file, str):
+            file = datamodels.open(file)
+        old_filename = file.meta.filename
+
+        # Remove the unwanted extention.
+        split = old_filename.split(to_remove)
+        new_filename = split[0] + '_' + split[1]
+        # Add extension if necessary.
+        if to_add != '':
+            temp = new_filename.split('.fits')
+            new_filename = temp[0] + '_' + to_add + '.fits'
+
+        # Save file with new filename
+        file.write(outdir + new_filename)
+        new_files.append(outdir + new_filename)
+        file.close()
+
+        # Get rid of old file.
+        os.remove(outdir + old_filename)
+
+    return new_files
+
+
+def format_out_frames(out_frames, occultation_type='transit'):
+    """Create a mask of baseline flux frames for lightcurve normalization.
+    Either out-of-transit integrations for transits or in-eclipse integrations
+    for eclipses.
+
+    Parameters
+    ----------
+    out_frames : array-like[int]
+        Integration numbers of ingress and egress.
+    occultation_type : str
+        Type of occultation, either 'transit' or 'eclipse'.
+
+    Returns
+    -------
+    baseline_ints : array-like[int]
+        Array of out-of-transit, or in-eclipse frames for transits and
+        eclipses respectively.
+
+    Raises
+    ------
+    ValueError
+        If an unknown occultation type is passed.
+    """
+
+    if occultation_type == 'transit':
+        # Format the out-of-transit integration numbers.
+        out_frames = np.abs(out_frames)
+        out_frames = np.concatenate([np.arange(out_frames[0]),
+                                     np.arange(out_frames[1]) - out_frames[1]])
+    elif occultation_type == 'eclipse':
+        # Format the in-eclpse integration numbers.
+        out_frames = np.linspace(out_frames[0], out_frames[1],
+                                 out_frames[1] - out_frames[0] + 1).astype(int)
+    else:
+        msg = 'Unknown Occultaton Type: {}'.format(occultation_type)
+        raise ValueError(msg)
+
+    return out_frames
+
+
+def get_dn2e(datafile):
+    """Determine the correct DN/s to e- conversion based on the integration
+    time and estimated gain.
+
+    Parameters
+    ----------
+    datafile : str, jwst.datamodel
+        Path to datamodel, or datamodel itself.
+
+    Returns
+    -------
+    dn2e : float
+        DN/s to e- conversion factor.
+    """
+
+    data = open_filetype(datafile)
+    # Get number of groups and group time (each group is one frame).
+    ngroup = data.meta.exposure.ngroups
+    frame_time = data.meta.exposure.frame_time
+    # Approximate gain factor. Gain varies across the detector, but is ~1.6
+    # on average.
+    gain_factor = 1.6
+    # Calculate the DN/s to e- conversion by multiplying by integration time
+    # and gain factor. Note that the integration time uses ngroup-1, due to
+    # up-the-ramp fitting.
+    dn2e = gain_factor * (ngroup - 1) * frame_time
+
+    return dn2e
+
+
+def get_default_header():
+    """Format the default header for the lightcurve file.
+
+    Returns
+    -------
+    header_dict : dict
+        Header keyword dictionary.
+    header_commets : dict
+        Header comment dictionary.
+    """
+
+    # Header with important keywords.
+    header_dict = {'Target': None,
+                   'Inst': 'NIRISS/SOSS',
+                   'Date': datetime.utcnow().replace(microsecond=0).isoformat(),
+                   'Pipeline': 'Supreme-SPOON',
+                   'Author': 'MCR',
+                   'Contents': None,
+                   'Method': 'Box Extraction',
+                   'Width': 25,
+                   'Transx': 0,
+                   'Transy': 0,
+                   'Transth': 0}
+    # Explanations of keywords.
+    header_comments = {'Target': 'Name of the target',
+                       'Inst': 'Instrument used to acquire the data',
+                       'Date': 'UTC date file created',
+                       'Pipeline': 'Pipeline that produced this file',
+                       'Author': 'File author',
+                       'Contents': 'Description of file contents',
+                       'Method': 'Type of 1D extraction',
+                       'Width': 'Box width',
+                       'Transx': 'SOSS transform dx',
+                       'Transy': 'SOSS transform dy',
+                       'Transth': 'SOSS transform dtheta'}
+
+    return header_dict, header_comments
+
+
+def get_filename_root(datafiles):
+    """Get the file name roots for each segment.
+
+    Parameters
+    ----------
+    datafiles : array-like[str], array-like[jwst.datamodel]
+        Datamodels, or paths to datamodels for each segment.
+
+    Returns
+    -------
+    fileroots : array-like[str]
+        List of file name roots.
+    """
+
+    fileroots = []
+    for file in datafiles:
+        # Open the datamodel.
+        if isinstance(file, str):
+            data = datamodels.open(file)
+        else:
+            data = file
+        # Get the last part of the path, and split file name into chunks.
+        filename_split = data.meta.filename.split('/')[-1].split('_')
+        fileroot = ''
+        # Get the filename before the step info and save.
+        for chunk in filename_split[:-1]:
+            fileroot += chunk + '_'
+        fileroots.append(fileroot)
+
+    return fileroots
+
+
+def get_filename_root_noseg(fileroots):
+    """Get the file name root for a SOSS TSO woth noo segment information.
+
+    Parameters
+    ----------
+    fileroots : array-like[str]
+        File root names for each segment.
+
+    Returns
+    -------
+    fileroot_noseg : str
+        File name root with no segment information.
+    """
+
+    # Get total file root, with no segment info.
+    working_name = fileroots[0]
+    if 'seg' in working_name:
+        parts = working_name.split('seg')
+        part1, part2 = parts[0][:-1], parts[1][3:]
+        fileroot_noseg = part1 + part2
+    else:
+        fileroot_noseg = fileroots[0]
+
+    return fileroot_noseg
 
 
 def get_interp_box(data, box_size, i, j, dimx, dimy):
-    """ Get median and standard deviation of a box centered on a specified
+    """Get median and standard deviation of a box centered on a specified
     pixel.
+
+    Parameters
+    ----------
+    data : array-like[float]
+        Data frame.
+    box_size : int
+        Size of box to consider.
+    i : int
+        X pixel.
+    j : int
+        Y pixel.
+    dimx : int
+        Size of x dimension.
+    dimy : int
+        Size of y dimension.
+
+    Returns
+    -------
+    box_properties : array-like
+        Median and standard deviation of pixels in the box.
     """
 
     # Get the box limits.
@@ -55,141 +323,121 @@ def get_interp_box(data, box_size, i, j, dimx, dimy):
     return box_properties
 
 
-def do_replacement(frame, badpix_map, dq=None, box_size=5):
-    """Replace flagged pixels with the median of a surrounding box.
+def get_soss_estimate(atoca_spectra, output_dir):
+    """Convert the AtocaSpectra output of ATOCA into the format expected for a
+    soss_estimate.
+
+    Parameters
+    ----------
+    atoca_spectra : str, MultiSpecModel
+        AtocaSpectra datamodel, or path to the datamodel.
+    output_dir : str
+        Directory to which to save results.
+
+    Returns
+    -------
+    estimate_filename : str
+        Path to soss_estimate file.
     """
 
-    dimy, dimx = np.shape(frame)
-    frame_out = np.copy(frame)
-    if dq is not None:
-        dq_out = np.copy(dq)
-    else:
-        dq_out = np.zeros_like(frame)
+    # Open the AtocaSpectra file.
+    atoca_spec = datamodels.open(atoca_spectra)
+    # Get the spectrum.
+    for spec in atoca_spec.spec:
+        if spec.meta.soss_extract1d.type == 'OBSERVATION':
+            estimate = datamodels.SpecModel(spec_table=spec.spec_table)
+            break
+    # Save the spectrum as a soss_estimate file.
+    estimate_filename = estimate.save(output_dir + 'soss_estimate.fits')
 
-    # Loop over all flagged pixels.
-    for i in range(dimx):
-        for j in range(dimy):
-            if badpix_map[j, i] == 0:
-                continue
-            # If pixel is flagged, replace it with the box median.
-            else:
-                med = get_interp_box(frame, box_size, i, j, dimx, dimy)[0]
-                frame_out[j, i] = med
-                dq_out[j, i] = 0
-
-    return frame_out, dq_out
+    return estimate_filename
 
 
-def make_deepstack(cube):
-    """Make deepstack of a TSO.
+def get_timestamps(datafiles):
+    """Get the mid-time stamp for each integration in BJD,
+
+    Parameters
+    ----------
+    datafiles : array-like[jwst.datamodel], jwst.datamodel
+        Datamodels for each segment in a TSO.
+
+    Returns
+    -------
+    times : array-like[float]
+        Mid-integration times for each integraton in BJD.
     """
-    deepstack = bn.nanmedian(cube, axis=0)
-    return deepstack
+
+    datafiles = np.atleast_1d(datafiles)
+    # Loop over all data files and get mid integration time stamps.
+    for i, data in enumerate(datafiles):
+        if i == 0:
+            times = data.int_times['int_mid_BJD_TDB']
+        else:
+            times = np.concatenate([times, data.int_times['int_mid_BJD_TDB']])
+
+    return times
 
 
-def unpack_spectra(datafile, quantities=('WAVELENGTH', 'FLUX', 'FLUX_ERROR')):
+def get_trace_centroids(deepframe, tracetable, subarray, save_results=True,
+                        save_filename=''):
+    """Get the trace centroids for all three orders via the edgetrigger method.
 
-    if isinstance(datafile, str):
-        multi_spec = datamodels.open(datafile)
-    else:
-        multi_spec = datafile
+    Parameters
+    ----------
+    deepframe : array-like[float]
+        Median stack.
+    tracetable : str
+        Path to SpecTrace reference file.
+    subarray : str
+        Subarray identifier.
+    save_results : bool
+        If True, save results to file.
+    save_filename : str
+        Filename of save file.
 
-    all_spec = {sp_ord: {quantity: [] for quantity in quantities}
-                for sp_ord in [1, 2, 3]}
-    for spec in multi_spec.spec:
-        sp_ord = spec.spectral_order
-        for quantity in quantities:
-            all_spec[sp_ord][quantity].append(spec.spec_table[quantity])
+    Returns
+    -------
+    cen_o1 : array-like[float]
+        Order 1 X and Y centroids.
+    cen_o2 : array-like[float]
+        Order 2 X and Y centroids.
+    cen_o3 : array-like[float]
+        Order 3 X and Y centroids.
+    """
 
-    for sp_ord in all_spec:
-        for key in all_spec[sp_ord]:
-            all_spec[sp_ord][key] = np.array(all_spec[sp_ord][key])
-
-    multi_spec.close()
-    return all_spec
-
-
-def make_time_axis(filepath):
-    header = fits.getheader(filepath, 0)
-    t_start = header['DATE-OBS'] + 'T' + header['TIME-OBS']
-    tgroup = header['TGROUP'] / 3600 / 24
-    ngroup = header['NGROUPS'] + 1
-    nint = header['NINTS']
-    t_start = Time(t_start, format='isot', scale='tdb')
-    t = np.arange(nint) * tgroup * ngroup + t_start.mjd
-    return t
-
-
-def fix_filenames(old_files, to_remove, outdir, to_add=''):
-    old_files = np.atleast_1d(old_files)
-    # Hack to fix file names
-    new_files = []
-    for file in old_files:
-        if isinstance(file, str):
-            file = datamodels.open(file)
-
-        old_filename = file.meta.filename
-
-        split = old_filename.split(to_remove)
-        new_filename = split[0] + '_' + split[1]
-        if to_add != '':
-            temp = new_filename.split('.fits')
-            new_filename = temp[0] + '_' + to_add + '.fits'
-        file.write(outdir + new_filename)
-
-        new_files.append(outdir + new_filename)
-        file.close()
-        os.remove(outdir + old_filename)
-
-    return new_files
-
-
-def verify_path(path):
-    if os.path.exists(path):
-        pass
-    else:
-        os.mkdir(path)
-
-
-def get_trace_centroids(deepframe, subarray, output_dir=None,
-                        save_results=True, save_filename=None):
-
-    if use_applesoss is False:
-        msg = 'APPLESOSS module not available.\n Cannot extract trace centroids.'
-        raise ModuleNotFoundError(msg)
     dimy, dimx = np.shape(deepframe)
     with warnings.catch_warnings():
         warnings.filterwarnings('ignore')
-        centroids = get_soss_centroids(deepframe, subarray=subarray)
+        centroids = get_soss_centroids(deepframe, tracetable,
+                                       subarray=subarray)
 
-    X1, Y1 = centroids['order 1']['X centroid'], centroids['order 1']['Y centroid']
-    X2, Y2 = centroids['order 2']['X centroid'], centroids['order 2']['Y centroid']
-    X3, Y3 = centroids['order 3']['X centroid'], centroids['order 3']['Y centroid']
-    ii = np.where((X1 >= 0) & (X1 <= dimx - 1))
-    ii2 = np.where((X2 >= 0) & (X2 <= dimx - 1) & (Y2 <= dimy - 1))
-    ii3 = np.where((X3 >= 0) & (X3 <= dimx - 1) & (Y3 <= dimy - 1))
+    x1, y1 = centroids['order 1']['X centroid'], centroids['order 1']['Y centroid']
+    x2, y2 = centroids['order 2']['X centroid'], centroids['order 2']['Y centroid']
+    x3, y3 = centroids['order 3']['X centroid'], centroids['order 3']['Y centroid']
+    ii = np.where((x1 >= 0) & (y1 <= dimx - 1))
+    ii2 = np.where((x2 >= 0) & (x2 <= dimx - 1) & (y2 <= dimy - 1))
+    ii3 = np.where((x3 >= 0) & (x3 <= dimx - 1) & (y3 <= dimy - 1))
 
     # Interpolate onto native pixel grid
-    x1 = np.arange(dimx)
-    y1 = np.interp(x1, X1[ii], Y1[ii])
-    x2 = np.arange(np.max(np.floor(X2[ii2]).astype(int)))
-    y2 = np.interp(x2, X2[ii2], Y2[ii2])
-    x3 = np.arange(np.max(np.floor(X3[ii3]).astype(int)))
-    y3 = np.interp(x3, X3[ii3], Y3[ii3])
+    xx1 = np.arange(dimx)
+    yy1 = np.interp(xx1, x1[ii], y1[ii])
+    xx2 = np.arange(np.max(np.floor(x2[ii2]).astype(int)))
+    yy2 = np.interp(xx2, x2[ii2], y2[ii2])
+    xx3 = np.arange(np.max(np.floor(x3[ii3]).astype(int)))
+    yy3 = np.interp(xx3, x3[ii3], y3[ii3])
 
     if save_results is True:
-        yy2 = np.ones_like(x1) * np.nan
-        yy2[:len(y2)] = y2
-        yy3 = np.ones_like(x1) * np.nan
-        yy3[:len(y3)] = y3
+        yyy2 = np.ones_like(xx1) * np.nan
+        yyy2[:len(yy2)] = yy2
+        yyy3 = np.ones_like(xx1) * np.nan
+        yyy3[:len(yy3)] = yy3
 
-        centroids_dict = {'xcen o1': x1, 'ycen o1': y1,
-                          'xcen o2': x1, 'ycen o2': yy2,
-                          'xcen o3': x1, 'ycen o3': yy3}
+        centroids_dict = {'xpos': xx1, 'ypos o1': yy1, 'ypos o2': yyy2,
+                          'ypos o3': yyy3}
         df = pd.DataFrame(data=centroids_dict)
         if save_filename[-1] != '_':
             save_filename += '_'
-        outfile_name = output_dir + save_filename + 'centroids.csv'
+        outfile_name = save_filename + 'centroids.csv'
         outfile = open(outfile_name, 'a')
         outfile.write('# File Contents: Edgetrigger trace centroids\n')
         outfile.write('# File Creation Date: {}\n'.format(datetime.utcnow().replace(microsecond=0).isoformat()))
@@ -198,15 +446,206 @@ def get_trace_centroids(deepframe, subarray, output_dir=None,
         outfile.close()
         print('Centroids saved to {}'.format(outfile_name))
 
-    cen_o1, cen_o2, cen_o3 = [x1, y1], [x2, y2], [x3, y3]
+    cen_o1 = np.array([xx1, yy1])
+    cen_o2 = np.array([xx2, yy2])
+    cen_o3 = np.array([xx3, yy3])
 
     return cen_o1, cen_o2, cen_o3
 
 
-# TODO: reformat
+def get_wavebin_limits(wave):
+    """Determine the upper and lower limits of wavelength bins centered on a
+    given wavelength axis.
+
+    Parameters
+    ----------
+    wave : array-like[float]
+        Wavelengh array.
+
+    Returns
+    -------
+    bin_low : array-like[float]
+        Lower edge of wavelength bin.
+    bin_up : array-like[float]
+        Upper edge of wavelength bin.
+    """
+
+    # Shift wavelength array by one element forward and backwards, and create
+    # 2D stack where each wavelength is sandwiched between its upper or lower
+    # neighbour respectively.
+    up = np.concatenate([wave[:, None], np.roll(wave, 1)[:, None]], axis=1)
+    low = np.concatenate([wave[:, None], np.roll(wave, -1)[:, None]], axis=1)
+
+    # Take the mean in the vertical direction to get the midpoint between the
+    # two wavelengths. Use this as the bin limits.
+    bin_low = (np.mean(low, axis=1))[:-1]
+    bin_low = np.insert(bin_low, -1, bin_low[-1])
+    bin_up = (np.mean(up, axis=1))[1:]
+    bin_up = np.insert(bin_up, 0, bin_up[0])
+
+    return bin_low, bin_up
+
+
+def make_deepstack(cube):
+    """Make deep stack of a TSO.
+
+    Parameters
+    ----------
+    cube : array-like[float]
+        Stack of all integrations in a TSO
+
+    Returns
+    -------
+    deepstack : array-like[float]
+       Median of the input cube along the integration axis.
+    """
+
+    # Take median of input cube along the integration axis.
+    deepstack = bn.nanmedian(cube, axis=0)
+
+    return deepstack
+
+
+def open_filetype(datafile):
+    """Open a datamodel whether it is a path, or the datamodel itself.
+
+    Parameters
+    ----------
+    datafile : str, jwst.datamodel
+        Datamodel or path to datamodel.
+
+    Returns
+    -------
+    data : jwst.datamodel
+        Opened datamodel.
+
+    Raises
+    ------
+    ValueError
+        If the filetype passed is not str or jwst.datamodel.
+    """
+
+    if isinstance(datafile, str):
+        data = datamodels.open(datafile)
+    elif isinstance(datafile, (datamodels.CubeModel, datamodels.RampModel,
+                               datamodels.MultiSpecModel)):
+        data = datafile
+    else:
+        raise ValueError('Invalid filetype: {}'.format(type(datafile)))
+
+    return data
+
+
+def open_stage2_secondary_outputs(deep_file, centroid_file, smoothed_wlc_file,
+                                  root_dir, output_tag=''):
+    """Utlity to locate and read in secondary outputs from stage 2.
+
+    Parameters
+    ----------
+    deep_file : str, None
+        Path to deep frame file.
+    centroid_file : str, None
+        Path to centroids file.
+    smoothed_wlc_file : str, None
+        Path to smoothed wlc scaling file.
+    root_dir : str
+        Root directory.
+    output_tag : str
+        Tag given to pipeline_outputs_directory.
+
+    Returns
+    -------
+    deepframe : array-like[float]
+        Deep frame.
+    centroids : array-like[float]
+        Centroids foor all orders.
+    smoothed_wlc : array-like[float]
+        Smoothed wlc scaling.
+    """
+
+    input_dir = root_dir + 'pipeline_outputs_directory{}/Stage2/'.format(output_tag)
+    # Locate and read in the deepframe.
+    if deep_file is None:
+        deep_file = glob.glob(input_dir + '*deepframe*')
+        if len(deep_file) > 1:
+            msg = 'Multiple deep frame files detected.'
+            raise ValueError(msg)
+        elif len(deep_file) == 0:
+            msg = 'No deep frame file found.'
+            raise FileNotFoundError(msg)
+        else:
+            deep_file = deep_file[0]
+    deepframe = fits.getdata(deep_file)
+
+    # Locate and read in the centroids.
+    if centroid_file is None:
+        centroid_file = glob.glob(input_dir + '*centroids*')
+        if len(centroid_file) > 1:
+            msg = 'Multiple centroid files detected.'
+            raise ValueError(msg)
+        elif len(centroid_file) == 0:
+            msg = 'No centroid file found.'
+            raise FileNotFoundError(msg)
+        else:
+            centroid_file = centroid_file[0]
+    centroids = pd.read_csv(centroid_file, comment='#')
+
+    # Locate and read in the smoothed wlc.
+    if smoothed_wlc_file is None:
+        smoothed_wlc_file = glob.glob(input_dir + '*lcestimate*')
+        if len(smoothed_wlc_file) > 1:
+            msg = 'Multiple WLC scaling files detected.'
+            raise ValueError(msg)
+        elif len(smoothed_wlc_file) == 0:
+            msg = 'No WLC scaling file found.'
+            raise FileNotFoundError(msg)
+        else:
+            smoothed_wlc_file = smoothed_wlc_file[0]
+    smoothed_wlc = np.load(smoothed_wlc_file)
+
+    return deepframe, centroids, smoothed_wlc
+
+
 def pack_spectra(filename, wl1, wu1, f1, e1, wl2, wu2, f2, e2, t,
                  header_dict=None, header_comments=None, save_results=True):
+    """Pack stellar spectra into a fits file.
 
+    Parameters
+    ----------
+    filename : str
+        File to which to save results.
+    wl1 : array-like[float]
+        Order 1 wavelength bin lower limits.
+    wu1 : array-like[float]
+        Order 1 wavelength bin upper limits.
+    f1 : array-like[float]
+        Order 1 flux.
+    e1 : array-like[float]
+        Order 1 flux error.
+    wl2 : array-like[float]
+        Order 2 wavelength bin lower limits.
+    wu2 : array-like[float]
+        Order 2 wavelength bin upper limits.
+    f2 : array-like[float]
+        Order 2 flux.
+    e2 : array-like[float]
+        Order 2 flux error.
+    t : array-like[float]
+        Time axis.
+    header_dict : dict
+        Header keywords and values.
+    header_comments : dict
+        Header comments.
+    save_results : bool
+        If True, save results to file.
+
+    Returns
+    -------
+    param_dict : dict
+        Lightcurve parameters packed into a dictionary.
+    """
+
+    # Initialize the fits header.
     hdr = fits.Header()
     if header_dict is not None:
         for key in header_dict:
@@ -215,46 +654,43 @@ def pack_spectra(filename, wl1, wu1, f1, e1, wl2, wu2, f2, e2, t,
                 hdr.comments[key] = header_comments[key]
     hdu1 = fits.PrimaryHDU(header=hdr)
 
+    # Pack order 1 values.
     hdr = fits.Header()
     hdr['EXTNAME'] = "Wave Low O1"
     hdr['UNITS'] = "Micron"
     hdu2 = fits.ImageHDU(wl1, header=hdr)
-
     hdr = fits.Header()
     hdr['EXTNAME'] = "Wave Up O1"
     hdr['UNITS'] = "Micron"
     hdu3 = fits.ImageHDU(wu1, header=hdr)
-
     hdr = fits.Header()
     hdr['EXTNAME'] = "Flux O1"
     hdr['UNITS'] = "Electrons"
     hdu4 = fits.ImageHDU(f1, header=hdr)
-
     hdr = fits.Header()
     hdr['EXTNAME'] = "Flux Err O1"
     hdr['UNITS'] = "Electrons"
     hdu5 = fits.ImageHDU(e1, header=hdr)
 
+    # Pack order 2 values.
     hdr = fits.Header()
     hdr['EXTNAME'] = "Wave Low O2"
     hdr['UNITS'] = "Micron"
     hdu6 = fits.ImageHDU(wl2, header=hdr)
-
     hdr = fits.Header()
     hdr['EXTNAME'] = "Wave Up O2"
     hdr['UNITS'] = "Micron"
     hdu7 = fits.ImageHDU(wu2, header=hdr)
-
     hdr = fits.Header()
     hdr['EXTNAME'] = "Flux O2"
     hdr['UNITS'] = "Electrons"
     hdu8 = fits.ImageHDU(f2, header=hdr)
-
     hdr = fits.Header()
     hdr['EXTNAME'] = "Flux Err O2"
     hdr['UNITS'] = "Electrons"
     hdu9 = fits.ImageHDU(e2, header=hdr)
 
+    # Pack time axis.
     hdr = fits.Header()
     hdr['EXTNAME'] = "Time"
     hdr['UNITS'] = "BJD"
@@ -272,10 +708,58 @@ def pack_spectra(filename, wl1, wu1, f1, e1, wl2, wu2, f2, e2, t,
     return param_dict
 
 
+def remove_nans(datafile):
+    """Remove any NaN values remaining in a datamodel, either in the flux or
+    flux error arrays, before passing to an ATOCA extraction.
+
+    Parameters
+    ----------
+    datafile : str, RampModel
+        Datamodel, or path to the datamodel.
+
+    Returns
+    -------
+    modelout : RampModel
+        Input datamodel with NaN values replaced.
+    """
+
+    datamodel = open_filetype(datafile)
+    modelout = datamodel.copy()
+    # Find pixels where either the flux or error is NaN-valued.
+    ind = (~np.isfinite(datamodel.data)) | (~np.isfinite(datamodel.err))
+    # Set the flux to zero.
+    modelout.data[ind] = 0
+    # Set the error to an arbitrarily high value.
+    modelout.err[ind] = np.nanmedian(datamodel.err) * 10
+    # Mark the DQ array to not use these pixels.
+    modelout.dq[ind] += 1
+
+    return modelout
+
+
 def sigma_clip_lightcurves(flux, ferr, thresh=5):
+    """Sigma clip outliers in wavelength from final lightcurves.
+
+    Parameters
+    ----------
+    flux : array-like[float]
+        Flux array.
+    ferr : array-like[float]
+        Flux error array.
+    thresh : int
+        Sigma level to be clipped.
+
+    Returns
+    -------
+    flux_clipped : array-like[float]
+        Flux array with outliers
+    """
+
     flux_clipped = np.copy(flux)
     nints, nwave = np.shape(flux)
     clipsum = 0
+    # Loop over all integrations, and set pixels which deviate by more than
+    # the given threshold from the median lightcurve by the median value.
     for itg in range(nints):
         med = np.nanmedian(flux[itg])
         ii = np.where(np.abs(flux[itg] - med) / ferr[itg] > thresh)[0]
@@ -287,56 +771,40 @@ def sigma_clip_lightcurves(flux, ferr, thresh=5):
     return flux_clipped
 
 
-def get_default_header():
-    header_dict = {'Target': None,
-                   'Inst': 'NIRISS/SOSS',
-                   'Date': datetime.utcnow().replace(microsecond=0).isoformat(),
-                   'Pipeline': 'Supreme-SPOON',
-                   'Author': 'MCR',
-                   'Contents': None,
-                   'Method': 'Box Extraction',
-                   'Width': 25,
-                   'Transx': 0,
-                   'Transy': 0,
-                   'Transth': 0}
-    header_comments = {'Target': 'Name of the target',
-                       'Inst': 'Instrument used to acquire the data',
-                       'Date': 'UTC date file created',
-                       'Pipeline': 'Pipeline that produced this file',
-                       'Author': 'File author',
-                       'Contents': 'Description of file contents',
-                       'Method': 'Type of 1D extraction',
-                       'Width': 'Box width',
-                       'Transx': 'SOSS transform dx',
-                       'Transy': 'SOSS transform dy',
-                       'Transth': 'SOSS transform dtheta'}
-
-    return header_dict, header_comments
-
-
-def get_dn2e(datafile):
-    if isinstance(datafile, str):
-        data = datamodels.open(datafile)
-    else:
-        data = datafile
-    ngroup = data.meta.exposure.ngroups
-    frame_time = data.meta.exposure.frame_time
-    gain_factor = 1.6
-    dn2e = gain_factor * (ngroup - 1) * frame_time
-
-    return dn2e
-
-
 def unpack_input_directory(indir, filetag='', exposure_type='CLEAR'):
+    """Get all segment files of a specified exposure type from an input data
+     directory.
+
+    Parameters
+    ----------
+    indir : str
+        Path to input directory.
+    filetag : str
+        File name extension of files to unpack.
+    exposure_type : str
+        Either 'CLEAR' or 'F277W'; unpacks the corresponding exposure type.
+
+    Returns
+    -------
+    segments: array-like[str]
+        File names of the requested exposure and file tag in chronological
+        order.
+    """
+
     if indir[-1] != '/':
         indir += '/'
     all_files = glob.glob(indir + '*')
     segments = []
+
+    # Check all files in the input directory to see if they match the
+    # specified exposure type and file tag.
     for file in all_files:
         try:
             header = fits.getheader(file, 0)
+        # Skip directories or non-fits files.
         except(OSError, IsADirectoryError):
             continue
+        # Keep files of the correct exposure with the correct tag.
         try:
             if header['FILTER'] == exposure_type:
                 if filetag in file:
@@ -345,6 +813,7 @@ def unpack_input_directory(indir, filetag='', exposure_type='CLEAR'):
                 continue
         except KeyError:
             continue
+
     # Ensure that segments are packed in chronological order
     if len(segments) > 1:
         segments = np.array(segments)
@@ -358,87 +827,62 @@ def unpack_input_directory(indir, filetag='', exposure_type='CLEAR'):
     return segments
 
 
-def remove_nans(datamodel):
-    if isinstance(datamodel, str):
-        with warnings.catch_warnings():
-            warnings.filterwarnings('ignore')
-            datamodel = datamodels.open(datamodel)
-    modelout = datamodel.copy()
-    ind = (~np.isfinite(datamodel.data)) | (~np.isfinite(datamodel.err))
-    modelout.data[ind] = 0
-    modelout.err[ind] = np.nanmedian(datamodel.err) * 10
-    modelout.dq[ind] += 1
-    return modelout
+def unpack_spectra(datafile, quantities=('WAVELENGTH', 'FLUX', 'FLUX_ERROR')):
+    """Unpack useful quantities from extract1d outputs.
+
+    Parameters
+    ----------
+    datafile : str, MultiSpecModel
+        Extract1d output, or path to the file.
+    quantities : tuple(str)
+        Quantities to unpack.
+
+    Returns
+    -------
+    all_spec : dict
+        Dictionary containing unpacked quantities for each order.
+    """
+
+    multi_spec = open_filetype(datafile)
+
+    # Initialize output dictionary.
+    all_spec = {sp_ord: {quantity: [] for quantity in quantities}
+                for sp_ord in [1, 2, 3]}
+    # Unpack desired quantities into dictionary.
+    for spec in multi_spec.spec:
+        sp_ord = spec.spectral_order
+        for quantity in quantities:
+            all_spec[sp_ord][quantity].append(spec.spec_table[quantity])
+    for sp_ord in all_spec:
+        for key in all_spec[sp_ord]:
+            all_spec[sp_ord][key] = np.array(all_spec[sp_ord][key])
+
+    multi_spec.close()
+
+    return all_spec
 
 
-def get_soss_estimate(atoca_spectra, output_dir):
-    atoca_spec = datamodels.open(atoca_spectra)
+def verify_path(path):
+    """Verify that a given directory exists. If not, create it.
 
-    for spec in atoca_spec.spec:
-        if spec.meta.soss_extract1d.type == 'OBSERVATION':
-            estimate = datamodels.SpecModel(spec_table=spec.spec_table)
-            break
-    estimate_filename = estimate.save(output_dir + 'soss_estimate.fits')
+    Parameters
+    ----------
+    path : str
+        Path to directory.
+    """
 
-    return estimate_filename
-
-
-def gen_ldprior_from_nestor(filename, wave):
-    aa = open(filename, "rb")
-    nestor_priors = pk.load(aa)
-    aa.close()
-
-    lw = np.concatenate([wave[:, None], np.roll(wave, 1)[:, None]], axis=1)
-    up = np.concatenate([wave[:, None], np.roll(wave, -1)[:, None]], axis=1)
-
-    uperr = (np.mean(up, axis=1) - wave)[:-1]
-    uperr = np.insert(uperr, -1, uperr[-1])
-
-    lwerr = (wave - np.mean(lw, axis=1))[1:]
-    lwerr = np.insert(lwerr, 0, lwerr[0])
-    bins_low = wave - lwerr
-    bins_up = wave + uperr
-
-    prior_q1, prior_q2 = [], []
-    for bin_low, bin_up in zip(bins_low, bins_up):
-        current_q1, current_q2 = [], []
-        for key in nestor_priors.keys():
-            nwave = float(key.split('_')[-1])
-            if nwave >= bin_low and nwave < bin_up:
-                current_q1.append(
-                    nestor_priors[key]['q1_SOSS']['hyperparameters'][0])
-                current_q2.append(
-                    nestor_priors[key]['q2_SOSS']['hyperparameters'][0])
-
-        current_q1 = np.array(current_q1)
-        current_q2 = np.array(current_q2)
-        prior_q1.append(np.mean(current_q1))
-        prior_q2.append(np.mean(current_q2))
-
-    return prior_q1, prior_q2
-
-
-def get_wavebin_limits(wave):
-    up = np.concatenate([wave[:, None], np.roll(wave, 1)[:, None]], axis=1)
-    low = np.concatenate([wave[:, None], np.roll(wave, -1)[:, None]], axis=1)
-
-    bin_low = (np.mean(low, axis=1))[:-1]
-    bin_low = np.insert(bin_low, -1, bin_low[-1])
-
-    bin_up = (np.mean(up, axis=1))[1:]
-    bin_up = np.insert(bin_up, 0, bin_up[0])
-
-    return bin_low, bin_up
-
-
-def open_filetype(datafile):
-    if isinstance(datafile, str):
-        data = datamodels.open(datafile)
-    elif isinstance(datafile, (datamodels.CubeModel, datamodels.RampModel)):
-        data = datafile
+    if os.path.exists(path):
+        pass
     else:
-        raise ValueError('Invalid filetype: {}'.format(type(datafile)))
-    return data
+        # If directory doesn't exist, create it.
+        os.mkdir(path)
+
+
+# ===============================================
+# ===============================================
+# ================= UNVERIFIED ==================
+# ===============================================
+# ===============================================
 
 
 def get_ld_prior(order, wavebin_low, wavebin_up):
