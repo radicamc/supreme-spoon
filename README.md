@@ -1,39 +1,35 @@
 # supreme-SPOON
 supreme-**S**teps to **P**rocess S**O**SS **O**bservatio**N**s
 
-JWST NIRISS SOSS pipeline.
+**supreme-SPOON** is an end-to-end pipeline for NIRISS/SOSS time series observations (TSOs).
+The pipeline is divided into four stages, broadly mirroring the official JWST DMS:
+ - Stage 1: Detector Level Processing 
+ - Stage 2: Spectroscopic Processing
+ - Stage 3: 1D Spectral Extraction
+ - Stage 4: Lightcurve Fitting (in development)
+ 
+A major advantage of **supreme-SPOON** over other available NIRISS/SOSS pipelines is the ability to carry out end-to-end reductions (uncalibrated to atmosphere spectra) without relying on intermediate outputs from the JWST DMS.
+Furthermore, **supreme-SPOON** is able to run the ATOCA extraction algorithm to explicitly model the order contamination that is known to affect SOSS observations. 
 
-### Instructons
-The supreme-SPOON pipeline can be run from Stages 1 (detector level processing) to 3 (1D extraction) 
-via the ```run_DMS.py``` script with the following steps:
+### Installation Instructions
+The latest release of **supreme-SPOON** can be downloaded from PyPI by running:
+
+    pip install supreme_spoon
+
+or the latest development version can be grabbed from GitHub:
+
+    git clone https://github.com/radicamc/supreme-spoon
+    cd supreme_spoon
+    pip install .
+
+If you make use of this code in your work, please cite [Feinstein & Radica et al. (2022)](). 
+If you use the ATOCA extraction algorithm, please also cite [Radica et al. (2022)](https://ui.adsabs.harvard.edu/abs/2022arXiv220705136R/abstract) 
+and [Darveau-Bernier et al. (2022)](https://ui.adsabs.harvard.edu/abs/2022arXiv220705199D/abstract).
+
+### Usage Instructions
+The **supreme-SPOON** pipeline can be run in a similar fashion to the JWST DMS, by individually calling each step.
+Alternatively, Stages 1 to 3 can be run at once via the ```run_DMS.py``` script with the following steps:
 
 1. Copy the ```run_DMS.py``` script into your working directory.
-2. Fill in the "User Input" section, the critical inputs are summarized below:
-
-    Key Parameters
-   - root_dir : root directory from which all relative paths will be referenced.
-   - input_dir : directory with the input SOSS data.
-   - input_filetag : file name tag given to input data. Uncalibarted data from MAST should have the "uncal" flag.
-   
-   Stage 1 Inputs
-   - outlier_maps : list of paths to bad pixel maps to mask in 1/f noise correction.
-   - trace_mask : path to trace mask for 1/f noise correction.
-   - background_file : path to a SOSS background model. It is recommended to use the ones provided by STScI, found here: https://jwst-docs.stsci.edu/jwst-calibration-pipeline-caveats/jwst-time-series-observations-pipeline-caveats/niriss-time-series-observation-pipeline-caveats#NIRISSTimeSeriesObservationPipelineCaveats-SOSSskybackground
-   
-    Other Parameters
-   - run_stages : list of pipeline stages to run.
-   - save_results : if True, save intermediate results of each step.
-   - exposure_type : "CLEAR" or "F277W". Processes only the corresponding exposure types.
-   - extract_method : "box" or "atoca" - runs the applicable 1D extraction method. 
-   - out_frames : Indices of integrations corresponding to the beginning and end of the transit.
-   
+2. Fill in the "User Input" section.
 3. Once happy with the input parameters, enter ```python run_DMS.py``` in the terminal.
-
-**Note**: 1/f noise is an important consderation for SOSS observations, and incorrect treatment can led to large biases (diluton of transit depths, correlated noise, etc.) in the final extracted spectra.
-To improve the estimation and correction of 1/f noise, it is adviseable to include a bad pixel, and a trace mask, particular to the dataset being analyzed, as well as an estimate of the transit curve as inputs to Stage 1. 
-The bad pixel map is produced as part of Stage 1, and trace masks and light curve estimate are produced in Stage 2. They will have the file tags "dqpixelflags", "tracemask", and "lcscaling" respectively. It is therefore recommended to first compete a "trial" run of Stages 1 and 2 by specifying ```run_stages=[1, 2]```. 
-The bad pixel maps, trace masks, and lightcurve estimate can then be included via the ```outlier_maps```, ```trace_mask```, and ```scaling_curve``` parameters respectively, and all three stages run.
-
-
-
-

@@ -26,18 +26,19 @@ class SpecProfileStep:
     """Wrapper around custom SpecProfile Reference Construction step.
     """
 
-    def __init__(self, datafiles, deepframe, output_dir='./'):
+    def __init__(self, datafiles, output_dir='./'):
         """Step initializer.
         """
 
         self.output_dir = output_dir
         self.datafiles = np.atleast_1d(datafiles)
-        self.deepframe = deepframe
         # Get subarray identifier.
-        if np.shape(deepframe)[0] == 96:
+        temp_data = datamodels.open(datafiles[0])
+        if np.shape(temp_data.data)[0] == 96:
             self.subarray = 'SUBSTRIP96'
         else:
             self.subarray = 'SUBSTRIP256'
+        temp_data.close()
 
     def run(self, save_results=True, force_redo=False):
         """Method to run the step.
@@ -53,7 +54,7 @@ class SpecProfileStep:
             filename = expected_file
         # If no output files are detected, run the step.
         else:
-            step_results = specprofilestep(self.datafiles, self.deepframe,
+            step_results = specprofilestep(self.datafiles,
                                            save_results=save_results,
                                            output_dir=self.output_dir)
             specprofile, filename = step_results
@@ -482,7 +483,7 @@ def sosssolverstep(datafile, deepframe, show_plots=False, centroids=None):
     return transform
 
 
-def specprofilestep(datafiles, deepframe, save_results=True, output_dir='./'):
+def specprofilestep(datafiles, save_results=True, output_dir='./'):
     """Wrapper around the APPLESOSS module to construct a specprofile
     reference file tailored to the particular TSO being analyzed.
 
@@ -490,8 +491,6 @@ def specprofilestep(datafiles, deepframe, save_results=True, output_dir='./'):
     ----------
     datafiles : array-like[str], array-like[jwst.RampModel]
         Input datamodels or paths to datamodels for each segment.
-    deepframe : array-like[float]
-        Median out-of-transit stack.
     save_results : bool
         If True, save results to file.
     output_dir : str
@@ -515,14 +514,23 @@ def specprofilestep(datafiles, deepframe, save_results=True, output_dir='./'):
     step = calwebb_spec2.extract_1d_step.Extract1dStep()
     wavemap = step.get_reference_file(datafiles[0], 'wavemap')
 
+    # Create a new deepstack but using all integrations, not just the baseline.
+    for i, file in enumerate(datafiles):
+        data = datamodels.open(file)
+        if i == 0:
+            cube = data.data
+        else:
+            cube = np.concatenate([cube, data.data])
+    deepstack = utils.make_deepstack(cube)
+
     # Initialize and run the APPLESOSS module with the median stack.
-    spat_prof = applesoss.EmpiricalProfile(deepframe, tracetable=tracetable,
+    spat_prof = applesoss.EmpiricalProfile(deepstack, tracetable=tracetable,
                                            wavemap=wavemap)
     spat_prof.build_empirical_profile(verbose=1, wave_increment=0.1)
 
     # Save results to file if requested.
     if save_results is True:
-        if np.shape(deepframe)[0] == 96:
+        if np.shape(deepstack)[0] == 96:
             subarray = 'SUBSTRIP96'
         else:
             subarray = 'SUBSTRIP256'
@@ -600,8 +608,7 @@ def run_stage3(results, deepframe, baseline_ints, smoothed_wlc,
     if extract_method == 'atoca':
         if specprofile is None:
             if use_applesoss is True:
-                step = SpecProfileStep(results, deepframe=deepframe,
-                                       output_dir=outdir)
+                step = SpecProfileStep(results, output_dir=outdir)
                 specprofile = step.run(force_redo=force_redo)[1]
             else:
                 msg = 'The default specprofile reference file will be used' \
