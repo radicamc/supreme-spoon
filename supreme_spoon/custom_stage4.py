@@ -19,7 +19,7 @@ from jwst import datamodels
 from jwst.pipeline import calwebb_spec2
 
 
-def bin_at_resolution(wavelengths, depths, R=100):
+def bin_at_resolution(wavelengths, depths, depth_error, R=100):
     """FROM Néstor Espinoza
     Function that bins input wavelengths and transit depths (or any other observable, like flux) to a given
     resolution `R`. Useful for binning transit depths down to a target resolution on a transit spectrum.
@@ -51,6 +51,7 @@ def bin_at_resolution(wavelengths, depths, R=100):
 
     ww = wavelengths[idx]
     dd = depths[idx]
+    de = depth_error[idx]
 
     # Prepare output arrays:
     wout, dout, derrout = np.array([]), np.array([]), np.array([])
@@ -65,12 +66,14 @@ def bin_at_resolution(wavelengths, depths, R=100):
             # If we are in a given bin, initialize it:
             current_wavs = np.array([ww[i]])
             current_depths = np.array(dd[i])
+            current_errors = np.array(de[i])
             oncall = True
 
         else:
 
             # On a given bin, append next wavelength/depth:
             current_wavs = np.append(current_wavs, ww[i])
+            current_errors = np.append(current_errors, de[i])
             current_depths = np.append(current_depths, dd[i])
 
             # Calculate current mean R:
@@ -80,8 +83,7 @@ def bin_at_resolution(wavelengths, depths, R=100):
             if current_R <= R:
                 wout = np.append(wout, np.nanmean(current_wavs))
                 dout = np.append(dout, np.nanmean(current_depths))
-                derrout = np.append(derrout,
-                                    np.sqrt(np.nanvar(current_depths)) / np.sqrt(np.sum(np.isfinite(current_depths))))
+                derrout = np.append(derrout, np.sqrt(np.nansum(current_errors**2)/len(current_errors)))
 
                 oncall = False
 
