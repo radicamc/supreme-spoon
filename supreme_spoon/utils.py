@@ -370,6 +370,7 @@ def get_timestamps(datafiles):
     datafiles = np.atleast_1d(datafiles)
     # Loop over all data files and get mid integration time stamps.
     for i, data in enumerate(datafiles):
+        data = datamodels.open(data)
         if i == 0:
             times = data.int_times['int_mid_BJD_TDB']
         else:

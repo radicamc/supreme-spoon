@@ -114,6 +114,10 @@ class Extract1DStep:
         completed_segments, redo_segments = [], []
         all_files = glob.glob(self.output_dir + '*')
 
+        # Calculate time axis. For some reason the extrat1d outputs lose the
+        # timestamps, so this must be done before extracting.
+        times = utils.get_timestamps(self.datafiles)
+
         # To accomodate the need to occasionally iteratively run the ATOCA
         # extraction, extract segments as long as all segments are not
         # extracted. This is irrelevant for box extractions.
@@ -249,14 +253,14 @@ class Extract1DStep:
                           'soss_width': soss_width,
                           'method': self.extract_method}
 
-        return results, extract_params
+        return results, extract_params, times
 
 
 class LightCurveStep:
     """Wrapper around custom Light Curve Construction step.
     """
 
-    def __init__(self, datafiles, extract_dict, baseline_ints,
+    def __init__(self, datafiles, extract_dict, baseline_ints, times,
                  occultation_type='transit', output_dir='./'):
         """Step initializer.
         """
@@ -266,12 +270,13 @@ class LightCurveStep:
         self.extract_dict = extract_dict
         self.baseline_ints = baseline_ints
         self.occultation_type = occultation_type
+        self.times = times
 
     def run(self, save_results=True, show_plots=False):
         """Method to run the step.
         """
 
-        stellar_spectra = lightcurvestep(self.datafiles,
+        stellar_spectra = lightcurvestep(self.datafiles, times=self.times,
                                          extract_params=self.extract_dict,
                                          baseline_ints=self.baseline_ints,
                                          occultation_type=self.occultation_type,
@@ -282,8 +287,8 @@ class LightCurveStep:
         return stellar_spectra
 
 
-def lightcurvestep(datafiles, baseline_ints, extract_params, output_dir='./',
-                   save_results=True, show_plots=False,
+def lightcurvestep(datafiles, times, baseline_ints, extract_params,
+                   output_dir='./', save_results=True, show_plots=False,
                    occultation_type='transit'):
     """Upack the outputs of the 1D extraction and format them into lightcurves
     at the native detector resolution.
@@ -292,6 +297,8 @@ def lightcurvestep(datafiles, baseline_ints, extract_params, output_dir='./',
     ----------
     datafiles : array-like[str], array-like[MultiSpecModel]
         Input extract1d data files.
+    times : array-like[float]
+        Time stamps corresponding to each integration.
     baseline_ints : array-like[int]
         Integrations of ingress and egress.
     output_dir : str
@@ -318,9 +325,6 @@ def lightcurvestep(datafiles, baseline_ints, extract_params, output_dir='./',
                                             occultation_type)
     # Calculate the DN/s to e- conversion factor for this TSO.
     dn2e = utils.get_dn2e(datafiles[0])
-
-    # Generate the time axis of the TSO
-    t = utils.get_timestamps(datafiles)
 
     # Open the datafiles, and pack the wavelength, flux, and flux error
     # information into data cubes.
@@ -400,7 +404,7 @@ def lightcurvestep(datafiles, baseline_ints, extract_params, output_dir='./',
     # Pack the stellar spectra and save to file if requested.
     stellar_spectra = utils.pack_spectra(filename, wl1, wu1, flux_o1_clip,
                                          ferr_o1, wl2, wu2, flux_o2_clip,
-                                         ferr_o2, t, header_dict,
+                                         ferr_o2, times, header_dict,
                                          header_comments,
                                          save_results=save_results)
 
@@ -634,11 +638,11 @@ def run_stage3(results, deepframe, baseline_ints, smoothed_wlc,
                             soss_width=soss_width, specprofile=specprofile,
                             soss_estimate=soss_estimate,
                             save_results=save_results, force_redo=force_redo)
-    results, extract_params = step_results
+    results, extract_params, times = step_results
 
     # ===== Light Curve Construction Step =====
     # Custom DMS step.
-    step = LightCurveStep(results, extract_dict=extract_params,
+    step = LightCurveStep(results, extract_dict=extract_params, times=times,
                           baseline_ints=baseline_ints,
                           occultation_type=occultation_type, output_dir=outdir)
     stellar_spectra = step.run(save_results=save_results,
