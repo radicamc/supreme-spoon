@@ -390,8 +390,8 @@ def badpixstep(datafiles, baseline_ints, smoothed_wlc=None, thresh=3,
         # If no lightcurve is provided, estimate it from the current data.
         if smoothed_wlc is None:
             postage = cube[:, 20:60, 1500:1550]
-            timeseries = np.sum(postage, axis=(1, 2))
-            timeseries = timeseries / np.median(timeseries[baseline_ints])
+            timeseries = np.nansum(postage, axis=(1, 2))
+            timeseries = timeseries / np.nanmedian(timeseries[baseline_ints])
             # Smooth the time series on a timescale of roughly 2%.
             smoothed_wlc = median_filter(timeseries,
                                          int(0.02 * np.shape(cube)[0]))
@@ -476,9 +476,9 @@ def lcestimatestep(datafiles, baseline_ints, save_results=True,
     # Use an area centered on the peak of the order 1 blaze to estimate the
     # photometric light curve.
     postage = cube[:, 20:60, 1500:1550]
-    timeseries = np.sum(postage, axis=(1, 2))
+    timeseries = np.nansum(postage, axis=(1, 2))
     # Normalize by the baseline flux level.
-    timeseries = timeseries / np.median(timeseries[baseline_ints])
+    timeseries = timeseries / np.nanmedian(timeseries[baseline_ints])
     # If not smoothing scale is provided, smooth the time series on a
     # timescale of roughly 2% of the total length.
     if smoothing_scale is None:

@@ -661,8 +661,8 @@ def oneoverfstep(datafiles, baseline_ints, smoothed_wlc=None,
     # If no lightcurve is provided, estimate it from the current data.
     if smoothed_wlc is None:
         postage = cube[:, -1, 20:60, 1500:1550]
-        timeseries = np.sum(postage, axis=(1, 2))
-        timeseries = timeseries / np.median(timeseries[baseline_ints])
+        timeseries = np.nansum(postage, axis=(1, 2))
+        timeseries = timeseries / np.nanmedian(timeseries[baseline_ints])
         # Smooth the time series on a timescale of roughly 2%.
         smoothed_wlc = median_filter(timeseries,
                                      int(0.02*np.shape(cube)[0]))
