@@ -59,17 +59,16 @@ def do_centroid_plot(deepstack, x1, y1, x2, y2, x3, y3, labels=None):
     plt.show()
 
 
-def do_lightcurve_plot(t, data, model, scatter, out_dev, outpdf=None,
+def do_lightcurve_plot(t, data, model, scatter, errors, outpdf=None,
                        title=None, nfit=8):
     """Plot results of lightcurve fit.
     """
 
     def gaus(x, m, s):
-        return np.exp(-0.5 * (x - m) ** 2 / s ** 2) / np.sqrt(
-            2 * np.pi * s ** 2)
+        return np.exp(-0.5 * (x - m)**2 / s**2) / np.sqrt(2 * np.pi * s**2)
 
     def chi2(o, m, e):
-        return np.nansum((o - m) ** 2 / e ** 2)
+        return np.nansum((o - m)**2 / e**2)
 
     fig = plt.figure(figsize=(13, 7), facecolor='white')
     gs = GridSpec(4, 1, height_ratios=[3, 1, 0.3, 1])
@@ -82,9 +81,10 @@ def do_lightcurve_plot(t, data, model, scatter, out_dev, outpdf=None,
     ax1.set_ylabel('Relative Flux', fontsize=14)
     ax1.set_xlim(np.min(t), np.max(t))
     ax1.xaxis.set_major_formatter(plt.NullFormatter())
-    chi2_v = chi2(data * 1e6, model * 1e6, out_dev * 1e6) / (len(t) - nfit)
-    err_mult = scatter / (out_dev * 1e6)
-    ax1.text(t[2], np.min(model), r'$\chi_\nu^2 = {:.2f}$''\n'r'$\sigma={:.2f}$ppm''\n'r'$e={:.2f}$'.format(chi2_v, out_dev*1e6, err_mult),
+    chi2_v = chi2(data*1e6, model*1e6, errors*1e6) / (len(t) - nfit)
+    mean_err = np.nanmean(errors)
+    err_mult = scatter / (mean_err*1e6)
+    ax1.text(t[2], np.min(model), r'$\chi_\nu^2 = {:.2f}$''\n'r'$\sigma={:.2f}$ppm''\n'r'$e={:.2f}$'.format(chi2_v, mean_err*1e6, err_mult),
              fontsize=14)
 
     if title is not None:

@@ -19,97 +19,124 @@ from jwst import datamodels
 from jwst.pipeline import calwebb_spec2
 
 
-def bin_at_resolution(wavelengths, depths, depth_error, R=100):
-    """FROM Néstor Espinoza
-    Function that bins input wavelengths and transit depths (or any other observable, like flux) to a given
-    resolution `R`. Useful for binning transit depths down to a target resolution on a transit spectrum.
+def bin_at_resolution(wavelengths, depths, depth_error, R):
+    """Function that bins input wavelengths and transit depths (or any other
+    observable, like flux) to a given resolution `R`. Useful for binning
+    transit depths down to a target resolution on a transit spectrum.
+    Adapted from Néstor Espinoza
+
     Parameters
     ----------
-    wavelengths : np.array
-        Array of wavelengths
-
-    depths : np.array
-        Array of depths at each wavelength.
+    wavelengths : array-like[float]
+        Wavelength values.
+    depths : array-like[float]
+        Depth values at each wavelength.
+    depth_error : array-like[float]
+        Errors corresponding to each depth measurement.
     R : int
-        Target resolution at which to bin (default is 100)
-    method : string
-        'mean' will calculate resolution via the mean --- 'median' via the median resolution of all points
-        in a bin.
+        Target resolution at which to bin.
+
     Returns
     -------
-    wout : np.array
+    wout : np.ndarray[float]
         Wavelength of the given bin at resolution R.
-    dout : np.array
-        Depth of the bin.
-    derrout : np.array
-        Error on depth of the bin.
-
+    werrout : list[float]
+        Width of the wavelength bin.
+    dout : np.ndarray[float]
+        Binned depth.
+    derrout : np.ndarray[float]
+        Error on binned depth.
     """
-
-    # Sort wavelengths from lowest to highest:
-    idx = np.argsort(wavelengths)
-
-    ww = wavelengths[idx]
-    dd = depths[idx]
-    de = depth_error[idx]
 
     # Prepare output arrays:
     wout, dout, derrout = np.array([]), np.array([]), np.array([])
 
+    # Sort wavelengths from lowest to highest:
+    idx = np.argsort(wavelengths)
+    ww = wavelengths[idx]
+    dd = depths[idx]
+    de = depth_error[idx]
+
     oncall = False
-
-    # Loop over all (ordered) wavelengths:
+    # Loop over all wavelengths:
     for i in range(len(ww)):
-
         if not oncall:
-
             # If we are in a given bin, initialize it:
             current_wavs = np.array([ww[i]])
             current_depths = np.array(dd[i])
             current_errors = np.array(de[i])
             oncall = True
-
         else:
-
             # On a given bin, append next wavelength/depth:
             current_wavs = np.append(current_wavs, ww[i])
             current_errors = np.append(current_errors, de[i])
             current_depths = np.append(current_depths, dd[i])
 
             # Calculate current mean R:
-            current_R = np.mean(current_wavs) / np.abs(current_wavs[0] - current_wavs[-1])
+            current_r = np.mean(current_wavs) / np.abs(current_wavs[0] - current_wavs[-1])
 
-            # If the current set of wavs/depths is below or at the target resolution, stop and move to next bin:
-            if current_R <= R:
+            # If the current set of wavs/depths is below or at the target
+            # resolution, stop and move to next bin:
+            if current_r <= R:
                 wout = np.append(wout, np.nanmean(current_wavs))
                 dout = np.append(dout, np.nanmean(current_depths))
-                derrout = np.append(derrout, np.sqrt(np.nansum(current_errors**2)/len(current_errors)))
-
+                derrout = np.append(derrout, np.sqrt(np.nanmean(current_errors**2)))
                 oncall = False
 
+    # Calculate the wavelength limits of each bin.
     lw = np.concatenate([wout[:, None], np.roll(wout, 1)[:, None]], axis=1)
     up = np.concatenate([wout[:, None], np.roll(wout, -1)[:, None]], axis=1)
 
     uperr = (np.mean(up, axis=1) - wout)[:-1]
     uperr = np.insert(uperr, -1, uperr[-1])
-
     lwerr = (wout - np.mean(lw, axis=1))[1:]
     lwerr = np.insert(lwerr, 0, lwerr[0])
-
     werrout = [lwerr, uperr]
 
     return wout, werrout, dout, derrout
 
 
-def bin_2d_spectra(wave2d, flux2d, R=150):
+def bin_2d_spectra(wave2d, flux2d, err2d, R=150):
+    """Utility to loop over bin_at_resolution for 2D dataframes (e.g., 2D
+    spectroscopic lightcurves).
+
+    Parameters
+    ----------
+    wave2d : array-like[float]
+        2D array of wavelengths.
+    flux2d : array-like[float]
+        Flux values at to each wavelength.
+    err2d : array-like[float]
+        Errors on the correspondng fluxes.
+    R : int
+        Resolution to which to bin.
+
+    Returns
+    -------
+    wc_bin : np.ndarray[float]
+        Central wavelength of the bin.
+    wl_bin : np.ndarray[float]
+        Lower wavelength limit of the bin.
+    wu_bin : np.ndarray[float]
+        Upper wavelength limit of the bin.
+    f_bin : np.ndarray[float]
+        Binned flux.
+    e_bin : np.ndarray[float]
+        Binned error.
+    """
+
     nints, nwave = np.shape(wave2d)
 
+    # Simply loop over each integration and bin the flux values down to the
+    # desired resolution.
     for i in tqdm(range(nints)):
         if i == 0:
-            wc_bin, we_bin, f_bin, e_bin = bin_at_resolution(wave2d[i], flux2d[i], R=R)
+            bin_res = bin_at_resolution(wave2d[i], flux2d[i], err2d[i], R=R)
+            wc_bin, we_bin, f_bin, e_bin = bin_res
             wl_bin, wu_bin = we_bin
         elif i == 1:
-            wc_bin_i, we_bin_i, f_bin_i, e_bin_i = bin_at_resolution(wave2d[i], flux2d[i], R=R)
+            bin_res = bin_at_resolution(wave2d[i], flux2d[i], err2d[i], R=R)
+            wc_bin_i, we_bin_i, f_bin_i, e_bin_i = bin_res
             wl_bin_i, wu_bin_i = we_bin_i
             wc_bin = np.stack([wc_bin, wc_bin_i])
             wl_bin = np.stack([wl_bin, wl_bin_i])
@@ -117,7 +144,8 @@ def bin_2d_spectra(wave2d, flux2d, R=150):
             f_bin = np.stack([f_bin, f_bin_i])
             e_bin = np.stack([e_bin, e_bin_i])
         else:
-            wc_bin_i, we_bin_i, f_bin_i, e_bin_i = bin_at_resolution(wave2d[i], flux2d[i], R=R)
+            bin_res = bin_at_resolution(wave2d[i], flux2d[i], err2d[i], R=R)
+            wc_bin_i, we_bin_i, f_bin_i, e_bin_i = bin_res
             wl_bin_i, wu_bin_i = we_bin_i
             wc_bin = np.concatenate([wc_bin, wc_bin_i[None, :]], axis=0)
             wl_bin = np.concatenate([wl_bin, wl_bin_i[None, :]], axis=0)
@@ -130,14 +158,42 @@ def bin_2d_spectra(wave2d, flux2d, R=150):
 
 def save_transmission_spectrum(wave, wave_err, dppm, dppm_err, order, outdir,
                                filename, target, extraction_type):
+    """Write a transmission spectrum to file.
+
+    Parameters
+    ----------
+    wave : array-like[float]
+        Wavelength values.
+    wave_err : array-like[float]
+        Bin half-widths for each wavelength bin.
+    dppm : array-like[float]
+        Transit depth in each bin.
+    dppm_err : array-like[float]
+        Error on the transit depth in each bin.
+    order : array-like[int]
+        SOSS order corresponding to each bin.
+    outdir : str
+        Firectory to whch to save outputs.
+    filename : str
+        Name of the file to which to save spectra.
+    target : str
+        Target name.
+    extraction_type : str
+        Type of extraction: either box or atoca.
+    """
+
+    # Pack the quantities into a dictionary.
     dd = {'wave': wave,
           'wave_err': wave_err,
           'dppm': dppm,
           'dppm_err': dppm_err,
           'order': order}
+    # Save the dictionary as a csv.
     df = pd.DataFrame(data=dd)
     if os.path.exists(outdir + filename):
         os.remove(outdir + filename)
+
+    # Re-open the csv and append some critical info the header.
     f = open(outdir + filename, 'a')
     f.write('# Target: {}\n'.format(target))
     f.write('# Instrument: NIRISS/SOSS\n')
@@ -184,7 +240,3 @@ def gen_ld_coefs(datafile, wavebin_low, wavebin_up, order, M_H, logg, Teff):
 
 def run_stage4():
     return
-
-# TODO: Add main to just run stage 4
-if __name__ == "__main__":
-    run_stage4()
