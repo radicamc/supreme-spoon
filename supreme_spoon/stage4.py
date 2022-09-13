@@ -19,7 +19,7 @@ from jwst import datamodels
 from jwst.pipeline import calwebb_spec2
 
 
-def bin_at_resolution(wavelengths, depths, depth_error, R):
+def bin_at_resolution(wavelengths, depths, depth_error, R, method='sum'):
     """Function that bins input wavelengths and transit depths (or any other
     observable, like flux) to a given resolution `R`. Useful for binning
     transit depths down to a target resolution on a transit spectrum.
@@ -35,6 +35,8 @@ def bin_at_resolution(wavelengths, depths, depth_error, R):
         Errors corresponding to each depth measurement.
     R : int
         Target resolution at which to bin.
+    method : str
+        Method to bin depths.
 
     Returns
     -------
@@ -79,8 +81,14 @@ def bin_at_resolution(wavelengths, depths, depth_error, R):
             # resolution, stop and move to next bin:
             if current_r <= R:
                 wout = np.append(wout, np.nanmean(current_wavs))
-                dout = np.append(dout, np.nanmean(current_depths))
-                derrout = np.append(derrout, np.sqrt(np.nanmean(current_errors**2)))
+                if method == 'sum':
+                    dout = np.append(dout, np.nansum(current_depths))
+                    derrout = np.append(derrout, np.sqrt(np.nanmean(current_errors**2)))
+                elif method == 'average':
+                    dout = np.append(dout, np.nanmean(current_depths))
+                    derrout = np.append(derrout, np.sqrt(np.nanmean(current_errors**2))/len(current_errors))
+                else:
+                    raise ValueError('Unidentified method {}.'.format(method))
                 oncall = False
 
     # Calculate the wavelength limits of each bin.
