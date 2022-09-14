@@ -101,7 +101,8 @@ class Extract1DStep:
         self.scaled_deep = deepframe[None, :, :] * smoothed_wlc[:, None, None]
 
     def run(self, soss_transform, soss_width=25, specprofile=None,
-            soss_estimate=None, save_results=True, force_redo=False):
+            soss_estimate=None, save_results=True, force_redo=False,
+            soss_tikfac=None):
         """Method to run the step.
         """
 
@@ -184,7 +185,8 @@ class Extract1DStep:
                                     soss_bad_pix=soss_bad_pix,
                                     soss_width=soss_width,
                                     soss_modelname=soss_modelname,
-                                    override_specprofile=specprofile)
+                                    override_specprofile=specprofile,
+                                    soss_tikfac=soss_tikfac)
                     # If the step ran successfully, and ATOCA was used, save
                     # the AtocaSpectra output for potential use as the
                     # soss_estimate for later segments.
@@ -550,7 +552,8 @@ def run_stage3(results, deepframe, baseline_ints, smoothed_wlc,
                save_results=True, show_plots=False, root_dir='./',
                force_redo=False, extract_method='box', specprofile=None,
                soss_estimate=None, soss_width=25, output_tag='',
-               use_applesoss=True, occultation_type='transit'):
+               use_applesoss=True, occultation_type='transit',
+               soss_tikfac=None):
     """Run the supreme-SPOON Stage 3 pipeline: 1D spectral extraction, using
     a combination of official STScI DMS and custom steps.
 
@@ -587,6 +590,8 @@ def run_stage3(results, deepframe, baseline_ints, smoothed_wlc,
         applesoss module.
     occultation_type : str
         Type of occultation, either 'transit' or 'eclipse'.
+    soss_tikfac : int, None
+        Tikhonov regularization factor.
 
     Returns
     -------
@@ -637,7 +642,8 @@ def run_stage3(results, deepframe, baseline_ints, smoothed_wlc,
     step_results = step.run(soss_transform=soss_transform,
                             soss_width=soss_width, specprofile=specprofile,
                             soss_estimate=soss_estimate,
-                            save_results=save_results, force_redo=force_redo)
+                            save_results=save_results, force_redo=force_redo,
+                            soss_tikfac=soss_tikfac)
     results, extract_params, times = step_results
 
     # ===== Light Curve Construction Step =====

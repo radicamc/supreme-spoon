@@ -49,6 +49,8 @@ deepframe = None
 centroids = None
 # Box width to extract around the trace center.
 soss_width = 25
+# Tikhonov regularization factor (optional).
+soss_tikfac = None
 
 # ===== Other Parameters =====
 # Name tag for output file directory.
@@ -142,7 +144,8 @@ if 3 in run_stages:
                                        soss_estimate=soss_estimate,
                                        output_tag=output_tag,
                                        use_applesoss=use_applesoss,
-                                       occultation_type=occultation_type)
+                                       occultation_type=occultation_type,
+                                       soss_tikfac=soss_tikfac)
     stellar_spectra = stage3_results
 
 print('Done')
