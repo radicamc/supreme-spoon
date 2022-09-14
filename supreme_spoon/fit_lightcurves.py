@@ -45,7 +45,8 @@ formatted_names = {'P_p1': r'$P$', 't0_p1': r'$T_0$', 'p_p1': r'R$_p$/R$_*$',
                    'b_p1': r'$b$', 'q1_SOSS': r'$q_1$', 'q2_SOSS': r'$q_2$',
                    'ecc_p1': r'$e$', 'omega_p1': r'$\Omega$',
                    'sigma_w': r'$\sigma_w_SOSS$',
-                   'theta0': r'$\theta_0_SOSS$', 'theta1_SOSS': r'$\theta_1$',
+                   'theta0_SOSS': r'$\theta_0$', 'theta1_SOSS': r'$\theta_1$',
+                   'theta2_SOSS': r'$\theta_2$',
                    'GP_sigma_SOSS': r'$GP_\sigma$', 'GP_rho_SOSS': r'$GP_rho$',
                    'rho': r'$\rho$'}
 
@@ -66,12 +67,17 @@ for order in orders:
 
     print('\nFitting order {}\n'.format(order))
     # Unpack wave, flux and error
-    wave_low = fits.getdata(infile,  1 + 4*(order - 1))
-    wave_up = fits.getdata(infile, 2 + 4*(order - 1))
+    wave_low = fits.getdata(infile,  1 + 4*(order - 1))[0]
+    wave_up = fits.getdata(infile, 2 + 4*(order - 1))[0]
     wave = np.nanmean(np.stack([wave_low, wave_up]), axis=0)
     flux = fits.getdata(infile, 3 + 4*(order - 1))
     err = fits.getdata(infile, 4 + 4*(order - 1))
     nints, nbins = np.shape(flux)
+
+    # Sort input arrays in order of increasing wavelength.
+    ii = np.argsort(wave)
+    wave_low, wave_up, wave = wave_low[ii], wave_up[ii], wave[ii]
+    flux, err = flux[:, ii], err[:, ii]
 
     # Set up light curve plots
     data = np.ones((nints, nbins))*np.nan
@@ -86,9 +92,9 @@ for order in orders:
         priors[param]['hyperparameters'] = hyperp
 
     if order == 1 and ldcoef_file_o1 is not None:
-        prior_q1, prior_q2 = utils.get_ld_coefs(ldcoef_file_o1, wave_low[0], wave_up[0])
+        prior_q1, prior_q2 = utils.get_ld_coefs(ldcoef_file_o1, wave_low, wave_up)
     if order == 2 and ldcoef_file_o2 is not None:
-        prior_q1, prior_q2 = utils.get_ld_coefs(ldcoef_file_o2, wave_low[0], wave_up[0])
+        prior_q1, prior_q2 = utils.get_ld_coefs(ldcoef_file_o2, wave_low, wave_up)
 
     # Fit each light curve
     outdict = {}
@@ -116,12 +122,13 @@ for order in orders:
                                       yerr_lc={'SOSS': norm_err},
                                       linear_regressors_lc={'SOSS': tt},
                                       out_folder=outdir + 'speclightcurve{2}/order{0}_wavebin{1}'.format(order, i, suffix))
-                results = dataset.fit(sampler='dynesty')
+                kwargs = {'maxiter': 25000}
+                results = dataset.fit(sampler='dynesty', **kwargs)
             except KeyboardInterrupt as err:
                 raise err
             except:
                 print('Exception encountered.')
-                print('Skipping bin #{} / {}'.format(i + 1, nbins))
+                print('Skipping bin.')
                 skip = True
 
         # Pack best fit params into a dictionary
@@ -157,7 +164,7 @@ for order in orders:
                                             scatter=scatter,
                                             errors=err[:, i]/out_med,
                                             outpdf=outpdf,
-                                            title='bin {0} | {1:.3f}µm'.format(i, wave[0, i]),
+                                            title='bin {0} | {1:.3f}µm'.format(i, wave[i]),
                                             nfit=nfit)
 
                 fit_params, posterior_names = [], []
@@ -177,11 +184,11 @@ for order in orders:
             except:
                 pass
 
-    plotting.plot_2dlightcurves(wave[0], data, outpdf=outpdf,
+    plotting.plot_2dlightcurves(wave, data, outpdf=outpdf,
                                 title='Normalized Lightcurves')
-    plotting.plot_2dlightcurves(wave[0], models, outpdf=outpdf,
+    plotting.plot_2dlightcurves(wave, models, outpdf=outpdf,
                                 title='Model Lightcurves')
-    plotting.plot_2dlightcurves(wave[0], residuals, outpdf=outpdf,
+    plotting.plot_2dlightcurves(wave, residuals, outpdf=outpdf,
                                 title='Residuals')
     outdf = pd.DataFrame(data=outdict)
     outdf.to_csv(outdir + 'speclightcurve_results_order{0}{1}.csv'.format(order, suffix),
