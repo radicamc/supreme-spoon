@@ -14,32 +14,43 @@ import matplotlib.backends.backend_pdf
 import numpy as np
 import pandas as pd
 
+from supreme_spoon import stage4
 from supreme_spoon import plotting, utils
 
 # =============== User Input ===============
-outdir = './'
+root_dir = './'
+output_tag = ''
 infile = ''
 orders = [1, 2]
-suffix = ''
-out_frames = [50, -50]
+fit_suffix = ''
+baseline_ints = [50, -50]
+occultation_type = 'transit'
 
 # Fitting priors
 params = ['P_p1', 't0_p1', 'p_p1', 'b_p1',
           'q1_SOSS', 'q2_SOSS', 'ecc_p1', 'omega_p1', 'a_p1',
-          'mdilution_SOSS', 'mflux_SOSS', 'sigma_w_SOSS', 'theta0_SOSS']
+          'mdilution_SOSS', 'mflux_SOSS', 'sigma_w_SOSS']
 dists = ['fixed', 'fixed', 'uniform', 'fixed',
          'uniform', 'uniform', 'fixed', 'fixed', 'fixed',
-         'fixed', 'fixed', 'loguniform', 'normal']
+         'fixed', 'fixed', 'loguniform']
 hyperps = [3.42525650, 2459751.821681146, [0., 1], 0.748,
            [0., 1.], [0., 1.], 0.0, 90., 8.82,
-           1.0, 0, [1e-1, 1e4], (9.1164330491e-05, 1.87579835e-05)]
+           1.0, 0, [1e-1, 1e4]]
 
 ldcoef_file_o1 = None
 ldcoef_file_o2 = None
 # ==========================================
 
-if suffix != '':
-    suffix = '_' + suffix
+if output_tag != '':
+    output_tag = '_' + output_tag
+# Create output directories and define output paths.
+utils.verify_path(root_dir + 'pipeline_outputs_directory' + output_tag)
+utils.verify_path(root_dir + 'pipeline_outputs_directory' + output_tag + '/Stage4')
+outdir = root_dir + 'pipeline_outputs_directory' + output_tag + '/Stage4/'
+
+# Tag for this particular fit.
+if fit_suffix != '':
+    fit_suffix = '_' + fit_suffix
 
 formatted_names = {'P_p1': r'$P$', 't0_p1': r'$T_0$', 'p_p1': r'R$_p$/R$_*$',
                    'b_p1': r'$b$', 'q1_SOSS': r'$q_1$', 'q2_SOSS': r'$q_2$',
@@ -52,18 +63,21 @@ formatted_names = {'P_p1': r'$P$', 't0_p1': r'$T_0$', 'p_p1': r'R$_p$/R$_*$',
 
 # Get time axis
 t = fits.getdata(infile, 9)
-# Noramalized time for trends
-tt = np.zeros((280, 1))
-tt[:, 0] = (t - np.mean(t)) / np.sqrt(np.var(t))
+# Quantities against which to linearly detrend.
+lm_quantities = np.zeros((len(t), 2))
+lm_quantities[:, 0] = np.ones_like(t)
+lm_quantities[:, 1] = (t - np.mean(t)) / np.sqrt(np.var(t))
+# Quantities on which to train GP.
+gp_quantities = np.zeros((len(t), 1))
 
-out_frames = np.abs(out_frames)
-out_trans = np.concatenate([np.arange(out_frames[0]),
-                            np.arange(out_frames[1]) - out_frames[1]])
+# Format the baseline frames - either out-of-transit or in-eclipse.
+baseline_ints = utils.format_out_frames(baseline_ints,
+                                        occultation_type)
 
 for order in orders:
 
     first_time = True
-    outpdf = matplotlib.backends.backend_pdf.PdfPages(outdir + 'lightcurve_fit_order{0}{1}.pdf'.format(order, suffix))
+    outpdf = matplotlib.backends.backend_pdf.PdfPages(outdir + 'lightcurve_fit_order{0}{1}.pdf'.format(order, fit_suffix))
 
     print('\nFitting order {}\n'.format(order))
     # Unpack wave, flux and error
@@ -73,16 +87,15 @@ for order in orders:
     flux = fits.getdata(infile, 3 + 4*(order - 1))
     err = fits.getdata(infile, 4 + 4*(order - 1))
     nints, nbins = np.shape(flux)
+    # Normalize flux and error by the baseline.
+    baseline = np.median(flux[baseline_ints], axis=0)
+    norm_flux = flux / baseline
+    norm_err = err / baseline
 
     # Sort input arrays in order of increasing wavelength.
     ii = np.argsort(wave)
     wave_low, wave_up, wave = wave_low[ii], wave_up[ii], wave[ii]
-    flux, err = flux[:, ii], err[:, ii]
-
-    # Set up light curve plots
-    data = np.ones((nints, nbins))*np.nan
-    models = np.ones((nints, nbins)) * np.nan
-    residuals = np.ones((nints, nbins)) * np.nan
+    norm_flux, norm_err = norm_flux[:, ii], norm_err[:, ii]
 
     # Set up priors
     priors = {}
@@ -90,46 +103,57 @@ for order in orders:
         priors[param] = {}
         priors[param]['distribution'] = dist
         priors[param]['hyperparameters'] = hyperp
-
+    # Interpolate LD coefficients from stellar models.
     if order == 1 and ldcoef_file_o1 is not None:
-        prior_q1, prior_q2 = utils.get_ld_coefs(ldcoef_file_o1, wave_low, wave_up)
+        prior_q1, prior_q2 = utils.get_ld_coefs(ldcoef_file_o1,
+                                                wave_low, wave_up)
     if order == 2 and ldcoef_file_o2 is not None:
-        prior_q1, prior_q2 = utils.get_ld_coefs(ldcoef_file_o2, wave_low, wave_up)
+        prior_q1, prior_q2 = utils.get_ld_coefs(ldcoef_file_o2,
+                                                wave_low, wave_up)
+
+    # Pack fitting arrays and priors into dictionaries.
+    data_dict, prior_dict = {}, {}
+    for wavebin in range(nbins):
+        # Data dictionaries, including linear model and GP regressors.
+        thisbin = 'wavebin' + str(wavebin)
+        bin_dict = {'times': t,
+                    'flux': norm_flux[:, wavebin],
+                    'error': np.zeros_like(norm_err[:, wavebin])}
+        # If linear models are to be included.
+        if 'theta0_SOSS' in priors.keys():
+            bin_dict['lm_parameters'] = lm_quantities
+        # If GPs are to be inclided.
+        if 'GP_sigma_SOSS' in priors.keys():
+            bin_dict['GP_parameters'] = gp_quantities
+        data_dict[thisbin] = bin_dict
+
+        # Prior dictionaries.
+        prior_dict[thisbin] = priors.copy()
+        # Update the LD prior for this bin if available.
+        if ldcoef_file_o1 is not None or ldcoef_file_o2 is not None:
+            if np.isfinite(prior_q1[wavebin]):
+                prior_dict[thisbin]['q1_SOSS']['distribution'] = 'truncatednormal'
+                prior_dict[thisbin]['q1_SOSS']['hyperparameters'] = [prior_q1[wavebin], 0.1, 0.0, 1.0]
+            if np.isfinite(prior_q2[wavebin]):
+                prior_dict[thisbin]['q2_SOSS']['distribution'] = 'truncatednormal'
+                prior_dict[thisbin]['q2_SOSS']['hyperparameters'] = [prior_q2[wavebin], 0.1, 0.0, 1.0]
 
     # Fit each light curve
-    outdict = {}
-    for i in range(nbins):
-        skip = False
-        if not np.isfinite(flux[:, i]).all():
-            print('Skipping bin #{} / {}'.format(i + 1, nbins))
-            skip = True
-        else:
-            print('Fitting bin #{} / {}'.format(i + 1, nbins))
-            out_med = np.median(flux[out_trans, i])
-            norm_flux = flux[:, i] / out_med
-            norm_err = np.zeros_like(err[:, i])
+    fit_results = stage4.fit_lightcurves(data_dict, prior_dict, order=order,
+                                         output_dir=outdir, nthreads=4,
+                                         fit_suffix=fit_suffix)
 
-            if ldcoef_file_o1 is not None or ldcoef_file_o2 is not None:
-                if np.isfinite(prior_q1[i]):
-                    priors['q1_SOSS']['distribution'] = 'truncatednormal'
-                    priors['q1_SOSS']['hyperparameters'] = [prior_q1[i], 0.1, 0.0, 1.0]
-                if np.isfinite(prior_q2[i]):
-                    priors['q2_SOSS']['distribution'] = 'truncatednormal'
-                    priors['q2_SOSS']['hyperparameters'] = [prior_q2[i], 0.1, 0.0, 1.0]
-            try:
-                dataset = juliet.load(priors=priors, t_lc={'SOSS': t},
-                                      y_lc={'SOSS': norm_flux},
-                                      yerr_lc={'SOSS': norm_err},
-                                      linear_regressors_lc={'SOSS': tt},
-                                      out_folder=outdir + 'speclightcurve{2}/order{0}_wavebin{1}'.format(order, i, suffix))
-                kwargs = {'maxiter': 25000}
-                results = dataset.fit(sampler='dynesty', **kwargs)
-            except KeyboardInterrupt as err:
-                raise err
-            except:
-                print('Exception encountered.')
-                print('Skipping bin.')
-                skip = True
+    # Loop over results for each wavebin, and make summary plots.
+    print('Making summary plots.')
+    data = np.ones((nints, nbins)) * np.nan
+    models = np.ones((nints, nbins)) * np.nan
+    residuals = np.ones((nints, nbins)) * np.nan
+    outdict = {}
+    for i, wavebin in enumerate(fit_results.keys()):
+        # Make note if something went wrong with this bin.
+        skip = False
+        if fit_results[wavebin] is None:
+            skip = True
 
         # Pack best fit params into a dictionary
         for param, dist in zip(params, dists):
@@ -139,13 +163,14 @@ for order in orders:
                 outdict[param + '_m'] = []
                 outdict[param + '_u'] = []
                 outdict[param + '_l'] = []
-
+            # Append NaNs if the bin was skipped.
             if skip is True:
                 outdict[param + '_m'].append(np.nan)
                 outdict[param + '_u'].append(np.nan)
                 outdict[param + '_l'].append(np.nan)
+            # If not skipped, append median and 1 sigma bounds.
             else:
-                pp = results.posteriors['posterior_samples'][param]
+                pp = fit_results[wavebin].posteriors['posterior_samples'][param]
                 pm, pu, pl = juliet.utils.get_quantiles(pp)
                 outdict[param + '_m'].append(pm)
                 outdict[param + '_u'].append(pu)
@@ -155,14 +180,13 @@ for order in orders:
         # Make summary plots
         if skip is False:
             try:
-                transit_model = results.lc.evaluate('SOSS')
-                scatter = np.median(results.posteriors['posterior_samples']['sigma_w_SOSS'])
+                transit_model = fit_results[wavebin].lc.evaluate('SOSS')
+                scatter = np.median(fit_results[wavebin].posteriors['posterior_samples']['sigma_w_SOSS'])
                 nfit = len(np.where(dists != 'fixed')[0])
-                plotting.do_lightcurve_plot(t=dataset.times_lc['SOSS'],
-                                            data=dataset.data_lc['SOSS'],
+                plotting.do_lightcurve_plot(t=t, data=norm_flux[:, i],
                                             model=transit_model,
                                             scatter=scatter,
-                                            errors=err[:, i]/out_med,
+                                            errors=norm_err[:, i],
                                             outpdf=outpdf,
                                             title='bin {0} | {1:.3f}µm'.format(i, wave[i]),
                                             nfit=nfit)
@@ -175,12 +199,13 @@ for order in orders:
                             posterior_names.append(formatted_names[param])
                         else:
                             posterior_names.append(param)
-                plotting.make_corner(fit_params, results, outpdf=outpdf,
+                plotting.make_corner(fit_params, fit_results[wavebin],
+                                     outpdf=outpdf,
                                      posterior_names=posterior_names)
 
-                data[:, i] = norm_flux
+                data[:, i] = norm_flux[:, i]
                 models[:, i] = transit_model
-                residuals[:, i] = norm_flux - transit_model
+                residuals[:, i] = norm_flux[:, i] - transit_model
             except:
                 pass
 
@@ -191,7 +216,7 @@ for order in orders:
     plotting.plot_2dlightcurves(wave, residuals, outpdf=outpdf,
                                 title='Residuals')
     outdf = pd.DataFrame(data=outdict)
-    outdf.to_csv(outdir + 'speclightcurve_results_order{0}{1}.csv'.format(order, suffix),
+    outdf.to_csv(outdir + 'speclightcurve_results_order{0}{1}.csv'.format(order, fit_suffix),
                  index=False)
     outpdf.close()
 

@@ -12,11 +12,104 @@ from exotic_ld import StellarLimbDarkening
 import os
 import pandas as pd
 from datetime import datetime
+import juliet
+import ray
 from tqdm import tqdm
 import numpy as np
 
 from jwst import datamodels
 from jwst.pipeline import calwebb_spec2
+
+
+def fit_lightcurves(data_dict, prior_dict, order, output_dir, fit_suffix,
+                    nthreads=4):
+
+    # Initialize results dictionary and keynames.
+    results = dict.fromkeys(data_dict.keys(), [])
+    keynames = list(data_dict.keys())
+
+    # Format output directory
+    if output_dir[-1] != '/':
+        output_dir += '/'
+
+    # Initialize ray with specified number of threads.
+    ray.shutdown()
+    ray.init(num_cpus=nthreads)
+
+    # Set juliet fits as remotes to run parallel with ray.
+    all_fits = []
+    num_bins = np.arange(len(keynames))+1
+    for i, keyname in enumerate(keynames):
+        outdir = output_dir + 'speclightcurve{2}/order{0}_{1}'.format(order, keyname, fit_suffix)
+        all_fits.append(fit_data.remote(data_dict[keyname],
+                                        prior_dict[keyname],
+                                        output_dir=outdir,
+                                        bin_no=num_bins[i],
+                                        num_bins=len(num_bins)))
+    # Run the fits.
+    ray_results = ray.get(all_fits)
+
+    # Reorder the results based on the key name.
+    for i in range(len(keynames)):
+        keyname = keynames[i]
+        results[keyname] = ray_results[i]
+
+    return results
+
+
+@ray.remote
+def fit_data(data_dictionary, priors, output_dir, bin_no, num_bins):
+
+    print('Fitting bin {} / {}'.format(bin_no, num_bins))
+
+    # Get key names.
+    all_keys = list(data_dictionary.keys())
+
+    # Unpack fitting arrays
+    t = {'SOSS': data_dictionary['times']}
+    flux = {'SOSS': data_dictionary['flux']}
+    flux_err = {'SOSS': data_dictionary['error']}
+
+    # Initialize GP and linear model regressors.
+    gp_regressors = None
+    linear_regressors = None
+    if 'GP_parameters' in all_keys:
+        gp_regressors = {'SOSS': data_dictionary['GP_parameters']}
+    if 'lm_parameters' in all_keys:
+        linear_regressors = {'SOSS': data_dictionary['lm_parameters']}
+
+    fit_results = run_juliet(priors, t, flux, flux_err, output_dir,
+                             gp_regressors, linear_regressors)
+
+    return fit_results
+
+
+def run_juliet(priors, t_lc, y_lc, yerr_lc, out_folder,
+               gp_regressors_lc, linear_regressors_lc):
+
+    if np.isfinite(y_lc['SOSS']).all():
+        # Load in all priors and data to be fit.
+        dataset = juliet.load(priors=priors, t_lc=t_lc, y_lc=y_lc,
+                              yerr_lc=yerr_lc, out_folder=out_folder,
+                              GP_regressors_lc=gp_regressors_lc,
+                              linear_regressors_lc=linear_regressors_lc)
+        kwargs = {'maxiter': 25000, 'print_progress': False}
+
+        # Run the fit.
+        try:
+            res = dataset.fit(sampler='dynesty', **kwargs)
+        except KeyboardInterrupt as err:
+            raise err
+        except:
+            print('Exception encountered.')
+            print('Skipping bin.')
+            res = None
+    else:
+        print('NaN bin encountered.')
+        print('Skipping bin.')
+        res = None
+
+    return res
 
 
 def bin_at_resolution(wavelengths, depths, depth_error, R, method='sum'):
