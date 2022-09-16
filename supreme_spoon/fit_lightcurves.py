@@ -12,6 +12,7 @@ Juliet light curve fitting script
 # TODO: fit_lightcurves.py as wrapper around run_Stage4 like run_DMS is for 1-3
 # TODO: redo lightcurve plots with time from transit center instead of BJD
 from astropy.io import fits
+import copy
 import juliet
 import matplotlib.backends.backend_pdf
 import numpy as np
@@ -131,7 +132,7 @@ for order in orders:
         data_dict[thisbin] = bin_dict
 
         # Prior dictionaries.
-        prior_dict[thisbin] = priors.copy()
+        prior_dict[thisbin] = copy.deepcopy(priors)
         # Update the LD prior for this bin if available.
         if ldcoef_file_o1 is not None or ldcoef_file_o2 is not None:
             if np.isfinite(prior_q1[wavebin]):
