@@ -7,7 +7,10 @@ Created on Wed Jul 27 14:35 2022
 
 Juliet light curve fitting script
 """
-
+# TODO: funtions to fit white light curve
+# TODO: procedural function run_stage4 to fit wlc then spec lcs
+# TODO: fit_lightcurves.py as wrapper around run_Stage4 like run_DMS is for 1-3
+# TODO: redo lightcurve plots with time from transit center instead of BJD
 from astropy.io import fits
 import juliet
 import matplotlib.backends.backend_pdf

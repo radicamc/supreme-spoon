@@ -179,7 +179,7 @@ def bin_at_resolution(wavelengths, depths, depth_error, R, method='sum'):
                     derrout = np.append(derrout, np.sqrt(np.nansum(current_errors**2)))
                 elif method == 'average':
                     dout = np.append(dout, np.nanmean(current_depths))
-                    derrout = np.append(derrout, np.sqrt(np.nanmean(current_errors**2)))
+                    derrout = np.append(derrout, np.sqrt(np.nansum(current_errors**2))/len(current_errors))
                 else:
                     raise ValueError('Unidentified method {}.'.format(method))
                 oncall = False
