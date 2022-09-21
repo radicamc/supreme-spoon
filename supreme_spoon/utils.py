@@ -413,19 +413,24 @@ def get_trace_centroids(deepframe, tracetable, subarray, save_results=True,
                                        subarray=subarray)
 
     x1, y1 = centroids['order 1']['X centroid'], centroids['order 1']['Y centroid']
-    x2, y2 = centroids['order 2']['X centroid'], centroids['order 2']['Y centroid']
-    x3, y3 = centroids['order 3']['X centroid'], centroids['order 3']['Y centroid']
     ii = np.where((x1 >= 0) & (y1 <= dimx - 1))
-    ii2 = np.where((x2 >= 0) & (x2 <= dimx - 1) & (y2 <= dimy - 1))
-    ii3 = np.where((x3 >= 0) & (x3 <= dimx - 1) & (y3 <= dimy - 1))
-
     # Interpolate onto native pixel grid
     xx1 = np.arange(dimx)
     yy1 = np.interp(xx1, x1[ii], y1[ii])
-    xx2 = np.arange(np.max(np.floor(x2[ii2]).astype(int)))
-    yy2 = np.interp(xx2, x2[ii2], y2[ii2])
-    xx3 = np.arange(np.max(np.floor(x3[ii3]).astype(int)))
-    yy3 = np.interp(xx3, x3[ii3], y3[ii3])
+
+    if subarray != 'SUBSTRIP96':
+        x2, y2 = centroids['order 2']['X centroid'], centroids['order 2']['Y centroid']
+        x3, y3 = centroids['order 3']['X centroid'], centroids['order 3']['Y centroid']
+        ii2 = np.where((x2 >= 0) & (x2 <= dimx - 1) & (y2 <= dimy - 1))
+        ii3 = np.where((x3 >= 0) & (x3 <= dimx - 1) & (y3 <= dimy - 1))
+        # Interpolate onto native pixel grid
+        xx2 = np.arange(np.max(np.floor(x2[ii2]).astype(int)))
+        yy2 = np.interp(xx2, x2[ii2], y2[ii2])
+        xx3 = np.arange(np.max(np.floor(x3[ii3]).astype(int)))
+        yy3 = np.interp(xx3, x3[ii3], y3[ii3])
+    else:
+        xx2, yy2 = xx1, np.ones_like(xx1) * np.nan
+        xx3, yy3 = xx1, np.ones_like(xx1) * np.nan
 
     if save_results is True:
         yyy2 = np.ones_like(xx1) * np.nan
@@ -441,7 +446,8 @@ def get_trace_centroids(deepframe, tracetable, subarray, save_results=True,
         outfile_name = save_filename + 'centroids.csv'
         outfile = open(outfile_name, 'a')
         outfile.write('# File Contents: Edgetrigger trace centroids\n')
-        outfile.write('# File Creation Date: {}\n'.format(datetime.utcnow().replace(microsecond=0).isoformat()))
+        outfile.write('# File Creation Date: {}\n'.format(
+            datetime.utcnow().replace(microsecond=0).isoformat()))
         outfile.write('# File Author: MCR\n')
         df.to_csv(outfile, index=False)
         outfile.close()

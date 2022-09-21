@@ -556,12 +556,19 @@ def tracingstep(datafiles, deepframe, output_dir='./', mask_width=30,
     weights1 = soss_boxextract.get_box_weights(y1, mask_width, (dimy, dimx),
                                                cols=x1.astype(int))
     weights1 = np.where(weights1 == 0, 0, 1)
-    weights2 = soss_boxextract.get_box_weights(y2, mask_width, (dimy, dimx),
-                                               cols=x2.astype(int))
-    weights2 = np.where(weights2 == 0, 0, 1)
-    weights3 = soss_boxextract.get_box_weights(y3, mask_width, (dimy, dimx),
-                                               cols=x3.astype(int))
-    weights3 = np.where(weights3 == 0, 0, 1)
+    # Make masks for other 2 orders for SUBSTRIP256.
+    if subarray != 'SUBSTRIP96':
+        weights2 = soss_boxextract.get_box_weights(y2, mask_width,
+                                                   (dimy, dimx),
+                                                   cols=x2.astype(int))
+        weights2 = np.where(weights2 == 0, 0, 1)
+        weights3 = soss_boxextract.get_box_weights(y3, mask_width,
+                                                   (dimy, dimx),
+                                                   cols=x3.astype(int))
+        weights3 = np.where(weights3 == 0, 0, 1)
+    else:
+        weights2 = np.zeros_like(weights1)
+        weights3 = np.zeros_like(weights1)
 
     # Pack the masks into an array.
     tracemask = np.zeros((3, dimy, dimx))
