@@ -10,7 +10,6 @@ Juliet light curve fitting script
 # TODO: funtions to fit white light curve
 # TODO: procedural function run_stage4 to fit wlc then spec lcs
 # TODO: fit_lightcurves.py as wrapper around run_Stage4 like run_DMS is for 1-3
-# TODO: redo lightcurve plots with time from transit center instead of BJD
 from astropy.io import fits
 import copy
 import juliet
@@ -187,7 +186,8 @@ for order in orders:
                 transit_model = fit_results[wavebin].lc.evaluate('SOSS')
                 scatter = np.median(fit_results[wavebin].posteriors['posterior_samples']['sigma_w_SOSS'])
                 nfit = len(np.where(dists != 'fixed')[0])
-                plotting.do_lightcurve_plot(t=t, data=norm_flux[:, i],
+                t0 = np.median(fit_results.posteriors.posterior_samples['t0_p1'])
+                plotting.do_lightcurve_plot(t=(t-t0)*24, data=norm_flux[:, i],
                                             model=transit_model,
                                             scatter=scatter,
                                             errors=norm_err[:, i],

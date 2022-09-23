@@ -78,7 +78,7 @@ def do_lightcurve_plot(t, data, model, scatter, errors, outpdf=None,
     ax1.errorbar(t, data, yerr=scatter * 1e-6, fmt='o', capsize=0,
                  color='royalblue', ms=5, alpha=1)
     ax1.plot(t, model, color='black', zorder=100)
-    ax1.set_ylabel('Relative Flux', fontsize=14)
+    ax1.set_ylabel('Relative Flux', fontsize=18)
     ax1.set_xlim(np.min(t), np.max(t))
     ax1.xaxis.set_major_formatter(plt.NullFormatter())
     chi2_v = chi2(data*1e6, model*1e6, errors*1e6) / (len(t) - nfit)
@@ -86,6 +86,8 @@ def do_lightcurve_plot(t, data, model, scatter, errors, outpdf=None,
     err_mult = scatter / (mean_err*1e6)
     ax1.text(t[2], np.min(model), r'$\chi_\nu^2 = {:.2f}$''\n'r'$\sigma={:.2f}$ppm''\n'r'$e={:.2f}$'.format(chi2_v, mean_err*1e6, err_mult),
              fontsize=14)
+    ax1.set_tick_params(axis='x', labelsize=12)
+    ax1.set_tick_params(axis='y', labelsize=12)
 
     if title is not None:
         plt.title(title, fontsize=16)
@@ -100,8 +102,10 @@ def do_lightcurve_plot(t, data, model, scatter, errors, outpdf=None,
              r'{:.2f}$\,$ppm'.format(scatter))
     ax2.fill_between(t, -scatter, scatter, color='black', alpha=0.1)
     ax2.set_xlim(np.min(t), np.max(t))
-    ax2.set_ylabel('Residuals\n(ppm)', fontsize=16)
-    ax2.set_xlabel('Time [BJD]', fontsize=16)
+    ax2.set_ylabel('Residuals\n(ppm)', fontsize=18)
+    ax2.set_xlabel('Time from Transit Midpoint [hrs]', fontsize=18)
+    ax2.set_tick_params(axis='x', labelsize=12)
+    ax2.set_tick_params(axis='y', labelsize=12)
 
     # Histogram of residuals
     ax3 = plt.subplot(gs[3])
@@ -111,9 +115,11 @@ def do_lightcurve_plot(t, data, model, scatter, errors, outpdf=None,
     area = np.sum(hist[0] * np.diff(bins))
     ax3.plot(np.linspace(-15, 15, 500),
              gaus(np.linspace(-15, 15, 500), 0, 1) * area, c='black')
-    ax3.set_ylabel('Counts', fontsize=16)
-    ax3.set_xlabel('Residuals/Scatter', fontsize=16)
+    ax3.set_ylabel('Counts', fontsize=18)
+    ax3.set_xlabel('Residuals/Scatter', fontsize=18)
     ax3.set_xlim(-5, 5)
+    ax3.set_tick_params(axis='x', labelsize=12)
+    ax3.set_tick_params(axis='y', labelsize=12)
 
     if outpdf is not None:
         if isinstance(outpdf, matplotlib.backends.backend_pdf.PdfPages):
