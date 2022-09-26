@@ -86,8 +86,8 @@ def do_lightcurve_plot(t, data, model, scatter, errors, outpdf=None,
     err_mult = scatter / (mean_err*1e6)
     ax1.text(t[2], np.min(model), r'$\chi_\nu^2 = {:.2f}$''\n'r'$\sigma={:.2f}$ppm''\n'r'$e={:.2f}$'.format(chi2_v, mean_err*1e6, err_mult),
              fontsize=14)
-    ax1.set_tick_params(axis='x', labelsize=12)
-    ax1.set_tick_params(axis='y', labelsize=12)
+    ax1.tick_params(axis='x', labelsize=12)
+    ax1.tick_params(axis='y', labelsize=12)
 
     if title is not None:
         plt.title(title, fontsize=16)
@@ -104,8 +104,8 @@ def do_lightcurve_plot(t, data, model, scatter, errors, outpdf=None,
     ax2.set_xlim(np.min(t), np.max(t))
     ax2.set_ylabel('Residuals\n(ppm)', fontsize=18)
     ax2.set_xlabel('Time from Transit Midpoint [hrs]', fontsize=18)
-    ax2.set_tick_params(axis='x', labelsize=12)
-    ax2.set_tick_params(axis='y', labelsize=12)
+    ax2.tick_params(axis='x', labelsize=12)
+    ax2.tick_params(axis='y', labelsize=12)
 
     # Histogram of residuals
     ax3 = plt.subplot(gs[3])
@@ -118,8 +118,8 @@ def do_lightcurve_plot(t, data, model, scatter, errors, outpdf=None,
     ax3.set_ylabel('Counts', fontsize=18)
     ax3.set_xlabel('Residuals/Scatter', fontsize=18)
     ax3.set_xlim(-5, 5)
-    ax3.set_tick_params(axis='x', labelsize=12)
-    ax3.set_tick_params(axis='y', labelsize=12)
+    ax3.tick_params(axis='x', labelsize=12)
+    ax3.tick_params(axis='y', labelsize=12)
 
     if outpdf is not None:
         if isinstance(outpdf, matplotlib.backends.backend_pdf.PdfPages):

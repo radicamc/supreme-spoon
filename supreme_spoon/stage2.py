@@ -8,6 +8,7 @@ Created on Thurs Jul 21 17:33 2022
 Custom JWST DMS pipeline steps for Stage 2 (Spectroscopic processing).
 """
 
+# TODO: Add CCF + FWHM functions
 from astropy.io import fits
 import glob
 import numpy as np
