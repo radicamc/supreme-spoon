@@ -10,6 +10,7 @@ Juliet light curve fitting script
 # TODO: funtions to fit white light curve
 # TODO: procedural function run_stage4 to fit wlc then spec lcs
 # TODO: fit_lightcurves.py as wrapper around run_Stage4 like run_DMS is for 1-3
+# TODO: Some toggle to turn off plotting
 from astropy.io import fits
 import copy
 import juliet
