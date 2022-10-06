@@ -537,7 +537,7 @@ def backgroundstep(datafiles, background_model, output_dir='./',
         else:
             # Use area in the top left corner of detector for SUBSTRIP256
             xl, xu = 210, 250
-            yl, yu = 500, 800
+            yl, yu = 250, 500
         bkg_ratio = deepstack[i, xl:xu, yl:yu] / background_model[xl:xu, yl:yu]
         # Instead of a straight median, use the median of the 2nd quartile to
         # limit the effect of any remaining illuminated pixels.
