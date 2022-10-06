@@ -10,7 +10,6 @@ Juliet light curve fitting script
 # TODO: funtions to fit white light curve
 # TODO: procedural function run_stage4 to fit wlc then spec lcs
 # TODO: fit_lightcurves.py as wrapper around run_Stage4 like run_DMS is for 1-3
-# TODO: Some toggle to turn off plotting
 from astropy.io import fits
 import copy
 import juliet
@@ -22,15 +21,26 @@ from supreme_spoon import stage4
 from supreme_spoon import plotting, utils
 
 # =============== User Input ===============
+# Root file directory
 root_dir = './'
+# Name tag for output file directory.
 output_tag = ''
+# File containing lightcurves to fit.
 infile = ''
+# Orders to fit.
 orders = [1, 2]
+# Suffix to apply to fit output files.
 fit_suffix = ''
+# Integrations of ingress and egress.
 baseline_ints = [50, -50]
+# Type of occultation: 'transit' or 'eclipse'.
 occultation_type = 'transit'
+# If True, make summary plots.
+do_plots = True
+# Number of cores for multiprocessing.
+ncores = 4
 
-# Fitting priors
+# Fitting priors in juliet format.
 params = ['P_p1', 't0_p1', 'p_p1', 'b_p1',
           'q1_SOSS', 'q2_SOSS', 'ecc_p1', 'omega_p1', 'a_p1',
           'mdilution_SOSS', 'mflux_SOSS', 'sigma_w_SOSS']
@@ -41,6 +51,7 @@ hyperps = [3.42525650, 2459751.821681146, [0., 1], 0.748,
            [0., 1.], [0., 1.], 0.0, 90., 8.82,
            1.0, 0, [1e-1, 1e4]]
 
+# Paths to files containing model limb-darkening coefficients.
 ldcoef_file_o1 = None
 ldcoef_file_o2 = None
 # ==========================================
@@ -78,10 +89,11 @@ gp_quantities = np.zeros((len(t), 1))
 baseline_ints = utils.format_out_frames(baseline_ints,
                                         occultation_type)
 
+# Start the light curve fitting.
 for order in orders:
-
     first_time = True
-    outpdf = matplotlib.backends.backend_pdf.PdfPages(outdir + 'lightcurve_fit_order{0}{1}.pdf'.format(order, fit_suffix))
+    if do_plots is True:
+        outpdf = matplotlib.backends.backend_pdf.PdfPages(outdir + 'lightcurve_fit_order{0}{1}.pdf'.format(order, fit_suffix))
 
     print('\nFitting order {}\n'.format(order))
     # Unpack wave, flux and error
@@ -144,10 +156,11 @@ for order in orders:
 
     # Fit each light curve
     fit_results = stage4.fit_lightcurves(data_dict, prior_dict, order=order,
-                                         output_dir=outdir, nthreads=4,
+                                         output_dir=outdir, nthreads=ncores,
                                          fit_suffix=fit_suffix)
 
-    # Loop over results for each wavebin, and make summary plots.
+    # Loop over results for each wavebin, extract best-fitting parameters and
+    # make summary plots if necessary.
     print('Making summary plots.')
     data = np.ones((nints, nbins)) * np.nan
     models = np.ones((nints, nbins)) * np.nan
@@ -172,7 +185,7 @@ for order in orders:
                 outdict[param + '_m'].append(np.nan)
                 outdict[param + '_u'].append(np.nan)
                 outdict[param + '_l'].append(np.nan)
-            # If not skipped, append median and 1 sigma bounds.
+            # If not skipped, append median and 1-sigma bounds.
             else:
                 pp = fit_results[wavebin].posteriors['posterior_samples'][param]
                 pm, pu, pl = juliet.utils.get_quantiles(pp)
@@ -181,9 +194,10 @@ for order in orders:
                 outdict[param + '_l'].append(pl)
         first_time = False
 
-        # Make summary plots
-        if skip is False:
+        # Make summary plots.
+        if skip is False and do_plots is True:
             try:
+                # Plot transit model and residuals.
                 transit_model = fit_results[wavebin].lc.evaluate('SOSS')
                 scatter = np.median(fit_results[wavebin].posteriors['posterior_samples']['sigma_w_SOSS'])
                 nfit = len(np.where(dists != 'fixed')[0])
@@ -192,10 +206,9 @@ for order in orders:
                                             model=transit_model,
                                             scatter=scatter,
                                             errors=norm_err[:, i],
-                                            outpdf=outpdf,
-                                            title='bin {0} | {1:.3f}µm'.format(i, wave[i]),
-                                            nfit=nfit)
-
+                                            outpdf=outpdf, nfit=nfit,
+                                            title='bin {0} | {1:.3f}µm'.format(i, wave[i]))
+                # Corner plot for fit.
                 fit_params, posterior_names = [], []
                 for param, dist in zip(params, dists):
                     if dist != 'fixed':
@@ -214,15 +227,19 @@ for order in orders:
             except:
                 pass
 
-    plotting.plot_2dlightcurves(wave, data, outpdf=outpdf,
-                                title='Normalized Lightcurves')
-    plotting.plot_2dlightcurves(wave, models, outpdf=outpdf,
-                                title='Model Lightcurves')
-    plotting.plot_2dlightcurves(wave, residuals, outpdf=outpdf,
-                                title='Residuals')
+    # Save fit results to csv file.
     outdf = pd.DataFrame(data=outdict)
     outdf.to_csv(outdir + 'speclightcurve_results_order{0}{1}.csv'.format(order, fit_suffix),
                  index=False)
-    outpdf.close()
+
+    # Plot 2D lightcurves.
+    if do_plots is True:
+        plotting.plot_2dlightcurves(wave, data, outpdf=outpdf,
+                                    title='Normalized Lightcurves')
+        plotting.plot_2dlightcurves(wave, models, outpdf=outpdf,
+                                    title='Model Lightcurves')
+        plotting.plot_2dlightcurves(wave, residuals, outpdf=outpdf,
+                                    title='Residuals')
+        outpdf.close()
 
 print('Done')
