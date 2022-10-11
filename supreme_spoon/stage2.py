@@ -8,10 +8,10 @@ Created on Thurs Jul 21 17:33 2022
 Custom JWST DMS pipeline steps for Stage 2 (Spectroscopic processing).
 """
 
-# TODO: Add CCF + FWHM functions
 from astropy.io import fits
 import glob
 import numpy as np
+import os
 import pandas as pd
 from scipy.ndimage import median_filter
 from tqdm import tqdm
@@ -201,8 +201,8 @@ class TracingStep:
         self.fileroots = utils.get_filename_root(self.datafiles)
         self.fileroot_noseg = utils.get_filename_root_noseg(self.fileroots)
 
-    def run(self, mask_width, save_results=True, force_redo=False,
-            show_plots=False):
+    def run(self, mask_width, calculate_stability=True, stability_params='ALL',
+            save_results=True, force_redo=False, show_plots=False):
         """Method to run the step.
         """
 
@@ -219,6 +219,8 @@ class TracingStep:
         # If no output files are detected, run the step.
         else:
             step_results = tracingstep(self.datafiles, self.deepframe,
+                                       calculate_stability=calculate_stability,
+                                       stability_params=stability_params,
                                        output_dir=self.output_dir,
                                        mask_width=mask_width,
                                        save_results=save_results,
@@ -493,7 +495,8 @@ def lcestimatestep(datafiles, baseline_ints, save_results=True,
     return smoothed_lc
 
 
-def tracingstep(datafiles, deepframe, output_dir='./', mask_width=30,
+def tracingstep(datafiles, deepframe, calculate_stability=True,
+                stability_params='ALL', output_dir='./', mask_width=30,
                 save_results=True, show_plots=False, fileroot_noseg=''):
     """Locate the centroids of all three SOSS orders via the edgetrigger
     algorithm. Then create a mask of a given width around the centroids.
@@ -506,6 +509,11 @@ def tracingstep(datafiles, deepframe, output_dir='./', mask_width=30,
     deepframe : str, array-like[float]
         Path to median stack file, or the median stack itself. Should be 2D
         (dimy, dimx).
+    calculate_stability : bool
+        If True, calculate the stabilty of the SOSS trace over the TSO.
+    stability_params : str, array-like[str]
+        List of parameters for which to calculate the stability. Any of: 'x',
+        'y', and/or 'FWHM', or 'ALL' for all three.
     output_dir : str
         Directory to which to save outputs.
     mask_width : int
@@ -586,11 +594,50 @@ def tracingstep(datafiles, deepframe, output_dir='./', mask_width=30,
         suffix = 'tracemask_width{}.fits'.format(mask_width)
         hdu.writeto(output_dir + fileroot_noseg + suffix, overwrite=True)
 
+    # If requested, calculate the change in position of the trace, as well as
+    # its FWHM over the course of the TSO. These quantities may be useful for
+    # lightcurve detrending.
+    if calculate_stability is True:
+        print('Calculating trace stability... This might take a while.')
+        if stability_params == 'ALL':
+            stability_params = ['x', 'y', 'FWHM']
+
+        # Construct datacube from the data files.
+        for i, file in enumerate(datafiles):
+            data = fits.getdata(file)
+            if i == 0:
+                cube = data
+            else:
+                cube = np.concatenate([cube, data])
+
+        # Calculate the stability of the requested parameters.
+        stability_results = {}
+        if 'x' in stability_params:
+            print('Getting trace X-positions...')
+            ccf_x = utils.soss_stability(cube, axis='x')
+            stability_results['X'] = ccf_x
+        if 'y' in stability_params:
+            print('Getting trace Y-positions...')
+            ccf_y = utils.soss_stability(cube, axis='y')
+            stability_results['Y'] = ccf_y
+        if 'FWHM' in stability_params:
+            print('Getting trace FWHM values...')
+            fwhm = utils.soss_stability_fwhm(cube, y1)
+            stability_results['FWHM'] = fwhm
+
+        # Save stability results.
+        df = pd.DataFrame(data=stability_results)
+        suffix = 'soss_stability.csv'
+        if os.path.exists(output_dir + fileroot_noseg + suffix):
+            os.remove(output_dir + fileroot_noseg + suffix)
+        df.to_csv(output_dir + fileroot_noseg + suffix, index=False)
+
     return tracemask, centroids
 
 
 def run_stage2(results, baseline_ints, smoothed_wlc=None, save_results=True,
-               force_redo=False, mask_width=30, root_dir='./', output_tag='',
+               force_redo=False, mask_width=30, calculate_stability=True,
+               stability_params='ALL', root_dir='./', output_tag='',
                occultation_type='transit', smoothing_scale=None):
     """Run the supreme-SPOON Stage 2 pipeline: spectroscopic processing,
     using a combination of official STScI DMS and custom steps. Documentation
@@ -610,7 +657,13 @@ def run_stage2(results, baseline_ints, smoothed_wlc=None, save_results=True,
     force_redo : bool
         If True, redo steps even if outputs files are already present.
     mask_width : int
-        Width, in pixels, of trace mask to generate
+        Width, in pixels, of trace mask to generate.
+    calculate_stability : bool
+        If True, calculate the stability of the SOSS trace over the course of
+        the TSO.
+    stability_params : str, array-like[str]
+        List of parameters for which to calculate the stability. Any of: 'x',
+        'y', and/or 'FWHM', or 'ALL' for all three.
     root_dir : str
         Directory from which all relative paths are defined.
     output_tag : str
@@ -673,7 +726,10 @@ def run_stage2(results, baseline_ints, smoothed_wlc=None, save_results=True,
     # ===== Tracing Step =====
     # Custom DMS step.
     step = TracingStep(results, deepframe=deepframe, output_dir=outdir)
-    step_results = step.run(mask_width=mask_width, save_results=save_results,
+    step_results = step.run(mask_width=mask_width,
+                            calculate_stability=calculate_stability,
+                            stability_params=stability_params,
+                            save_results=save_results,
                             force_redo=force_redo)
     tracemask, centroids = step_results
 

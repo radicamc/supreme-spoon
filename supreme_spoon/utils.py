@@ -16,6 +16,10 @@ import juliet
 import numpy as np
 import os
 import pandas as pd
+from scipy.interpolate import interp2d
+from scipy.ndimage import median_filter
+from scipy.optimize import curve_fit
+from tqdm import tqdm
 import warnings
 
 from applesoss.edgetrigger_centroids import get_soss_centroids
@@ -776,6 +780,108 @@ def sigma_clip_lightcurves(flux, ferr, thresh=5):
     print('{0} pixels clipped ({1:.3f}%)'.format(clipsum, clipsum / nints / nwave * 100))
 
     return flux_clipped
+
+
+def soss_stability(cube, nsteps=2500, axis='x', smoothing_scale=None):
+    """ Perform a CCF analysis to track the movement of the SOSS trace
+    relative to the median stack over the course of a TSO.
+
+    Parameters
+    ----------
+    cube : array-like[float]
+        Data cube. Should be 3D (ints, dimy, dimx).
+    nsteps : int
+        Number of CCF steps to test.
+    axis : str
+        Axis over which to calculate the CCF - either 'x', or 'y'.
+    smoothing_scale : int
+        Length scale over which to smooth results.
+
+    Returns
+    -------
+    ccf : array-like[float]
+        The cross-correlation results.
+    """
+
+    # Get data dimensions.
+    nints, dimy, dimx = np.shape(cube)
+
+    # Subtract integration-wise median from cube for CCF.
+    cube_sub = cube - np.nanmedian(cube, axis=(1, 2))[:, None, None]
+    # Calculate median stack.
+    med = bn.nanmedian(cube_sub, axis=0)
+
+    # Initialize CCF variables.
+    ccf = np.zeros((nints, nsteps))
+    f = interp2d(np.arange(dimx), np.arange(dimy), med, kind='cubic')
+    # Perform cross-correlation over desired axis.
+    for i in tqdm(range(nints)):
+        for j, jj in enumerate(np.linspace(-0.05, 0.05, nsteps)):
+            if axis == 'x':
+                interp = f(np.arange(dimx) + jj, np.arange(dimy))
+            elif axis == 'y':
+                interp = f(np.arange(dimx), np.arange(dimy) + jj)
+            else:
+                msg = 'Unknown axis: {}'.format(axis)
+                raise ValueError(msg)
+            ccf[i, j] = np.nansum(cube_sub[i] * interp)
+
+    # Determine the peak of the CCF for each integration to get the
+    # best-fitting shift.
+    maxvals = []
+    for i in range(nints):
+        maxvals.append(np.where(ccf[i] == np.max(ccf[i]))[0])
+    maxvals = np.array(maxvals)
+    # Smooth results.
+    if smoothing_scale is None:
+        smoothing_scale = int(0.2 * nints)
+    ccf = median_filter(np.linspace(-0.05, 0.05, nsteps)[maxvals],
+                        smoothing_scale)
+    ccf = ccf.reshape(nints)
+
+    return ccf
+
+
+def soss_stability_fwhm(cube, ycens_o1):
+    """Estimate the FWHM of the trace over the course of a TSO by fitting a
+    Gaussian to each detector column.
+
+    Parameters
+    ----------
+    cube : array-like[float]
+        Data cube. Should be 3D (ints, dimy, dimx).
+    ycens_o1 : arrray-like[float]
+        Y-centroid positions of the order 1 trace. Should have length dimx.
+
+    Returns
+    -------
+    fwhm : array-like[float]
+        FWHM estimates for each column at every integration.
+    """
+
+    def gauss(x, *p):
+        amp, mu, sigma = p
+        return amp * np.exp(-(x - mu) ** 2 / (2. * sigma ** 2))
+
+    # Get data dimensions.
+    nints, dimy, dimx = np.shape(cube)
+    # Initialize storage array for widths.
+    fwhm = np.zeros((dimy, dimx))
+
+    # Fit a Gaussian to the PSF in each detector column.
+    for j in tqdm(range(nints)):
+        for i in range(4, dimx-4):
+            p0 = [1., ycens_o1[i], 1.]
+            data = np.copy(cube[j, :, i])
+            # Replace any NaN values with a median.
+            if np.isnan(data).any():
+                ii = np.where(np.isnan(data))
+                data[ii] = np.nanmedian(data)
+            # Fit a Gaussian to the profile, and save the FWHM.
+            coeff, var_matrix = curve_fit(gauss, np.arange(dimy), data, p0=p0)
+            fwhm[j, i] = coeff[2] * 2.355
+
+    return fwhm
 
 
 def unpack_input_directory(indir, filetag='', exposure_type='CLEAR'):
