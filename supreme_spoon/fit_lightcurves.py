@@ -54,6 +54,14 @@ hyperps = [3.42525650, 2459751.821681146, [0., 1], 0.748,
 # Paths to files containing model limb-darkening coefficients.
 ldcoef_file_o1 = None
 ldcoef_file_o2 = None
+# Path to file containing linear detrending parameters.
+lm_file = None
+# Key names for detrending parametrers.
+lm_parameters = ['x']
+# Path to file containing GP training parameters.
+gp_file = None
+# Key names for GP training parametrers.
+gp_parameters = []
 # ==========================================
 
 if output_tag != '':
@@ -79,11 +87,22 @@ formatted_names = {'P_p1': r'$P$', 't0_p1': r'$T_0$', 'p_p1': r'R$_p$/R$_*$',
 # Get time axis
 t = fits.getdata(infile, 9)
 # Quantities against which to linearly detrend.
-lm_quantities = np.zeros((len(t), 2))
-lm_quantities[:, 0] = np.ones_like(t)
-lm_quantities[:, 1] = (t - np.mean(t)) / np.sqrt(np.var(t))
+if lm_file is not None:
+    lm_data = pd.read_csv(lm_file, comments='#')
+    lm_quantities = np.zeros((len(t), len(lm_parameters)+1))
+    lm_quantities[:, 0] = np.ones_like(t)
+    for i, key in enumerate(lm_parameters):
+        lm_param = lm_data[key]
+        lm_quantities[:, i] = (lm_param - np.mean(lm_param)) / np.sqrt(np.var(lm_param))
 # Quantities on which to train GP.
 gp_quantities = np.zeros((len(t), 1))
+if gp_file is not None:
+    gp_data = pd.read_csv(gp_file, comments='#')
+    gp_quantities = np.zeros((len(t), len(gp_parameters)+1))
+    gp_quantities[:, 0] = np.ones_like(t)
+    for i, key in enumerate(gp_parameters):
+        gp_param = gp_data[key]
+        gp_quantities[:, i] = (gp_param - np.mean(gp_param)) / np.sqrt(np.var(gp_param))
 
 # Format the baseline frames - either out-of-transit or in-eclipse.
 baseline_ints = utils.format_out_frames(baseline_ints,
@@ -121,11 +140,11 @@ for order in orders:
         priors[param]['hyperparameters'] = hyperp
     # Interpolate LD coefficients from stellar models.
     if order == 1 and ldcoef_file_o1 is not None:
-        prior_q1, prior_q2 = utils.get_ld_coefs(ldcoef_file_o1,
-                                                wave_low, wave_up)
+        prior_q1, prior_q2 = utils.read_ld_coefs(ldcoef_file_o1, wave_low,
+                                                 wave_up)
     if order == 2 and ldcoef_file_o2 is not None:
-        prior_q1, prior_q2 = utils.get_ld_coefs(ldcoef_file_o2,
-                                                wave_low, wave_up)
+        prior_q1, prior_q2 = utils.read_ld_coefs(ldcoef_file_o2, wave_low,
+                                                 wave_up)
 
     # Pack fitting arrays and priors into dictionaries.
     data_dict, prior_dict = {}, {}

@@ -617,6 +617,67 @@ def open_stage2_secondary_outputs(deep_file, centroid_file, smoothed_wlc_file,
     return deepframe, centroids, smoothed_wlc
 
 
+def outlier_resistant_variance(data):
+    """Calculate the varaince of some data in an outlier resistant manner.
+    """
+
+    var = (np.nanmedian(np.abs(data - np.nanmedian(data))) / 0.6745) ** 2
+    return var
+
+
+def pack_ld_priors(wave, c1, c2, order, target, m_h, teff, logg, outdir):
+    """Write model limb darkening parameters to a file to be used as priors
+    for light curve fitting.
+
+    Parameters
+    ----------
+    wave : array-like[float]
+        Wavelength axis.
+    c1 : array-like[float]
+        c1 parameter for 2-parameter limb darkening law.
+    c2 : array-like[float]
+        c2 parameter for 2-parameter limb darkening law.
+    order : int
+        SOSS order.
+    target : str
+        Name of the target.
+    m_h : float
+        Host star metallicity.
+    teff : float
+        Host star effective temperature.
+    logg : float
+        Host star gravity.
+    outdir : str
+        Directory to which to save file.
+    """
+
+    # Create dictionary with model LD info.
+    dd = {'wave': wave, 'c1': c1,  'c2': c2}
+    df = pd.DataFrame(data=dd)
+    # Remove old LD file if one exists.
+    filename = target+'_order' + str(order) + '_exotic-ld_quadratic.csv'
+    if os.path.exists(outdir + filename):
+        os.remove(outdir + filename)
+    # Add header info.
+    f = open(outdir + filename, 'a')
+    f.write('# Target: {}\n'.format(target))
+    f.write('# Instrument: NIRISS/SOSS\n')
+    f.write('# Order: {}\n'.format(order))
+    f.write('# Author: {}\n'.format(os.environ.get('USER')))
+    f.write('# Date: {}\n'.format(datetime.utcnow().replace(microsecond=0).isoformat()))
+    f.write('# Stellar M/H: {}\n'.format(m_h))
+    f.write('# Stellar log g: {}\n'.format(logg))
+    f.write('# Stellar Teff: {}\n'.format(teff))
+    f.write('# Algorithm: ExoTiC-LD\n')
+    f.write('# Limb Darkening Model: quadratic\n')
+    f.write('# Column wave: Central wavelength of bin (micron)\n')
+    f.write('# Column c1: Quadratic Coefficient 1\n')
+    f.write('# Column c2: Quadratic Coefficient 2\n')
+    f.write('#\n')
+    df.to_csv(f, index=False)
+    f.close()
+
+
 def pack_spectra(filename, wl1, wu1, f1, e1, wl2, wu2, f2, e2, t,
                  header_dict=None, header_comments=None, save_results=True):
     """Pack stellar spectra into a fits file.
@@ -717,6 +778,57 @@ def pack_spectra(filename, wl1, wu1, f1, e1, wl2, wu2, f2, e2, t,
                   'Flux O2': f2, 'Flux Err O2': e2, 'Time': t}
 
     return param_dict
+
+
+def read_ld_coefs(filename, wavebin_low, wavebin_up, ld_model='quadratic'):
+    """Unpack limb darkening coefficients and interpolate to the wavelength
+    grid of data being fit.
+
+    Parameters
+    ----------
+    filename : str
+        Path to file containing model limb darkening coefficients.
+    wavebin_low : array-like[float]
+        Lower edge of wavelength bins being fit.
+    wavebin_up : array-like[float]
+        Upper edge of wavelength bins being fit.
+    ld_model : str
+        Limb darkening model.
+
+    Returns
+    -------
+    prior_q1 : array-like[float]
+        Model estimates for q1 parameter.
+    prior_q2 : array-like[float]
+        Model estimates for q2 parameter.
+    """
+
+    # Open the LD model file and convert c1 and c2 parameters to q1 and q2 of
+    # the Kipping (2013) parameterization.
+    ld = pd.read_csv(filename, comment='#', sep=',')
+    q1s, q2s = juliet.reverse_q_coeffs(ld_model, ld['c1'].values, ld['c2'].values)
+
+    # Get model wavelengths and sort in increasing order.
+    waves = ld['wave'].values
+    ii = np.argsort(waves)
+    waves = waves[ii]
+    q1s, q2s = q1s[ii], q2s[ii]
+
+    prior_q1, prior_q2 = [], []
+    # Loop over all fitting bins. Calculate mean of model LD coefs within that
+    # range.
+    for wl, wu in zip(wavebin_low, wavebin_up):
+        current_q1, current_q2 = [], []
+        for w, q1, q2 in zip(waves, q1s, q2s):
+            if w > wl and w <= wu:
+                current_q1.append(q1)
+                current_q2.append(q2)
+            elif w > wu:
+                prior_q1.append(np.nanmean(current_q1))
+                prior_q2.append(np.nanmean(current_q2))
+                break
+
+    return prior_q1, prior_q2
 
 
 def remove_nans(datafile):
@@ -989,88 +1101,3 @@ def verify_path(path):
     else:
         # If directory doesn't exist, create it.
         os.mkdir(path)
-
-
-# ===============================================
-# ===============================================
-# ================= UNVERIFIED ==================
-# ===============================================
-# ===============================================
-
-
-def get_ld_prior(order, wavebin_low, wavebin_up):
-    rawprior = pd.read_csv('w96_order{}_lds_spam_quadratic.txt'.format(order),
-                           sep=' ',
-                           comment='#', usecols=[0, 7, 8],
-                           names=['wave', 'u1', 'u2'])
-    q1, q2 = juliet.reverse_q_coeffs('quadratic', rawprior['u1'].values,
-                                     rawprior['u2'].values)
-
-    prior_q1, prior_q2 = [], []
-    for wl, wu in zip(wavebin_low, wavebin_up):
-        current_q1, current_q2 = [], []
-        for i, w in enumerate(rawprior['wave'].values):
-            if w > wl and w <= wu:
-                current_q1.append(q1[i])
-                current_q2.append(q2[i])
-            elif w > wu:
-                prior_q1.append(np.nanmean(current_q1))
-                prior_q2.append(np.nanmean(current_q2))
-                break
-
-    return prior_q1, prior_q2
-
-
-def outlier_resistant_variance(data):
-    var = (np.nanmedian(np.abs(data-np.nanmedian(data)))/0.6745)**2
-    return var
-
-
-def get_ld_coefs(filename, wavebin_low, wavebin_up):
-    ld = pd.read_csv(filename, comment='#', sep=',')
-    q1s, q2s = juliet.reverse_q_coeffs('quadratic', ld['c1'].values, ld['c2'].values)
-    waves = ld['wave'].values
-    ii = np.argsort(waves)
-    waves = waves[ii]
-    q1s = q1s[ii]
-    q2s = q2s[ii]
-
-    prior_q1, prior_q2 = [], []
-    for wl, wu in zip(wavebin_low, wavebin_up):
-        current_q1, current_q2 = [], []
-        for w, q1, q2 in zip(waves, q1s, q2s):
-            if w > wl and w <= wu:
-                current_q1.append(q1)
-                current_q2.append(q2)
-            elif w > wu:
-                prior_q1.append(np.nanmean(current_q1))
-                prior_q2.append(np.nanmean(current_q2))
-                break
-    return prior_q1, prior_q2
-
-
-def package_ld_priors(wave, c1, c2, order, target, M_H, Teff, logg, outdir):
-    dd = {'wave': wave,
-          'c1': c1,
-          'c2': c2}
-    df = pd.DataFrame(data=dd)
-    filename = target+'_order' + str(order) + '_exotic-ld_quadratic.csv'
-    if os.path.exists(outdir + filename):
-        os.remove(outdir + filename)
-    f = open(outdir + filename, 'a')
-    f.write('# Target: {}\n'.format(target))
-    f.write('# Instrument: NIRISS/SOSS\n')
-    f.write('# Order: {}\n'.format(order))
-    f.write('# Author: {}\n'.format(os.environ.get('USER')))
-    f.write('# Date: {}\n'.format(datetime.utcnow().replace(microsecond=0).isoformat()))
-    f.write('# Stellar M/H: {}\n'.format(M_H))
-    f.write('# Stellar log g: {}\n'.format(logg))
-    f.write('# Stellar Teff: {}\n'.format(Teff))
-    f.write('# Algorithm: ExoTiC-LD\n')
-    f.write('# Limb Darkening Model: quadratic\n')
-    f.write('# Column wave: Central wavelength of bin (micron)\n')
-    f.write('# Column c1: Quadratic Coefficient 1\n')
-    f.write('# Column c2: Quadratic Coefficient 2\n')
-    f.write('#\n')
-    df.to_csv(f, index=False)
-    f.close()

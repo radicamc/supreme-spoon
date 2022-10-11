@@ -116,7 +116,7 @@ def bin_at_resolution(wavelengths, depths, depth_error, R, method='sum'):
     """Function that bins input wavelengths and transit depths (or any other
     observable, like flux) to a given resolution `R`. Useful for binning
     transit depths down to a target resolution on a transit spectrum.
-    Adapted from Néstor Espinoza
+    Adapted from Néstor Espinoza.
 
     Parameters
     ----------
