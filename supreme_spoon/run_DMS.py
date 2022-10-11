@@ -37,6 +37,11 @@ background_file = root_dir + 'model_background256.npy'
 smoothing_scale = None
 # Size of box to mask for 1/f correction. Should be wider than extraction box.
 mask_width = 30
+# If True, calculate the stability of the SOSS trace over the course of the
+# TSO. These parameters can be useful for lightcurve detrending.
+calculate_stability = True
+# Parameters for which to calcuate the stability: 'x', 'y', 'FWHM, or 'ALL'.
+stability_params = 'ALL'
 
 # ===== Stage 3 Input Files & Parameters =====
 # Specprofile reference file for ATOCA (optional).
@@ -52,7 +57,7 @@ soss_width = 25
 # Tikhonov regularization factor (optional).
 soss_tikfac = None
 
-# ===== Other Parameters =====
+# ===== Other General Parameters =====
 # Name tag for output file directory.
 output_tag = ''
 # Pipeline stages to run.
@@ -115,6 +120,8 @@ if 2 in run_stages:
                                 output_tag=output_tag,
                                 occultation_type=occultation_type,
                                 mask_width=mask_width,
+                                calculate_stability=calculate_stability,
+                                stability_params=stability_params,
                                 smoothing_scale=smoothing_scale)
     stage2_results = results[0]
     deepframe = results[1]
