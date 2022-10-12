@@ -31,6 +31,8 @@ smoothed_wlc = None
 # Background model. Using STScI background model from here:
 # https://jwst-docs.stsci.edu/jwst-calibration-pipeline-caveats/jwst-time-series-observations-pipeline-caveats/niriss-time-series-observation-pipeline-caveats#NIRISSTimeSeriesObservationPipelineCaveats-SOSSskybackground
 background_file = root_dir + 'model_background256.npy'
+# For 1/f correction; treat even and odd numbered rows seperately.
+even_odd_rows = True
 
 # ===== Stage 2 Input Parameters =====
 # Timescale on which to smooth lightcurve estimate  (optional).
@@ -102,6 +104,7 @@ if 1 in run_stages:
                                        save_results=save_results,
                                        outlier_maps=outlier_maps,
                                        trace_mask=trace_mask,
+                                       even_odd_rows=even_odd_rows,
                                        force_redo=force_redo,
                                        root_dir=root_dir,
                                        output_tag=output_tag,

@@ -7,7 +7,7 @@ Created on Thurs Jul 21 17:30 2022
 
 Custom JWST DMS pipeline steps for Stage 1 (detector level processing).
 """
-
+# TODO: toggle for odd-even 1/f subtraction.
 from astropy.io import fits
 import glob
 import numpy as np
@@ -270,7 +270,7 @@ class OneOverFStep:
         self.datafiles = np.atleast_1d(input_data)
         self.fileroots = utils.get_filename_root(self.datafiles)
 
-    def run(self, save_results=True, force_redo=False):
+    def run(self, even_odd_rows=True, save_results=True, force_redo=False):
         """Method to run the step.
         """
 
@@ -291,6 +291,7 @@ class OneOverFStep:
         else:
             results = oneoverfstep(self.datafiles,
                                    baseline_ints=self.baseline_ints,
+                                   even_odd_rows=even_odd_rows,
                                    smoothed_wlc=self.smoothed_wlc,
                                    output_dir=self.output_dir,
                                    save_results=save_results,
@@ -576,10 +577,10 @@ def backgroundstep(datafiles, background_model, output_dir='./',
     return results, model_scaled
 
 
-def oneoverfstep(datafiles, baseline_ints, smoothed_wlc=None,
-                 output_dir='./', save_results=True, outlier_maps=None,
-                 trace_mask=None, use_dq=True, fileroots=None,
-                 occultation_type='transit'):
+def oneoverfstep(datafiles, baseline_ints, even_odd_rows=True,
+                 smoothed_wlc=None, output_dir='./', save_results=True,
+                 outlier_maps=None, trace_mask=None, use_dq=True,
+                 fileroots=None, occultation_type='transit'):
     """Custom 1/f correction routine to be applied at the group level. A
     median stack is constructed using all out-of-transit integrations and
     subtracted from each individual integration. The column-wise median of
@@ -594,6 +595,8 @@ def oneoverfstep(datafiles, baseline_ints, smoothed_wlc=None,
         of the TSO. Should be 4D ramps and not rate files.
     baseline_ints : array-like[int]
         Integration numbers of ingress and egress.
+    even_odd_rows : bool
+        If True, calculate 1/f noise seperately for even and odd numbered rows.
     smoothed_wlc : array-like[float], None
         Estimate of the normalized light curve.
     output_dir : str
@@ -730,68 +733,53 @@ def oneoverfstep(datafiles, baseline_ints, smoothed_wlc=None,
         outliers = (outliers + tracemask) // 2
 
         # Initialize output storage arrays.
-        dcmap = np.zeros_like(datamodel.data)
-        sub, sub_m = np.zeros_like(dcmap), np.zeros_like(dcmap)
-        subcorr = np.zeros_like(dcmap)
+        corr_data = np.zeros_like(datamodel.data)
         # Loop over all integrations to determine the 1/f noise level via a
         # difference image, and correct it.
         for i in tqdm(range(nint)):
-            # i counts ints in this particular segment, whereas ii counnts
+            # i counts ints in this particular segment, whereas ii counts
             # ints from the start of the exposure.
             ii = current_int + i
-            # Create two difference images; one to be masked and one not.
-            sub[i] = datamodel.data[i] - deepstack * smoothed_wlc[ii]
-            sub_m[i] = datamodel.data[i] - deepstack * smoothed_wlc[ii]
+            # Create the difference image.
+            sub = datamodel.data[i] - deepstack * smoothed_wlc[ii]
             # Since the variable upon which 1/f noise depends is time, treat
             # each group individually.
             for g in range(ngroup):
                 # Consider the DQ mask for the group.
                 current_outlier = (outliers[i, :, :] + dq[i, g, :, :]) // 2
                 # Apply the outlier mask.
-                sub_m[i, g, :, :] *= current_outlier
+                sub[g, :, :] *= current_outlier
                 # FULL frame uses multiple amplifiers and probably has to be
                 # treated differently.
                 if datamodel.meta.subarray.name == 'FULL':
                     raise NotImplementedError
                 with warnings.catch_warnings():
                     warnings.simplefilter('ignore', category=RuntimeWarning)
-                    dc = np.nanmedian(sub_m[i, g], axis=0)
+                    if even_odd_rows is True:
+                        # Calculate 1/f scaling seperately for even and odd
+                        # rows. This should be taken care of by the RefPixStep,
+                        # but it doesn't hurt to do it again.
+                        dc = np.zeros_like(sub[g])
+                        dc[::2] = np.nanmedian(sub[g, ::2], axis=0)
+                        dc[1::2] = np.nanmedian(sub[g, 1::2], axis=0)
+                    else:
+                        # Single 1/f scaling for all rows.
+                        dc = np.nanmedian(sub[g], axis=0)
                 # dc is 1D (dimx) - expand to 2D (dimy, dimx)
                 dc2d = np.repeat(dc, dimy).reshape((dimx, dimy))
                 dc2d = dc2d.transpose(1, 0)
-                # Save the noise map
-                dcmap[i, g, :, :] = dc2d
-                # Subtract the noise map to create a corrected difference
-                # image - mostly for visualization purposes.
-                subcorr[i, g, :, :] = sub[i, g, :, :] - dcmap[i, g, :, :]
+                # Make sure no NaNs are in the DC map
+                dc2d = np.where(np.isfinite(dc2d), dc2d, 0)
+                corr_data[i, g, :, :] -= dc2d
         current_int += nint
 
-        # Make sure no NaNs are in the DC map
-        dcmap = np.where(np.isfinite(dcmap), dcmap, 0)
-        # Subtract the DC map from a copy of the data model
+        # Store results.
         rampmodel_corr = datamodel.copy()
-        corr_data = datamodel.data - dcmap
         rampmodel_corr.data = corr_data
+        corrected_rampmodels.append(rampmodel_corr)
 
         # Save the results if requested.
         if save_results is True:
-            # Inital difference image.
-            hdu = fits.PrimaryHDU(sub)
-            suffix = 'oneoverfstep_diffim.fits'
-            hdu.writeto(output_dir + fileroots[n] + suffix,
-                        overwrite=True)
-            # 1/f noise-corrected difference image.
-            hdu = fits.PrimaryHDU(subcorr)
-            suffix = 'oneoverfstep_diffimcorr.fits'
-            hdu.writeto(output_dir + fileroots[n] + suffix,
-                        overwrite=True)
-            # DC noise map.
-            hdu = fits.PrimaryHDU(dcmap)
-            suffix = 'oneoverfstep_noisemap.fits'
-            hdu.writeto(output_dir + fileroots[n] + suffix,
-                        overwrite=True)
-            corrected_rampmodels.append(rampmodel_corr)
-            # Corrected ramp model.
             suffix = 'oneoverfstep.fits'
             rampmodel_corr.write(output_dir + fileroots[n] + suffix)
 
@@ -803,8 +791,9 @@ def oneoverfstep(datafiles, baseline_ints, smoothed_wlc=None,
 
 def run_stage1(results, background_model, baseline_ints=None,
                smoothed_wlc=None, save_results=True, outlier_maps=None,
-               trace_mask=None,  force_redo=False, rejection_threshold=5,
-               root_dir='./', output_tag='', occultation_type='transit'):
+               trace_mask=None,  even_odd_rows=True, force_redo=False,
+               rejection_threshold=5, root_dir='./', output_tag='',
+               occultation_type='transit'):
     """Run the supreme-SPOON Stage 1 pipeline: detector level processing,
     using a combination of official STScI DMS and custom steps. Documentation
     for the official DMS steps can be found here:
@@ -830,6 +819,8 @@ def run_stage1(results, background_model, baseline_ints=None,
         For improved 1/f noise correcton. Trace mask, or path to file
         containing a trace mask. Should be 3D (norder, dimy, dimx), or 2D
         (dimy, dimx).
+    even_odd_rows : bool
+        If True, calculate 1/f noise seperately for even and odd numbered rows.
     force_redo : bool
         If True, redo steps even if outputs files are already present.
     rejection_threshold : int
@@ -897,7 +888,8 @@ def run_stage1(results, background_model, baseline_ints=None,
                         output_dir=outdir, outlier_maps=outlier_maps,
                         trace_mask=trace_mask, smoothed_wlc=smoothed_wlc,
                         occultation_type=occultation_type)
-    results = step.run(save_results=save_results, force_redo=force_redo)
+    results = step.run(even_odd_rows=even_odd_rows, save_results=save_results,
+                       force_redo=force_redo)
 
     # ===== Linearity Correction Step =====
     # Default DMS step.
