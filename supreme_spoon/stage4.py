@@ -7,7 +7,7 @@ Created on Thurs Jul 21 18:07 2022
 
 Custom JWST DMS pipeline steps for Stage 4 (lightcurve fitting).
 """
-
+# TODO: comments + docstrings
 from exotic_ld import StellarLimbDarkening
 import os
 import pandas as pd
@@ -199,6 +199,34 @@ def bin_at_resolution(wavelengths, depths, depth_error, R, method='sum'):
     werrout = [lwerr, uperr]
 
     return wout, werrout, dout, derrout
+
+
+def bin_at_pixel(flux, error, wave, npix):
+    nint, nwave = np.shape(flux)
+    if nwave % npix != 0:
+        msg = 'Bin size cannot be conserved.'
+        raise ValueError(msg)
+    nbin = int(nwave / npix)
+
+    flux_bin = np.nansum(np.reshape(flux, (nint, nbin, npix)), axis=2)
+    err_bin = np.sqrt(
+        np.nansum(np.reshape(error, (nint, nbin, npix)) ** 2, axis=2))
+
+    wave_bin = np.nanmean(np.reshape(wave, (nint, nbin, npix)), axis=2)
+    up = np.concatenate(
+        [wave_bin[0][:, None], np.roll(wave_bin[0][:, None], 1)], axis=1)
+    lw = np.concatenate(
+        [wave_bin[0][:, None], np.roll(wave_bin[0][:, None], -1)], axis=1)
+    wave_up = (np.mean(up, axis=1) - wave_bin[0])[:-1]
+    wave_up = np.insert(wave_up, -1, wave_up[-1])
+    wave_up = np.repeat(wave_up, nint).reshape(nbin, nint).transpose(1, 0)
+    wave_up = wave_bin + wave_up
+    wave_low = (wave_bin[0] - np.mean(lw, axis=1))[1:]
+    wave_low = np.insert(wave_low, 0, wave_low[0])
+    wave_low = np.repeat(wave_low, nint).reshape(nbin, nint).transpose(1, 0)
+    wave_low = wave_bin - wave_low
+
+    return wave_bin, wave_low, wave_up, flux_bin, err_bin
 
 
 def bin_2d_spectra(wave2d, flux2d, err2d, R=150):

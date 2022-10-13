@@ -10,6 +10,7 @@ Juliet light curve fitting script
 # TODO: funtions to fit white light curve
 # TODO: procedural function run_stage4 to fit wlc then spec lcs
 # TODO: fit_lightcurves.py as wrapper around run_Stage4 like run_DMS is for 1-3
+# TODO: incorporate saving transmission spectrum
 from astropy.io import fits
 import copy
 import juliet
@@ -39,6 +40,8 @@ occultation_type = 'transit'
 do_plots = True
 # Number of cores for multiprocessing.
 ncores = 4
+# Spectral resolution at which to fit lightcurves.
+res = 'native'
 
 # Fitting priors in juliet format.
 params = ['P_p1', 't0_p1', 'p_p1', 'b_p1',
@@ -74,6 +77,11 @@ outdir = root_dir + 'pipeline_outputs_directory' + output_tag + '/Stage4/'
 # Tag for this particular fit.
 if fit_suffix != '':
     fit_suffix = '_' + fit_suffix
+# Add resolution info to the fit tag.
+if isinstance(res, str):
+    fit_suffix += '_native'
+else:
+    fit_suffix += 'R{}'.format(res)
 
 formatted_names = {'P_p1': r'$P$', 't0_p1': r'$T_0$', 'p_p1': r'R$_p$/R$_*$',
                    'b_p1': r'$b$', 'q1_SOSS': r'$q_1$', 'q2_SOSS': r'$q_2$',
@@ -116,21 +124,38 @@ for order in orders:
 
     print('\nFitting order {}\n'.format(order))
     # Unpack wave, flux and error
-    wave_low = fits.getdata(infile,  1 + 4*(order - 1))[0]
-    wave_up = fits.getdata(infile, 2 + 4*(order - 1))[0]
+    wave_low = fits.getdata(infile,  1 + 4*(order - 1))
+    wave_up = fits.getdata(infile, 2 + 4*(order - 1))
     wave = np.nanmean(np.stack([wave_low, wave_up]), axis=0)
     flux = fits.getdata(infile, 3 + 4*(order - 1))
     err = fits.getdata(infile, 4 + 4*(order - 1))
+
+    # Bin input spectra to desired resolution.
+    if res == 'native':
+        binned_vals = stage4.bin_at_pixel(flux, err, wave, npix=2)
+        wave, wave_low, wave_up, flux, err = binned_vals
+        wave, wave_low, wave_up = wave[0], wave_low[0], wave_up[0]
+    else:
+        binned_vals = stage4.bin_2d_spectra(wave, flux, err, R=res)
+        wave, wave_low, wave_up, flux, err = binned_vals
+        wave, wave_low, wave_up = wave[0], wave_low[0], wave_up[0]
+
+    # For order 2, only fit wavelength bins between 0.6 and 0.85µm.
+    if order == 2:
+        ii = np.where((wave >= 0.6) & (wave <= 0.85))
+        flux, err = flux[:, ii], err[:, ii]
+        wave, wave_low, wave_up = wave[ii], wave_low[ii], wave_up[ii]
     nints, nbins = np.shape(flux)
-    # Normalize flux and error by the baseline.
-    baseline = np.median(flux[baseline_ints], axis=0)
-    norm_flux = flux / baseline
-    norm_err = err / baseline
 
     # Sort input arrays in order of increasing wavelength.
     ii = np.argsort(wave)
     wave_low, wave_up, wave = wave_low[ii], wave_up[ii], wave[ii]
-    norm_flux, norm_err = norm_flux[:, ii], norm_err[:, ii]
+    flux, err = flux[:, ii], err[:, ii]
+
+    # Normalize flux and error by the baseline.
+    baseline = np.median(flux[baseline_ints], axis=0)
+    norm_flux = flux / baseline
+    norm_err = err / baseline
 
     # Set up priors
     priors = {}

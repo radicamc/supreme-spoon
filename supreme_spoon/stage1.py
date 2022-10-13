@@ -7,7 +7,6 @@ Created on Thurs Jul 21 17:30 2022
 
 Custom JWST DMS pipeline steps for Stage 1 (detector level processing).
 """
-# TODO: toggle for odd-even 1/f subtraction.
 from astropy.io import fits
 import glob
 import numpy as np
@@ -736,6 +735,8 @@ def oneoverfstep(datafiles, baseline_ints, even_odd_rows=True,
         corr_data = np.zeros_like(datamodel.data)
         # Loop over all integrations to determine the 1/f noise level via a
         # difference image, and correct it.
+        # TODO: vectorize
+        # TODO: Add option for LP's method
         for i in tqdm(range(nint)):
             # i counts ints in this particular segment, whereas ii counts
             # ints from the start of the exposure.
