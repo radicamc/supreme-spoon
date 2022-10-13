@@ -121,6 +121,8 @@ for order in orders:
     first_time = True
     if do_plots is True:
         outpdf = matplotlib.backends.backend_pdf.PdfPages(outdir + 'lightcurve_fit_order{0}{1}.pdf'.format(order, fit_suffix))
+    else:
+        outpdf = None
 
     print('\nFitting order {}\n'.format(order))
     # Unpack wave, flux and error
@@ -285,5 +287,8 @@ for order in orders:
         plotting.plot_2dlightcurves(wave, residuals, outpdf=outpdf,
                                     title='Residuals')
         outpdf.close()
+
+
+# SAVE TRANSMISSION SPECTRUM HERE
 
 print('Done')

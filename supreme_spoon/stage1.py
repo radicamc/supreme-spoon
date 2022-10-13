@@ -7,7 +7,9 @@ Created on Thurs Jul 21 17:30 2022
 
 Custom JWST DMS pipeline steps for Stage 1 (detector level processing).
 """
+# TODO: double chceck all plotting
 from astropy.io import fits
+import bottleneck as bn
 import glob
 import numpy as np
 from scipy.ndimage import median_filter
@@ -578,8 +580,8 @@ def backgroundstep(datafiles, background_model, output_dir='./',
 
 def oneoverfstep(datafiles, baseline_ints, even_odd_rows=True,
                  smoothed_wlc=None, output_dir='./', save_results=True,
-                 outlier_maps=None, trace_mask=None, use_dq=True,
-                 fileroots=None, occultation_type='transit'):
+                 outlier_maps=None, trace_mask=None, fileroots=None,
+                 occultation_type='transit'):
     """Custom 1/f correction routine to be applied at the group level. A
     median stack is constructed using all out-of-transit integrations and
     subtracted from each individual integration. The column-wise median of
@@ -608,8 +610,6 @@ def oneoverfstep(datafiles, baseline_ints, even_odd_rows=True,
     trace_mask : str, None
         Path to file containing a trace mask. Should be 3D (norder, dimy,
         dimx), or 2D (dimy, dimx).
-    use_dq : bool
-        If True, mask all pixels currently flagged in the DQ array.
     fileroots : array-like[str], None
         Root names for output files.
     occultation_type : str
@@ -677,14 +677,6 @@ def oneoverfstep(datafiles, baseline_ints, even_odd_rows=True,
 
         # Define the readout setup.
         nint, ngroup, dimy, dimx = np.shape(datamodel.data)
-        # get data quality flags if requested.
-        if use_dq is True:
-            print(' Considering data quality flags.')
-            dq = datamodel.groupdq
-            # Mask will be applied multiplicatively.
-            dq = np.where(dq == 0, 1, np.nan)
-        else:
-            dq = np.ones_like(datamodel.data)
 
         # Read in the outlier map -- a (nints, dimy, dimx) 3D cube
         if outlier_maps is None:
@@ -732,10 +724,9 @@ def oneoverfstep(datafiles, baseline_ints, even_odd_rows=True,
         outliers = (outliers + tracemask) // 2
 
         # Initialize output storage arrays.
-        corr_data = np.zeros_like(datamodel.data)
+        corr_data = np.copy(datamodel.data)
         # Loop over all integrations to determine the 1/f noise level via a
         # difference image, and correct it.
-        # TODO: vectorize
         # TODO: Add option for LP's method
         for i in tqdm(range(nint)):
             # i counts ints in this particular segment, whereas ii counts
@@ -745,33 +736,28 @@ def oneoverfstep(datafiles, baseline_ints, even_odd_rows=True,
             sub = datamodel.data[i] - deepstack * smoothed_wlc[ii]
             # Since the variable upon which 1/f noise depends is time, treat
             # each group individually.
-            for g in range(ngroup):
-                # Consider the DQ mask for the group.
-                current_outlier = (outliers[i, :, :] + dq[i, g, :, :]) // 2
-                # Apply the outlier mask.
-                sub[g, :, :] *= current_outlier
-                # FULL frame uses multiple amplifiers and probably has to be
-                # treated differently.
-                if datamodel.meta.subarray.name == 'FULL':
-                    raise NotImplementedError
-                with warnings.catch_warnings():
-                    warnings.simplefilter('ignore', category=RuntimeWarning)
-                    if even_odd_rows is True:
-                        # Calculate 1/f scaling seperately for even and odd
-                        # rows. This should be taken care of by the RefPixStep,
-                        # but it doesn't hurt to do it again.
-                        dc = np.zeros_like(sub[g])
-                        dc[::2] = np.nanmedian(sub[g, ::2], axis=0)
-                        dc[1::2] = np.nanmedian(sub[g, 1::2], axis=0)
-                    else:
-                        # Single 1/f scaling for all rows.
-                        dc = np.nanmedian(sub[g], axis=0)
-                # dc is 1D (dimx) - expand to 2D (dimy, dimx)
-                dc2d = np.repeat(dc, dimy).reshape((dimx, dimy))
-                dc2d = dc2d.transpose(1, 0)
-                # Make sure no NaNs are in the DC map
-                dc2d = np.where(np.isfinite(dc2d), dc2d, 0)
-                corr_data[i, g, :, :] -= dc2d
+            # Apply the outlier mask.
+            sub *= outliers[i, :, :]
+            # FULL frame uses multiple amplifiers and probably has to be
+            # treated differently.
+            if datamodel.meta.subarray.name == 'FULL':
+                raise NotImplementedError
+            with warnings.catch_warnings():
+                warnings.simplefilter('ignore', category=RuntimeWarning)
+                if even_odd_rows is True:
+                    # Calculate 1/f scaling seperately for even and odd
+                    # rows. This should be taken care of by the RefPixStep,
+                    # but it doesn't hurt to do it again.
+                    dc = np.zeros_like(sub)
+                    dc[:, ::2] = bn.nanmedian(sub[:, ::2], axis=1)[:, None, :]
+                    dc[:, 1::2] = bn.nanmedian(sub[:, 1::2], axis=1)[:, None, :]
+                else:
+                    # Single 1/f scaling for all rows.
+                    dc = np.zeros_like(sub)
+                    dc[:, :, :] = bn.nanmedian(sub, axis=1)
+            # Make sure no NaNs are in the DC map
+            dc = np.where(np.isfinite(dc), dc, 0)
+            corr_data[i] -= dc
         current_int += nint
 
         # Store results.
