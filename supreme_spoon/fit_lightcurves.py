@@ -7,10 +7,7 @@ Created on Wed Jul 27 14:35 2022
 
 Juliet light curve fitting script
 """
-# TODO: funtions to fit white light curve
-# TODO: procedural function run_stage4 to fit wlc then spec lcs
-# TODO: fit_lightcurves.py as wrapper around run_Stage4 like run_DMS is for 1-3
-# TODO: incorporate saving transmission spectrum
+# TODO: calculate LD priors here
 from astropy.io import fits
 import copy
 import juliet
@@ -42,6 +39,8 @@ do_plots = True
 ncores = 4
 # Spectral resolution at which to fit lightcurves.
 res = 'native'
+# Planet identifier.
+planet_letter = 'b'
 
 # Fitting priors in juliet format.
 params = ['P_p1', 't0_p1', 'p_p1', 'b_p1',
@@ -81,12 +80,12 @@ if fit_suffix != '':
 if isinstance(res, str):
     fit_suffix += '_native'
 else:
-    fit_suffix += 'R{}'.format(res)
+    fit_suffix += '_R{}'.format(res)
 
-formatted_names = {'P_p1': r'$P$', 't0_p1': r'$T_0$', 'p_p1': r'R$_p$/R$_*$',
+formatted_names = {'P_p1': r'$P$', 't0_p1': r'$T_0$', 'p_p1': r'$R$_p/R_*$',
                    'b_p1': r'$b$', 'q1_SOSS': r'$q_1$', 'q2_SOSS': r'$q_2$',
                    'ecc_p1': r'$e$', 'omega_p1': r'$\Omega$',
-                   'sigma_w': r'$\sigma_w_SOSS$',
+                   'a_p1': r'$a/R_*$', 'sigma_w': r'$\sigma_w_SOSS$',
                    'theta0_SOSS': r'$\theta_0$', 'theta1_SOSS': r'$\theta_1$',
                    'theta2_SOSS': r'$\theta_2$',
                    'GP_sigma_SOSS': r'$GP_\sigma$', 'GP_rho_SOSS': r'$GP_rho$',
@@ -96,7 +95,7 @@ formatted_names = {'P_p1': r'$P$', 't0_p1': r'$T_0$', 'p_p1': r'R$_p$/R$_*$',
 t = fits.getdata(infile, 9)
 # Quantities against which to linearly detrend.
 if lm_file is not None:
-    lm_data = pd.read_csv(lm_file, comments='#')
+    lm_data = pd.read_csv(lm_file, comment='#')
     lm_quantities = np.zeros((len(t), len(lm_parameters)+1))
     lm_quantities[:, 0] = np.ones_like(t)
     for i, key in enumerate(lm_parameters):
@@ -105,7 +104,7 @@ if lm_file is not None:
 # Quantities on which to train GP.
 gp_quantities = np.zeros((len(t), 1))
 if gp_file is not None:
-    gp_data = pd.read_csv(gp_file, comments='#')
+    gp_data = pd.read_csv(gp_file, comment='#')
     gp_quantities = np.zeros((len(t), len(gp_parameters)+1))
     gp_quantities[:, 0] = np.ones_like(t)
     for i, key in enumerate(gp_parameters):
@@ -117,6 +116,7 @@ baseline_ints = utils.format_out_frames(baseline_ints,
                                         occultation_type)
 
 # Start the light curve fitting.
+results_dict = {}
 for order in orders:
     first_time = True
     if do_plots is True:
@@ -124,7 +124,11 @@ for order in orders:
     else:
         outpdf = None
 
-    print('\nFitting order {}\n'.format(order))
+    if res == 'native':
+        res_str = 'native resolution'
+    else:
+        res_str = 'R = {}'.format(res)
+    print('\nFitting order {} at {}\n'.format(order, res_str))
     # Unpack wave, flux and error
     wave_low = fits.getdata(infile,  1 + 4*(order - 1))
     wave_up = fits.getdata(infile, 2 + 4*(order - 1))
@@ -144,7 +148,7 @@ for order in orders:
 
     # For order 2, only fit wavelength bins between 0.6 and 0.85µm.
     if order == 2:
-        ii = np.where((wave >= 0.6) & (wave <= 0.85))
+        ii = np.where((wave >= 0.6) & (wave <= 0.85))[0]
         flux, err = flux[:, ii], err[:, ii]
         wave, wave_low, wave_up = wave[ii], wave_low[ii], wave_up[ii]
     nints, nbins = np.shape(flux)
@@ -207,38 +211,31 @@ for order in orders:
 
     # Loop over results for each wavebin, extract best-fitting parameters and
     # make summary plots if necessary.
-    print('Making summary plots.')
+    print('Summarizing fit results.')
     data = np.ones((nints, nbins)) * np.nan
     models = np.ones((nints, nbins)) * np.nan
     residuals = np.ones((nints, nbins)) * np.nan
-    outdict = {}
+    order_results = {'dppm': [], 'dppm_err': [], 'wave': wave,
+                     'wave_err': np.mean([wave_low, wave_up], axis=0)}
     for i, wavebin in enumerate(fit_results.keys()):
         # Make note if something went wrong with this bin.
         skip = False
         if fit_results[wavebin] is None:
             skip = True
 
-        # Pack best fit params into a dictionary
-        for param, dist in zip(params, dists):
-            if dist == 'fixed':
-                continue
-            if first_time is True:
-                outdict[param + '_m'] = []
-                outdict[param + '_u'] = []
-                outdict[param + '_l'] = []
-            # Append NaNs if the bin was skipped.
-            if skip is True:
-                outdict[param + '_m'].append(np.nan)
-                outdict[param + '_u'].append(np.nan)
-                outdict[param + '_l'].append(np.nan)
-            # If not skipped, append median and 1-sigma bounds.
-            else:
-                pp = fit_results[wavebin].posteriors['posterior_samples'][param]
-                pm, pu, pl = juliet.utils.get_quantiles(pp)
-                outdict[param + '_m'].append(pm)
-                outdict[param + '_u'].append(pu)
-                outdict[param + '_l'].append(pl)
-        first_time = False
+        # Pack best fit Rp/R* into a dictionary.
+        # Append NaNs if the bin was skipped.
+        if skip is True:
+            order_results['dppm'].append(np.nan)
+            order_results['dppm_err'].append(np.nan)
+        # If not skipped, append median and 1-sigma bounds.
+        else:
+            pp = fit_results[wavebin].posteriors['posterior_samples']['p_p1']
+            md, up, lw = juliet.utils.get_quantiles(pp)
+            order_results['dppm'].append((md**2)*1e6)
+            err_low = (md**2 - lw**2)*1e6
+            err_up = (up**2 - md**2)*1e6
+            order_results['dppm_err'].append(np.mean([err_up, err_low]))
 
         # Make summary plots.
         if skip is False and do_plots is True:
@@ -272,12 +269,7 @@ for order in orders:
                 residuals[:, i] = norm_flux[:, i] - transit_model
             except:
                 pass
-
-    # Save fit results to csv file.
-    outdf = pd.DataFrame(data=outdict)
-    outdf.to_csv(outdir + 'speclightcurve_results_order{0}{1}.csv'.format(order, fit_suffix),
-                 index=False)
-
+    results_dict['order {}'.format(order)] = order_results
     # Plot 2D lightcurves.
     if do_plots is True:
         plotting.plot_2dlightcurves(wave, data, outpdf=outpdf,
@@ -288,7 +280,63 @@ for order in orders:
                                     title='Residuals')
         outpdf.close()
 
+# Save the transmission spectrum.
+print('Writing transmission spectrum.')
+for order in ['1', '2']:
+    if 'order '+order not in results_dict.keys():
+        order_results = {'dppm': [], 'dppm_err': [], 'wave': [],
+                         'wave_err': []}
+        results_dict['order '+order] = order_results
 
-# SAVE TRANSMISSION SPECTRUM HERE
+# Concatenate transit depths, wavelengths, and associated errors from both
+# orders.
+depths = np.concatenate([results_dict['order 2']['dppm'],
+                         results_dict['order 1']['dppm']])
+errors = np.concatenate([results_dict['order 2']['dppm_err'],
+                         results_dict['order 1']['dppm_err']])
+waves = np.concatenate([results_dict['order 2']['wave'],
+                        results_dict['order 1']['wave']])
+wave_errors = np.concatenate([results_dict['order 2']['wave_err'],
+                              results_dict['order 1']['wave_err']])
+orders = np.concatenate([2*np.ones_like(results_dict['order 2']['dppm']),
+                         np.ones_like(results_dict['order 1']['dppm'])]).astype(int)
+
+# Get target/reduction metadata.
+infile_header = fits.getheader(infile, 0)
+extract_type = infile_header['METHOD']
+target = infile_header['TARGET'] + planet_letter
+filename = target + '_NIRISS_SOSS_' + extract_type + '_tranmission_spectrum' \
+           + fit_suffix + '.csv'
+# Get fit metadata.
+# Include fixed parameter values.
+fit_metadata = '#\n# Fit Metadata\n'
+for param, dist, hyper in zip(params, dists, hyperps):
+    if dist == 'fixed' and param not in ['mdilution_SOSS', 'mflux_SOSS']:
+        fit_metadata += '# {}: {}\n'.format(formatted_names[param], hyper)
+# Append info on detrending via linear models or GPs.
+if len(lm_parameters) != 0:
+    fit_metadata += '# Linear Model: '
+    for i, param in enumerate(lm_parameters):
+        if i == 0:
+            fit_metadata += param
+        else:
+            fit_metadata += ', {}'.format(param)
+    fit_metadata += '\n'
+if len(gp_parameters) != 0:
+    fit_metadata += '# Gaussian Process: '
+    for i, param in enumerate(gp_parameters):
+        if i == 0:
+            fit_metadata += param
+        else:
+            fit_metadata += ', {}'.format(param)
+    fit_metadata += '\n'
+fit_metadata += '#\n'
+
+# Save spectrum.
+stage4.save_transmission_spectrum(waves, wave_errors, depths, errors, orders,
+                                  outdir, filename=filename, target=target,
+                                  extraction_type=extract_type,
+                                  resolution=res, fit_meta=fit_metadata)
+print('Transmission spectrum saved to {}'.format(outdir+filename))
 
 print('Done')

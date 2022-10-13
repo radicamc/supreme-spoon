@@ -262,7 +262,7 @@ def bin_2d_spectra(wave2d, flux2d, err2d, R=150):
 
     # Simply loop over each integration and bin the flux values down to the
     # desired resolution.
-    for i in tqdm(range(nints)):
+    for i in range(nints):
         if i == 0:
             bin_res = bin_at_resolution(wave2d[i], flux2d[i], err2d[i], R=R)
             wc_bin, we_bin, f_bin, e_bin = bin_res
@@ -290,7 +290,8 @@ def bin_2d_spectra(wave2d, flux2d, err2d, R=150):
 
 
 def save_transmission_spectrum(wave, wave_err, dppm, dppm_err, order, outdir,
-                               filename, target, extraction_type):
+                               filename, target, extraction_type, resolution,
+                               fit_meta=None):
     """Write a transmission spectrum to file.
 
     Parameters
@@ -313,6 +314,10 @@ def save_transmission_spectrum(wave, wave_err, dppm, dppm_err, order, outdir,
         Target name.
     extraction_type : str
         Type of extraction: either box or atoca.
+    resolution: int, str
+        Spectral resolution of spectrum.
+    fit_meta: str, None
+        Fitting metadata.
     """
 
     # Pack the quantities into a dictionary.
@@ -327,13 +332,15 @@ def save_transmission_spectrum(wave, wave_err, dppm, dppm_err, order, outdir,
         os.remove(outdir + filename)
 
     # Re-open the csv and append some critical info the header.
-    f = open(outdir + filename, 'a')
+    f = open(outdir + filename, 'w')
     f.write('# Target: {}\n'.format(target))
     f.write('# Instrument: NIRISS/SOSS\n')
-    f.write('# Pipeline: Supreme-SPOON\n')
-    f.write('# 1D Extraction : {}\n'.format(extraction_type))
+    f.write('# Pipeline: supreme-SPOON\n')
+    f.write('# 1D Extraction: {}\n'.format(extraction_type))
+    f.write('# Spectral Resoluton: {}\n'.format(resolution))
     f.write('# Author: {}\n'.format(os.environ.get('USER')))
     f.write('# Date: {}\n'.format(datetime.utcnow().replace(microsecond=0).isoformat()))
+    f.write(fit_meta)
     f.write('# Column wave: Central wavelength of bin (micron)\n')
     f.write('# Column wave_err: Wavelength bin halfwidth (micron)\n')
     f.write('# Column dppm: (Rp/R*)^2 (ppm)\n')
