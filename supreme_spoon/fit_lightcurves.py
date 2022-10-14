@@ -7,7 +7,7 @@ Created on Wed Jul 27 14:35 2022
 
 Juliet light curve fitting script
 """
-# TODO: calculate LD priors here
+
 from astropy.io import fits
 import copy
 import juliet
@@ -82,6 +82,7 @@ if isinstance(res, str):
 else:
     fit_suffix += '_R{}'.format(res)
 
+# Formatted parameter names for plotting.
 formatted_names = {'P_p1': r'$P$', 't0_p1': r'$T_0$', 'p_p1': r'$R$_p/R_*$',
                    'b_p1': r'$b$', 'q1_SOSS': r'$q_1$', 'q2_SOSS': r'$q_2$',
                    'ecc_p1': r'$e$', 'omega_p1': r'$\Omega$',
@@ -91,6 +92,7 @@ formatted_names = {'P_p1': r'$P$', 't0_p1': r'$T_0$', 'p_p1': r'$R$_p/R_*$',
                    'GP_sigma_SOSS': r'$GP_\sigma$', 'GP_rho_SOSS': r'$GP_rho$',
                    'rho': r'$\rho$'}
 
+# === Get Detrending Quantities ===
 # Get time axis
 t = fits.getdata(infile, 9)
 # Quantities against which to linearly detrend.
@@ -102,7 +104,6 @@ if lm_file is not None:
         lm_param = lm_data[key]
         lm_quantities[:, i] = (lm_param - np.mean(lm_param)) / np.sqrt(np.var(lm_param))
 # Quantities on which to train GP.
-gp_quantities = np.zeros((len(t), 1))
 if gp_file is not None:
     gp_data = pd.read_csv(gp_file, comment='#')
     gp_quantities = np.zeros((len(t), len(gp_parameters)+1))
@@ -115,6 +116,7 @@ if gp_file is not None:
 baseline_ints = utils.format_out_frames(baseline_ints,
                                         occultation_type)
 
+# === Fit Light Curves ===
 # Start the light curve fitting.
 results_dict = {}
 for order in orders:
@@ -128,6 +130,8 @@ for order in orders:
         res_str = 'native resolution'
     else:
         res_str = 'R = {}'.format(res)
+
+    # === Set Up Priors and Fit Parameters ===
     print('\nFitting order {} at {}\n'.format(order, res_str))
     # Unpack wave, flux and error
     wave_low = fits.getdata(infile,  1 + 4*(order - 1))
@@ -142,7 +146,7 @@ for order in orders:
         wave, wave_low, wave_up, flux, err = binned_vals
         wave, wave_low, wave_up = wave[0], wave_low[0], wave_up[0]
     else:
-        binned_vals = stage4.bin_2d_spectra(wave, flux, err, R=res)
+        binned_vals = stage4.bin_2d_spectra(wave, flux, err, res=res)
         wave, wave_low, wave_up, flux, err = binned_vals
         wave, wave_low, wave_up = wave[0], wave_low[0], wave_up[0]
 
@@ -204,11 +208,13 @@ for order in orders:
                 prior_dict[thisbin]['q2_SOSS']['distribution'] = 'truncatednormal'
                 prior_dict[thisbin]['q2_SOSS']['hyperparameters'] = [prior_q2[wavebin], 0.1, 0.0, 1.0]
 
+    # === Do the Fit ===
     # Fit each light curve
     fit_results = stage4.fit_lightcurves(data_dict, prior_dict, order=order,
                                          output_dir=outdir, nthreads=ncores,
                                          fit_suffix=fit_suffix)
 
+    # === Summarize Fit Results ===
     # Loop over results for each wavebin, extract best-fitting parameters and
     # make summary plots if necessary.
     print('Summarizing fit results.')
@@ -280,6 +286,7 @@ for order in orders:
                                     title='Residuals')
         outpdf.close()
 
+# === Transmission Spectrum ===
 # Save the transmission spectrum.
 print('Writing transmission spectrum.')
 for order in ['1', '2']:

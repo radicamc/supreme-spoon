@@ -7,114 +7,79 @@ Created on Thurs Jul 21 18:07 2022
 
 Custom JWST DMS pipeline steps for Stage 4 (lightcurve fitting).
 """
-# TODO: comments + docstrings
+
+from datetime import datetime
 from exotic_ld import StellarLimbDarkening
+import juliet
+import numpy as np
 import os
 import pandas as pd
-from datetime import datetime
-import juliet
 import ray
-from tqdm import tqdm
-import numpy as np
 
 from jwst import datamodels
 from jwst.pipeline import calwebb_spec2
 
 
-def fit_lightcurves(data_dict, prior_dict, order, output_dir, fit_suffix,
-                    nthreads=4):
+def bin_at_pixel(flux, error, wave, npix):
+    """Similar to bin_at_resolution, but will bin in widths of a set number of
+    pixels instead of at a fixed resolution.
 
-    # Initialize results dictionary and keynames.
-    results = dict.fromkeys(data_dict.keys(), [])
-    keynames = list(data_dict.keys())
+    Parameters
+    ----------
+    flux : array-like[float]
+        Flux values.
+    error : array-like[float]
+        Flux error values.
+    wave : array-like[float]
+        Wavelength values.
+    npix : int
+        Number of pixels per bin.
 
-    # Format output directory
-    if output_dir[-1] != '/':
-        output_dir += '/'
+    Returns
+    -------
+    wout : np.ndarray[float]
+        Wavelength of the given bin.
+    werrout : list[float]
+        Width of the wavelength bin.
+    dout : np.ndarray[float]
+        Binned depth.
+    derrout : np.ndarray[float]
+        Error on binned depth.
+    """
 
-    # Initialize ray with specified number of threads.
-    ray.shutdown()
-    ray.init(num_cpus=nthreads)
+    # Calculate number of bins ginve wavelength grid and npix value.
+    nint, nwave = np.shape(flux)
+    if nwave % npix != 0:
+        msg = 'Bin size cannot be conserved.'
+        raise ValueError(msg)
+    nbin = int(nwave / npix)
 
-    # Set juliet fits as remotes to run parallel with ray.
-    all_fits = []
-    num_bins = np.arange(len(keynames))+1
-    for i, keyname in enumerate(keynames):
-        outdir = output_dir + 'speclightcurve{2}/order{0}_{1}'.format(order, keyname, fit_suffix)
-        all_fits.append(fit_data.remote(data_dict[keyname],
-                                        prior_dict[keyname],
-                                        output_dir=outdir,
-                                        bin_no=num_bins[i],
-                                        num_bins=len(num_bins)))
-    # Run the fits.
-    ray_results = ray.get(all_fits)
+    # Sum flux in bins and calculate resulting errors.
+    flux_bin = np.nansum(np.reshape(flux, (nint, nbin, npix)), axis=2)
+    err_bin = np.sqrt(np.nansum(np.reshape(error, (nint, nbin, npix))**2,
+                                axis=2))
+    # Calculate mean wavelength per bin.
+    wave_bin = np.nanmean(np.reshape(wave, (nint, nbin, npix)), axis=2)
+    # Get bin wavelength limits.
+    up = np.concatenate([wave_bin[0][:, None],
+                         np.roll(wave_bin[0][:, None], 1)], axis=1)
+    lw = np.concatenate([wave_bin[0][:, None],
+                         np.roll(wave_bin[0][:, None], -1)], axis=1)
+    wave_up = (np.mean(up, axis=1) - wave_bin[0])[:-1]
+    wave_up = np.insert(wave_up, -1, wave_up[-1])
+    wave_up = np.repeat(wave_up, nint).reshape(nbin, nint).transpose(1, 0)
+    wave_up = wave_bin + wave_up
+    wave_low = (wave_bin[0] - np.mean(lw, axis=1))[1:]
+    wave_low = np.insert(wave_low, 0, wave_low[0])
+    wave_low = np.repeat(wave_low, nint).reshape(nbin, nint).transpose(1, 0)
+    wave_low = wave_bin - wave_low
 
-    # Reorder the results based on the key name.
-    for i in range(len(keynames)):
-        keyname = keynames[i]
-        results[keyname] = ray_results[i]
-
-    return results
-
-
-@ray.remote
-def fit_data(data_dictionary, priors, output_dir, bin_no, num_bins):
-
-    print('Fitting bin {} / {}'.format(bin_no, num_bins))
-
-    # Get key names.
-    all_keys = list(data_dictionary.keys())
-
-    # Unpack fitting arrays
-    t = {'SOSS': data_dictionary['times']}
-    flux = {'SOSS': data_dictionary['flux']}
-    flux_err = {'SOSS': data_dictionary['error']}
-
-    # Initialize GP and linear model regressors.
-    gp_regressors = None
-    linear_regressors = None
-    if 'GP_parameters' in all_keys:
-        gp_regressors = {'SOSS': data_dictionary['GP_parameters']}
-    if 'lm_parameters' in all_keys:
-        linear_regressors = {'SOSS': data_dictionary['lm_parameters']}
-
-    fit_results = run_juliet(priors, t, flux, flux_err, output_dir,
-                             gp_regressors, linear_regressors)
-
-    return fit_results
+    return wave_bin, wave_low, wave_up, flux_bin, err_bin
 
 
-def run_juliet(priors, t_lc, y_lc, yerr_lc, out_folder,
-               gp_regressors_lc, linear_regressors_lc):
-
-    if np.isfinite(y_lc['SOSS']).all():
-        # Load in all priors and data to be fit.
-        dataset = juliet.load(priors=priors, t_lc=t_lc, y_lc=y_lc,
-                              yerr_lc=yerr_lc, out_folder=out_folder,
-                              GP_regressors_lc=gp_regressors_lc,
-                              linear_regressors_lc=linear_regressors_lc)
-        kwargs = {'maxiter': 25000, 'print_progress': False}
-
-        # Run the fit.
-        try:
-            res = dataset.fit(sampler='dynesty', **kwargs)
-        except KeyboardInterrupt as err:
-            raise err
-        except:
-            print('Exception encountered.')
-            print('Skipping bin.')
-            res = None
-    else:
-        print('NaN bin encountered.')
-        print('Skipping bin.')
-        res = None
-
-    return res
-
-
-def bin_at_resolution(wavelengths, depths, depth_error, R, method='sum'):
+def bin_at_resolution(wavelengths, depths, depth_error, res, method='sum'):
     """Function that bins input wavelengths and transit depths (or any other
-    observable, like flux) to a given resolution `R`. Useful for binning
+    observable, like flux) to a given resolution "res". Useful for binning
     transit depths down to a target resolution on a transit spectrum.
     Adapted from Néstor Espinoza.
 
@@ -126,7 +91,7 @@ def bin_at_resolution(wavelengths, depths, depth_error, R, method='sum'):
         Depth values at each wavelength.
     depth_error : array-like[float]
         Errors corresponding to each depth measurement.
-    R : int
+    res : int
         Target resolution at which to bin.
     method : str
         Method to bin depths.
@@ -172,7 +137,7 @@ def bin_at_resolution(wavelengths, depths, depth_error, R, method='sum'):
 
             # If the current set of wavs/depths is below or at the target
             # resolution, stop and move to next bin:
-            if current_r <= R:
+            if current_r <= res:
                 wout = np.append(wout, np.nanmean(current_wavs))
                 if method == 'sum':
                     dout = np.append(dout, np.nansum(current_depths))
@@ -201,35 +166,7 @@ def bin_at_resolution(wavelengths, depths, depth_error, R, method='sum'):
     return wout, werrout, dout, derrout
 
 
-def bin_at_pixel(flux, error, wave, npix):
-    nint, nwave = np.shape(flux)
-    if nwave % npix != 0:
-        msg = 'Bin size cannot be conserved.'
-        raise ValueError(msg)
-    nbin = int(nwave / npix)
-
-    flux_bin = np.nansum(np.reshape(flux, (nint, nbin, npix)), axis=2)
-    err_bin = np.sqrt(
-        np.nansum(np.reshape(error, (nint, nbin, npix)) ** 2, axis=2))
-
-    wave_bin = np.nanmean(np.reshape(wave, (nint, nbin, npix)), axis=2)
-    up = np.concatenate(
-        [wave_bin[0][:, None], np.roll(wave_bin[0][:, None], 1)], axis=1)
-    lw = np.concatenate(
-        [wave_bin[0][:, None], np.roll(wave_bin[0][:, None], -1)], axis=1)
-    wave_up = (np.mean(up, axis=1) - wave_bin[0])[:-1]
-    wave_up = np.insert(wave_up, -1, wave_up[-1])
-    wave_up = np.repeat(wave_up, nint).reshape(nbin, nint).transpose(1, 0)
-    wave_up = wave_bin + wave_up
-    wave_low = (wave_bin[0] - np.mean(lw, axis=1))[1:]
-    wave_low = np.insert(wave_low, 0, wave_low[0])
-    wave_low = np.repeat(wave_low, nint).reshape(nbin, nint).transpose(1, 0)
-    wave_low = wave_bin - wave_low
-
-    return wave_bin, wave_low, wave_up, flux_bin, err_bin
-
-
-def bin_2d_spectra(wave2d, flux2d, err2d, R=150):
+def bin_2d_spectra(wave2d, flux2d, err2d, res=150):
     """Utility to loop over bin_at_resolution for 2D dataframes (e.g., 2D
     spectroscopic lightcurves).
 
@@ -241,7 +178,7 @@ def bin_2d_spectra(wave2d, flux2d, err2d, R=150):
         Flux values at to each wavelength.
     err2d : array-like[float]
         Errors on the correspondng fluxes.
-    R : int
+    res : int
         Resolution to which to bin.
 
     Returns
@@ -264,11 +201,13 @@ def bin_2d_spectra(wave2d, flux2d, err2d, R=150):
     # desired resolution.
     for i in range(nints):
         if i == 0:
-            bin_res = bin_at_resolution(wave2d[i], flux2d[i], err2d[i], R=R)
+            bin_res = bin_at_resolution(wave2d[i], flux2d[i], err2d[i],
+                                        res=res)
             wc_bin, we_bin, f_bin, e_bin = bin_res
             wl_bin, wu_bin = we_bin
         elif i == 1:
-            bin_res = bin_at_resolution(wave2d[i], flux2d[i], err2d[i], R=R)
+            bin_res = bin_at_resolution(wave2d[i], flux2d[i], err2d[i],
+                                        res=res)
             wc_bin_i, we_bin_i, f_bin_i, e_bin_i = bin_res
             wl_bin_i, wu_bin_i = we_bin_i
             wc_bin = np.stack([wc_bin, wc_bin_i])
@@ -277,7 +216,8 @@ def bin_2d_spectra(wave2d, flux2d, err2d, R=150):
             f_bin = np.stack([f_bin, f_bin_i])
             e_bin = np.stack([e_bin, e_bin_i])
         else:
-            bin_res = bin_at_resolution(wave2d[i], flux2d[i], err2d[i], R=R)
+            bin_res = bin_at_resolution(wave2d[i], flux2d[i], err2d[i],
+                                        res=res)
             wc_bin_i, we_bin_i, f_bin_i, e_bin_i = bin_res
             wl_bin_i, wu_bin_i = we_bin_i
             wc_bin = np.concatenate([wc_bin, wc_bin_i[None, :]], axis=0)
@@ -287,6 +227,208 @@ def bin_2d_spectra(wave2d, flux2d, err2d, R=150):
             e_bin = np.concatenate([e_bin, e_bin_i[None, :]], axis=0)
 
     return wc_bin, wl_bin, wu_bin, f_bin, e_bin
+
+
+@ray.remote
+def fit_data(data_dictionary, priors, output_dir, bin_no, num_bins):
+    """Functional wrapper around run_juliet to make it compatible for
+    multiprocessing with ray.
+    """
+
+    print('Fitting bin {} / {}'.format(bin_no, num_bins))
+
+    # Get key names.
+    all_keys = list(data_dictionary.keys())
+
+    # Unpack fitting arrays
+    t = {'SOSS': data_dictionary['times']}
+    flux = {'SOSS': data_dictionary['flux']}
+    flux_err = {'SOSS': data_dictionary['error']}
+
+    # Initialize GP and linear model regressors.
+    gp_regressors = None
+    linear_regressors = None
+    if 'GP_parameters' in all_keys:
+        gp_regressors = {'SOSS': data_dictionary['GP_parameters']}
+    if 'lm_parameters' in all_keys:
+        linear_regressors = {'SOSS': data_dictionary['lm_parameters']}
+
+    fit_results = run_juliet(priors, t, flux, flux_err, output_dir,
+                             gp_regressors, linear_regressors)
+
+    return fit_results
+
+
+def fit_lightcurves(data_dict, prior_dict, order, output_dir, fit_suffix,
+                    nthreads=4):
+    """Wrapper about both the juliet and ray libraries to parallelize juliet's
+    lightcurve fitting functionality.
+
+    Parameters
+    ----------
+    data_dict : dict
+        Dictionary of fitting data: time, flux, and flu error.
+    prior_dict : dict
+        Dictionary of fitting priors in juliet format.
+    order : int
+        SOSS diffraction order.
+    output_dir : str
+        Path to directory to which to save results.
+    fit_suffix : str
+        String to label the results of this fit.
+    nthreads : int
+        Number of cores to use for multiprocessing.
+
+    Returns
+    -------
+    results : juliet.fit object
+        The results of the juliet fit.
+    """
+
+    # Initialize results dictionary and keynames.
+    results = dict.fromkeys(data_dict.keys(), [])
+    keynames = list(data_dict.keys())
+
+    # Format output directory
+    if output_dir[-1] != '/':
+        output_dir += '/'
+
+    # Initialize ray with specified number of threads.
+    ray.shutdown()
+    ray.init(num_cpus=nthreads)
+
+    # Set juliet fits as remotes to run parallel with ray.
+    all_fits = []
+    num_bins = np.arange(len(keynames))+1
+    for i, keyname in enumerate(keynames):
+        outdir = output_dir + 'speclightcurve{2}/order{0}_{1}'.format(order, keyname, fit_suffix)
+        all_fits.append(fit_data.remote(data_dict[keyname],
+                                        prior_dict[keyname],
+                                        output_dir=outdir,
+                                        bin_no=num_bins[i],
+                                        num_bins=len(num_bins)))
+    # Run the fits.
+    ray_results = ray.get(all_fits)
+
+    # Reorder the results based on the key name.
+    for i in range(len(keynames)):
+        keyname = keynames[i]
+        results[keyname] = ray_results[i]
+
+    return results
+
+
+def gen_ld_coefs(datafile, wavebin_low, wavebin_up, order, m_h, logg, teff):
+    """Generate estimates of quadratic limb-darkening coefficients using the
+    ExoTiC-LD package.
+
+    Parameters
+    ----------
+    datafile : str
+        Path to extract1d output file.
+    wavebin_low : array-like[float]
+        Lower edge of wavelength bins.
+    wavebin_up: array-like[float]
+        Upper edge of wavelength bins.
+    order : int
+        SOSS diffraction order.
+    m_h : float
+        Stellar metallicity as [M/H]
+    logg : float
+        Stellar log gravity.
+    teff : float
+        Stellar effective temperature in K.
+
+    Returns
+    -------
+    c1s : array-like[float]
+        c1 parameter for the quadratic limb-darkening law.
+    c2s : array-like[float]
+        c2 parameter for the quadratic limb-darkening law.
+    """
+
+    # Load external data.
+    ld_data_path = '/home/radica/.anaconda3/envs/atoca/lib/python3.10/site-packages/exotic_ld/exotic-ld_data/'
+    # Set up the stellar model parameters - using 1D models for speed.
+    sld = StellarLimbDarkening(m_h, teff, logg, '1D', ld_data_path)
+
+    # Load the most up to date throughput info for SOSS
+    step = calwebb_spec2.extract_1d_step.Extract1dStep()
+    spectrace_ref = step.get_reference_file(datafile, 'spectrace')
+    spec_trace = datamodels.SpecTraceModel(spectrace_ref)
+    wavelengths = spec_trace.trace[order].data['WAVELENGTH']*10000
+    throughputs = spec_trace.trace[order].data['THROUGHPUT']
+    # Note that custom throughputs are used.
+    mode = 'custom'
+
+    # Compute the LD coefficients over the given wavelength bins.
+    c1s, c2s = [], []
+    for wl, wu in zip(wavebin_low * 10000, wavebin_up * 10000):
+        wr = [wl, wu]
+        try:
+            c1, c2 = sld.compute_quadratic_ld_coeffs(wr, mode, wavelengths,
+                                                     throughputs)
+        except ValueError:
+            c1, c2 = np.nan, np.nan
+        c1s.append(c1)
+        c2s.append(c2)
+    c1s = np.array(c1s)
+    c2s = np.array(c2s)
+
+    return c1s, c2s
+
+
+def run_juliet(priors, t_lc, y_lc, yerr_lc, out_folder,
+               gp_regressors_lc, linear_regressors_lc):
+    """Wrapper around the lightcurve fitting functionality of the juliet
+    package.
+
+    Parameters
+    ----------
+    priors : dict
+        Dictionary of fitting priors.
+    t_lc : dict
+        Time axis.
+    y_lc : dict
+        Normalized lightcurve flux values.
+    yerr_lc : dict
+        Errors associated with each flux value.
+    out_folder : str
+        Path to folder to which to save results.
+    gp_regressors_lc : dict
+        GP regressors to fit, if any.
+    linear_regressors_lc : dict
+        Linear model regressors, if any.
+
+    Returns
+    -------
+    res : juliet.fit object
+        Results of juliet fit.
+    """
+
+    if np.isfinite(y_lc['SOSS']).all():
+        # Load in all priors and data to be fit.
+        dataset = juliet.load(priors=priors, t_lc=t_lc, y_lc=y_lc,
+                              yerr_lc=yerr_lc, out_folder=out_folder,
+                              GP_regressors_lc=gp_regressors_lc,
+                              linear_regressors_lc=linear_regressors_lc)
+        kwargs = {'maxiter': 25000, 'print_progress': False}
+
+        # Run the fit.
+        try:
+            res = dataset.fit(sampler='dynesty', **kwargs)
+        except KeyboardInterrupt as err:
+            raise err
+        except:
+            print('Exception encountered.')
+            print('Skipping bin.')
+            res = None
+    else:
+        print('NaN bin encountered.')
+        print('Skipping bin.')
+        res = None
+
+    return res
 
 
 def save_transmission_spectrum(wave, wave_err, dppm, dppm_err, order, outdir,
@@ -349,34 +491,3 @@ def save_transmission_spectrum(wave, wave_err, dppm, dppm_err, order, outdir,
     f.write('#\n')
     df.to_csv(f, index=False)
     f.close()
-
-
-def gen_ld_coefs(datafile, wavebin_low, wavebin_up, order, M_H, logg, Teff):
-    ld_data_path = '/home/radica/.anaconda3/envs/atoca/lib/python3.10/site-packages/exotic_ld/exotic-ld_data/'
-    sld = StellarLimbDarkening(M_H, Teff, logg, '1D', ld_data_path)
-    mode = 'custom'
-
-    step = calwebb_spec2.extract_1d_step.Extract1dStep()
-    spectrace_ref = step.get_reference_file(datafile, 'spectrace')
-    spec_trace = datamodels.SpecTraceModel(spectrace_ref)
-    wavelengths = spec_trace.trace[order].data['WAVELENGTH']*10000
-    throughputs = spec_trace.trace[order].data['THROUGHPUT']
-
-    c1s, c2s = [], []
-    for wl, wu in zip(wavebin_low * 10000, wavebin_up * 10000):
-        wr = [wl, wu]
-        try:
-            c1, c2 = sld.compute_quadratic_ld_coeffs(wr, mode, wavelengths,
-                                                     throughputs)
-        except ValueError:
-            c1, c2 = np.nan, np.nan
-        c1s.append(c1)
-        c2s.append(c2)
-    c1s = np.array(c1s)
-    c2s = np.array(c2s)
-
-    return c1s, c2s
-
-
-def run_stage4():
-    return
