@@ -77,10 +77,15 @@ outdir = root_dir + 'pipeline_outputs_directory' + output_tag + '/Stage4/'
 if fit_suffix != '':
     fit_suffix = '_' + fit_suffix
 # Add resolution info to the fit tag.
-if isinstance(res, str):
+if res == 'native':
     fit_suffix += '_native'
+    res_str = 'native resolution'
+elif res == 'pixel':
+    fit_suffix += '_pixel'
+    res_str = 'pixel resolution'
 else:
     fit_suffix += '_R{}'.format(res)
+    res_str = 'R = {}'.format(res)
 
 # Formatted parameter names for plotting.
 formatted_names = {'P_p1': r'$P$', 't0_p1': r'$T_0$', 'p_p1': r'$R$_p/R_*$',
@@ -126,11 +131,6 @@ for order in orders:
     else:
         outpdf = None
 
-    if res == 'native':
-        res_str = 'native resolution'
-    else:
-        res_str = 'R = {}'.format(res)
-
     # === Set Up Priors and Fit Parameters ===
     print('\nFitting order {} at {}\n'.format(order, res_str))
     # Unpack wave, flux and error
@@ -141,7 +141,9 @@ for order in orders:
     err = fits.getdata(infile, 4 + 4*(order - 1))
 
     # Bin input spectra to desired resolution.
-    if res == 'native':
+    if res == 'pixel':
+        wave, wave_low, wave_up = wave[0], wave_low[0], wave_up[0]
+    elif res == 'native':
         binned_vals = stage4.bin_at_pixel(flux, err, wave, npix=2)
         wave, wave_low, wave_up, flux, err = binned_vals
         wave, wave_low, wave_up = wave[0], wave_low[0], wave_up[0]
