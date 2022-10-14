@@ -894,7 +894,7 @@ def sigma_clip_lightcurves(flux, ferr, thresh=5):
     return flux_clipped
 
 
-def soss_stability(cube, nsteps=2500, axis='x', smoothing_scale=None):
+def soss_stability(cube, nsteps=501, axis='x', smoothing_scale=None):
     """ Perform a CCF analysis to track the movement of the SOSS trace
     relative to the median stack over the course of a TSO.
 
@@ -928,7 +928,7 @@ def soss_stability(cube, nsteps=2500, axis='x', smoothing_scale=None):
     f = interp2d(np.arange(dimx), np.arange(dimy), med, kind='cubic')
     # Perform cross-correlation over desired axis.
     for i in tqdm(range(nints)):
-        for j, jj in enumerate(np.linspace(-0.05, 0.05, nsteps)):
+        for j, jj in enumerate(np.linspace(-0.01, 0.01, nsteps)):
             if axis == 'x':
                 interp = f(np.arange(dimx) + jj, np.arange(dimy))
             elif axis == 'y':
@@ -947,7 +947,7 @@ def soss_stability(cube, nsteps=2500, axis='x', smoothing_scale=None):
     # Smooth results.
     if smoothing_scale is None:
         smoothing_scale = int(0.2 * nints)
-    ccf = median_filter(np.linspace(-0.05, 0.05, nsteps)[maxvals],
+    ccf = median_filter(np.linspace(-0.01, 0.01, nsteps)[maxvals],
                         smoothing_scale)
     ccf = ccf.reshape(nints)
 
@@ -978,11 +978,12 @@ def soss_stability_fwhm(cube, ycens_o1):
     # Get data dimensions.
     nints, dimy, dimx = np.shape(cube)
     # Initialize storage array for widths.
-    fwhm = np.zeros((dimy, dimx))
+    fwhm = np.zeros((nints, dimx-254))
 
     # Fit a Gaussian to the PSF in each detector column.
     for j in tqdm(range(nints)):
-        for i in range(4, dimx-4):
+        # Cut out first 500 columns as there is order 2 contmination.
+        for i in range(250, dimx-4):
             p0 = [1., ycens_o1[i], 1.]
             data = np.copy(cube[j, :, i])
             # Replace any NaN values with a median.
@@ -991,7 +992,13 @@ def soss_stability_fwhm(cube, ycens_o1):
                 data[ii] = np.nanmedian(data)
             # Fit a Gaussian to the profile, and save the FWHM.
             coeff, var_matrix = curve_fit(gauss, np.arange(dimy), data, p0=p0)
-            fwhm[j, i] = coeff[2] * 2.355
+            fwhm[j, i-250] = coeff[2] * 2.355
+
+    # Get median FWHM per integration.
+    fwhm = np.nanmedian(fwhm, axis=1)
+    fwhm -= np.median(fwhm)
+    # Smooth the trend.
+    fwhm = median_filter(fwhm, int(0.2 * nints))
 
     return fwhm
 

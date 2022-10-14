@@ -348,6 +348,7 @@ def gen_ld_coefs(datafile, wavebin_low, wavebin_up, order, m_h, logg, teff):
     """
 
     # Load external data.
+    # TODO: do something about this local path
     ld_data_path = '/home/radica/.anaconda3/envs/atoca/lib/python3.10/site-packages/exotic_ld/exotic-ld_data/'
     # Set up the stellar model parameters - using 1D models for speed.
     sld = StellarLimbDarkening(m_h, teff, logg, '1D', ld_data_path)
