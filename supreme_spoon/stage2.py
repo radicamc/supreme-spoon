@@ -7,7 +7,6 @@ Created on Thurs Jul 21 17:33 2022
 
 Custom JWST DMS pipeline steps for Stage 2 (Spectroscopic processing).
 """
-
 from astropy.io import fits
 import glob
 import numpy as np
@@ -273,7 +272,7 @@ class LightCurveEstimateStep:
 
 
 def badpixstep(datafiles, baseline_ints, smoothed_wlc=None, thresh=3,
-               box_size=5, max_iter=2, output_dir='./', save_results=True,
+               box_size=2, max_iter=3, output_dir='./', save_results=True,
                fileroots=None, fileroot_noseg='', occultation_type='transit'):
     """Identify and correct hot pixels remaining in the dataset. Find outlier
     pixels in the median stack and correct them via the median of a box of
@@ -360,25 +359,18 @@ def badpixstep(datafiles, baseline_ints, smoothed_wlc=None, thresh=3,
             for j in range(dimy):
                 box_size_i = box_size
                 box_prop = utils.get_interp_box(deepframe, box_size_i, i, j,
-                                                dimx, dimy)
+                                                dimx)
                 # Ensure that the median and std dev extracted are good.
                 # If not, increase the box size until they are.
                 while np.any(np.isnan(box_prop)):
                     box_size_i += 1
                     box_prop = utils.get_interp_box(deepframe, box_size_i, i,
-                                                    j, dimx, dimy)
+                                                    j, dimx)
                 med, std = box_prop[0], box_prop[1]
 
                 # If central pixel is too deviant (or nan) flag it.
-                if np.abs(deepframe[j, i] - med) > thresh * std or np.isnan(deepframe[j, i]):
-                    mini, maxi = np.max([0, i - 1]), np.min([dimx - 1, i + 1])
-                    minj, maxj = np.max([0, j - 1]), np.min([dimy - 1, j + 1])
+                if np.abs(deepframe[j, i] - med) >= (thresh * std) or np.isnan(deepframe[j, i]):
                     badpix[j, i] = 1
-                    # Also flag cross around the central pixel.
-                    badpix[maxj, i] = 1
-                    badpix[minj, i] = 1
-                    badpix[j, maxi] = 1
-                    badpix[j, mini] = 1
                     count += 1
 
         print(' {} bad pixels identified this iteration.'.format(count))
@@ -397,7 +389,7 @@ def badpixstep(datafiles, baseline_ints, smoothed_wlc=None, thresh=3,
             timeseries = timeseries / np.nanmedian(timeseries[baseline_ints])
             # Smooth the time series on a timescale of roughly 2%.
             smoothed_wlc = median_filter(timeseries,
-                                         int(0.02 * np.shape(cube)[0]))
+                                         int(0.02*np.shape(cube)[0]))
         # Replace hot pixels in each integration using a scaled median.
         newdeep = np.repeat(newdeep, nint).reshape(dimy, dimx, nint)
         newdeep = newdeep.transpose(2, 0, 1) * smoothed_wlc[:, None, None]

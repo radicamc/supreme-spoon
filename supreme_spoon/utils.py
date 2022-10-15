@@ -63,7 +63,7 @@ def do_replacement(frame, badpix_map, dq=None, box_size=5):
                 continue
             # If pixel is flagged, replace it with the box median.
             else:
-                med = get_interp_box(frame, box_size, i, j, dimx, dimy)[0]
+                med = get_interp_box(frame, box_size, i, j, dimx)[0]
                 frame_out[j, i] = med
                 # Set dq flag of inerpolated pixel to zero (use the pixel).
                 dq_out[j, i] = 0
@@ -72,7 +72,7 @@ def do_replacement(frame, badpix_map, dq=None, box_size=5):
 
 
 def fix_filenames(old_files, to_remove, outdir, to_add=''):
-    """Hacky function to remove fle extensions that get added when running a
+    """Hacky function to remove file extensions that get added when running a
     default JWST DMS step after a custom one.
 
     Parameters
@@ -286,7 +286,7 @@ def get_filename_root_noseg(fileroots):
     return fileroot_noseg
 
 
-def get_interp_box(data, box_size, i, j, dimx, dimy):
+def get_interp_box(data, box_size, i, j, dimx):
     """Get median and standard deviation of a box centered on a specified
     pixel.
 
@@ -302,8 +302,6 @@ def get_interp_box(data, box_size, i, j, dimx, dimy):
         Y pixel.
     dimx : int
         Size of x dimension.
-    dimy : int
-        Size of y dimension.
 
     Returns
     -------
@@ -314,12 +312,10 @@ def get_interp_box(data, box_size, i, j, dimx, dimy):
     # Get the box limits.
     low_x = np.max([i - box_size, 0])
     up_x = np.min([i + box_size, dimx - 1])
-    low_y = np.max([j - box_size, 0])
-    up_y = np.min([j + box_size, dimy - 1])
 
     # Calculate median and std deviation of box.
-    median = np.nanmedian(data[low_y:up_y, low_x:up_x])
-    stddev = np.nanstd(data[low_y:up_y, low_x:up_x])
+    median = np.nanmedian(data[j, low_x:up_x])
+    stddev = np.nanstd(data[j, low_x:up_x])
 
     # Pack into array.
     box_properties = np.array([median, stddev])
