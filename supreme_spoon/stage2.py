@@ -149,7 +149,7 @@ class BadPixStep:
         self.fileroots = utils.get_filename_root(self.datafiles)
         self.fileroot_noseg = utils.get_filename_root_noseg(self.fileroots)
 
-    def run(self, thresh=3, box_size=5, max_iter=2, save_results=True,
+    def run(self, thresh=3, box_size=5, max_iter=3, save_results=True,
             force_redo=False):
         """Method to run the step.
         """
@@ -370,7 +370,14 @@ def badpixstep(datafiles, baseline_ints, smoothed_wlc=None, thresh=3,
 
                 # If central pixel is too deviant (or nan) flag it.
                 if np.abs(deepframe[j, i] - med) >= (thresh * std) or np.isnan(deepframe[j, i]):
+                    mini, maxi = np.max([0, i - 1]), np.min([dimx - 1, i + 1])
+                    minj, maxj = np.max([0, j - 1]), np.min([dimy - 1, j + 1])
                     badpix[j, i] = 1
+                    # Also flag cross around the central pixel.
+                    badpix[maxj, i] = 1
+                    badpix[minj, i] = 1
+                    badpix[j, maxi] = 1
+                    badpix[j, mini] = 1
                     count += 1
 
         print(' {} bad pixels identified this iteration.'.format(count))
