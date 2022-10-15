@@ -88,7 +88,7 @@ else:
     res_str = 'R = {}'.format(res)
 
 # Formatted parameter names for plotting.
-formatted_names = {'P_p1': r'$P$', 't0_p1': r'$T_0$', 'p_p1': r'$R$_p/R_*$',
+formatted_names = {'P_p1': r'$P$', 't0_p1': r'$T_0$', 'p_p1': r'$R_p/R_*$',
                    'b_p1': r'$b$', 'q1_SOSS': r'$q_1$', 'q2_SOSS': r'$q_2$',
                    'ecc_p1': r'$e$', 'omega_p1': r'$\Omega$',
                    'a_p1': r'$a/R_*$', 'sigma_w': r'$\sigma_w_SOSS$',
@@ -150,6 +150,7 @@ for order in orders:
     else:
         binned_vals = stage4.bin_at_resolution(wave[0], flux.T, err.T, res=res)
         wave, wave_err, flux, err = binned_vals
+        flux, err = flux.T, err.T
         wave_low, wave_up = wave - wave_err, wave + wave_err
 
     # For order 2, only fit wavelength bins between 0.6 and 0.85µm.
@@ -224,7 +225,8 @@ for order in orders:
     models = np.ones((nints, nbins)) * np.nan
     residuals = np.ones((nints, nbins)) * np.nan
     order_results = {'dppm': [], 'dppm_err': [], 'wave': wave,
-                     'wave_err': np.mean([wave_low, wave_up], axis=0)}
+                     'wave_err': np.mean([wave - wave_low, wave_up - wave],
+                                         axis=0)}
     for i, wavebin in enumerate(fit_results.keys()):
         # Make note if something went wrong with this bin.
         skip = False
@@ -252,7 +254,11 @@ for order in orders:
                 transit_model = fit_results[wavebin].lc.evaluate('SOSS')
                 scatter = np.median(fit_results[wavebin].posteriors['posterior_samples']['sigma_w_SOSS'])
                 nfit = len(np.where(dists != 'fixed')[0])
-                t0 = np.median(fit_results.posteriors.posterior_samples['t0_p1'])
+                t0_loc = np.where(np.array(params) == 't0_p1')[0][0]
+                if dists[t0_loc] == 'fixed':
+                    t0 = hyperps[t0_loc]
+                else:
+                    t0 = np.median(fit_results[wavebin].posteriors['posterior_samples']['t0_p1'])
                 plotting.do_lightcurve_plot(t=(t-t0)*24, data=norm_flux[:, i],
                                             model=transit_model,
                                             scatter=scatter,
@@ -314,7 +320,7 @@ orders = np.concatenate([2*np.ones_like(results_dict['order 2']['dppm']),
 infile_header = fits.getheader(infile, 0)
 extract_type = infile_header['METHOD']
 target = infile_header['TARGET'] + planet_letter
-filename = target + '_NIRISS_SOSS_' + extract_type + '_tranmission_spectrum' \
+filename = target + '_NIRISS_SOSS_' + extract_type + '_transmission_spectrum' \
            + fit_suffix + '.csv'
 # Get fit metadata.
 # Include fixed parameter values.
