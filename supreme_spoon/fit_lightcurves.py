@@ -148,9 +148,9 @@ for order in orders:
         wave, wave_low, wave_up, flux, err = binned_vals
         wave, wave_low, wave_up = wave[0], wave_low[0], wave_up[0]
     else:
-        binned_vals = stage4.bin_2d_spectra(wave, flux, err, res=res)
-        wave, wave_low, wave_up, flux, err = binned_vals
-        wave, wave_low, wave_up = wave[0], wave_low[0], wave_up[0]
+        binned_vals = stage4.bin_at_resolution(wave[0], flux.T, err.T, res=res)
+        wave, wave_err, flux, err = binned_vals
+        wave_low, wave_up = wave - wave_err, wave + wave_err
 
     # For order 2, only fit wavelength bins between 0.6 and 0.85µm.
     if order == 2:

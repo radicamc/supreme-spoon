@@ -77,156 +77,127 @@ def bin_at_pixel(flux, error, wave, npix):
     return wave_bin, wave_low, wave_up, flux_bin, err_bin
 
 
-def bin_at_resolution(wavelengths, depths, depth_error, res, method='sum'):
+def bin_at_resolution(waves, flux, flux_err, res, method='sum'):
     """Function that bins input wavelengths and transit depths (or any other
-    observable, like flux) to a given resolution "res". Useful for binning
-    transit depths down to a target resolution on a transit spectrum.
-    Adapted from Néstor Espinoza.
+    observable, like flux) to a given resolution "res". Can handle 1D or 2D
+    flux arrays.
 
     Parameters
     ----------
-    wavelengths : array-like[float]
-        Wavelength values.
-    depths : array-like[float]
-        Depth values at each wavelength.
-    depth_error : array-like[float]
-        Errors corresponding to each depth measurement.
+    waves : array-like[float]
+        Wavelength values. Must be 1D.
+    flux : array-like[float]
+        Flux values at each wavelength. Can be 1D or 2D. If 2D, the first axis
+        must be the one corresponding to wavelength.
+    flux_err : array-like[float]
+        Errors corresponding to each flux measurement. Must be the same shape
+        as flux.
     res : int
         Target resolution at which to bin.
     method : str
-        Method to bin depths.
+        Method to bin depths. Either "sum" or "average".
 
     Returns
     -------
-    wout : np.ndarray[float]
-        Wavelength of the given bin at resolution R.
-    werrout : list[float]
-        Width of the wavelength bin.
-    dout : np.ndarray[float]
-        Binned depth.
-    derrout : np.ndarray[float]
-        Error on binned depth.
-    """
-
-    # Prepare output arrays:
-    wout, dout, derrout = np.array([]), np.array([]), np.array([])
-
-    # Sort wavelengths from lowest to highest:
-    idx = np.argsort(wavelengths)
-    ww = wavelengths[idx]
-    dd = depths[idx]
-    de = depth_error[idx]
-
-    oncall = False
-    # Loop over all wavelengths:
-    for i in range(len(ww)):
-        if not oncall:
-            # If we are in a given bin, initialize it:
-            current_wavs = np.array([ww[i]])
-            current_depths = np.array(dd[i])
-            current_errors = np.array(de[i])
-            oncall = True
-        else:
-            # On a given bin, append next wavelength/depth:
-            current_wavs = np.append(current_wavs, ww[i])
-            current_errors = np.append(current_errors, de[i])
-            current_depths = np.append(current_depths, dd[i])
-
-            # Calculate current mean R:
-            current_r = np.mean(current_wavs) / np.abs(current_wavs[0] - current_wavs[-1])
-
-            # If the current set of wavs/depths is below or at the target
-            # resolution, stop and move to next bin:
-            if current_r <= res:
-                wout = np.append(wout, np.nanmean(current_wavs))
-                if method == 'sum':
-                    dout = np.append(dout, np.nansum(current_depths))
-                    derrout = np.append(derrout, np.sqrt(np.nansum(current_errors**2)))
-                elif method == 'average':
-                    ii = np.where(~np.isfinite(current_depths) | ~np.isfinite(current_errors))
-                    current_errors = np.delete(current_errors, ii)
-                    current_depths = np.delete(current_depths, ii)
-                    cd = np.average(current_depths, weights=1/current_errors**2)
-                    dout = np.append(dout, cd)
-                    derrout = np.append(derrout, np.sqrt(np.nansum(current_errors**2))/len(current_errors))
-                else:
-                    raise ValueError('Unidentified method {}.'.format(method))
-                oncall = False
-
-    # Calculate the wavelength limits of each bin.
-    lw = np.concatenate([wout[:, None], np.roll(wout, 1)[:, None]], axis=1)
-    up = np.concatenate([wout[:, None], np.roll(wout, -1)[:, None]], axis=1)
-
-    uperr = (np.mean(up, axis=1) - wout)[:-1]
-    uperr = np.insert(uperr, -1, uperr[-1])
-    lwerr = (wout - np.mean(lw, axis=1))[1:]
-    lwerr = np.insert(lwerr, 0, lwerr[0])
-    werrout = [lwerr, uperr]
-
-    return wout, werrout, dout, derrout
-
-
-def bin_2d_spectra(wave2d, flux2d, err2d, res=150):
-    """Utility to loop over bin_at_resolution for 2D dataframes (e.g., 2D
-    spectroscopic lightcurves).
-
-    Parameters
-    ----------
-    wave2d : array-like[float]
-        2D array of wavelengths.
-    flux2d : array-like[float]
-        Flux values at to each wavelength.
-    err2d : array-like[float]
-        Errors on the correspondng fluxes.
-    res : int
-        Resolution to which to bin.
-
-    Returns
-    -------
-    wc_bin : np.ndarray[float]
-        Central wavelength of the bin.
-    wl_bin : np.ndarray[float]
-        Lower wavelength limit of the bin.
-    wu_bin : np.ndarray[float]
-        Upper wavelength limit of the bin.
-    f_bin : np.ndarray[float]
+    binned_waves : array-like[float]
+        Wavelength of the given bin at the desired resolution.
+    binned_werr : array-like[float]
+        Half-width of the wavelength bin.
+    binned_flux : array-like[float]
         Binned flux.
-    e_bin : np.ndarray[float]
-        Binned error.
+    binned_ferr : array-like[float]
+        Error on binned flux.
     """
 
-    nints, nwave = np.shape(wave2d)
+    def nextstep(w, r):
+        return w * (2 * r + 1) / (2 * r - 1)
 
-    # Simply loop over each integration and bin the flux values down to the
-    # desired resolution.
-    for i in range(nints):
-        if i == 0:
-            bin_res = bin_at_resolution(wave2d[i], flux2d[i], err2d[i],
-                                        res=res)
-            wc_bin, we_bin, f_bin, e_bin = bin_res
-            wl_bin, wu_bin = we_bin
-        elif i == 1:
-            bin_res = bin_at_resolution(wave2d[i], flux2d[i], err2d[i],
-                                        res=res)
-            wc_bin_i, we_bin_i, f_bin_i, e_bin_i = bin_res
-            wl_bin_i, wu_bin_i = we_bin_i
-            wc_bin = np.stack([wc_bin, wc_bin_i])
-            wl_bin = np.stack([wl_bin, wl_bin_i])
-            wu_bin = np.stack([wu_bin, wu_bin_i])
-            f_bin = np.stack([f_bin, f_bin_i])
-            e_bin = np.stack([e_bin, e_bin_i])
-        else:
-            bin_res = bin_at_resolution(wave2d[i], flux2d[i], err2d[i],
-                                        res=res)
-            wc_bin_i, we_bin_i, f_bin_i, e_bin_i = bin_res
-            wl_bin_i, wu_bin_i = we_bin_i
-            wc_bin = np.concatenate([wc_bin, wc_bin_i[None, :]], axis=0)
-            wl_bin = np.concatenate([wl_bin, wl_bin_i[None, :]], axis=0)
-            wu_bin = np.concatenate([wu_bin, wu_bin_i[None, :]], axis=0)
-            f_bin = np.concatenate([f_bin, f_bin_i[None, :]], axis=0)
-            e_bin = np.concatenate([e_bin, e_bin_i[None, :]], axis=0)
+    # Sort quantities in order of increasing wavelength.
+    if np.ndim(waves) > 1:
+        msg = 'Input wavelength array must be 1D.'
+        raise ValueError(msg)
+    ii = np.argsort(waves)
+    waves, flux, flux_err = waves[ii], flux[ii], flux_err[ii]
+    # Calculate the input resolution and check that we are not trying to bin
+    # to a higher R.
+    average_input_res = np.mean(waves[1:] / np.diff(waves))
+    if res > average_input_res:
+        msg = 'You are trying to bin at a higher resolution than the input.'
+        raise ValueError(msg)
+    else:
+        print('Binning from an average resolution of '
+              'R={:.0f} to R={}'.format(average_input_res, res))
 
-    return wc_bin, wl_bin, wu_bin, f_bin, e_bin
+    # Make the binned wavelength grid.
+    wavebin_low = []
+    w_i, w_ip1 = waves[0], waves[0]
+    while w_ip1 < waves[-1]:
+        wavebin_low.append(w_ip1)
+        w_ip1 = nextstep(w_i, res)
+        w_i = w_ip1
+    wavebin_low = np.array(wavebin_low)
+    wavebin_up = np.append(wavebin_low[1:], waves[-1])
+    binned_waves = np.mean([wavebin_low, wavebin_up], axis=0)
+    binned_werr = (wavebin_up - wavebin_low)/2
+
+    # Loop over all wavelengths in the input and bin flux and error into the
+    # new wavelength grid.
+    ii = 0
+    for wl, wu in zip(wavebin_low, wavebin_up):
+        first_time, count = True, 0
+        current_flux = np.ones_like(flux[ii]) * np.nan
+        current_ferr = np.ones_like(flux_err[ii]) * np.nan
+        for i in range(ii, len(waves)):
+            # If the wavelength is within the bin, append the flux and error
+            # to the current bin info.
+            if wl <= waves[i] < wu:
+                if np.ndim(flux) == 1:
+                    current_flux = np.hstack([flux[i], current_flux])
+                    current_ferr = np.hstack([flux_err[i], current_ferr])
+                else:
+                    current_flux = np.vstack([flux[i], current_flux])
+                    current_ferr = np.vstack([flux_err[i], current_ferr])
+                count += 1
+            # Since wavelengths are in increasing order, once we exit the bin
+            # we're done.
+            if waves[i] >= wu:
+                if count != 0:
+                    # If something was put into this bin, bin it using the
+                    # requested method.
+                    if method == 'sum':
+                        thisflux = np.nansum(current_flux, axis=0)
+                        thisferr = np.sqrt(np.nansum(current_ferr**2, axis=0))
+                    elif method == 'average':
+                        thisflux = np.nanmean(current_flux, axis=0)
+                        thisferr = np.sqrt(np.nansum(current_ferr**2, axis=0)) / count
+                    else:
+                        raise ValueError('Unknown method.')
+                else:
+                    # If nothing is in the bin (can happen if the output
+                    # reslution is higher than the local input resolution),
+                    # append NaNs
+                    if np.ndim(flux) == 1:
+                        thisflux, thisferr = np.nan, np.nan
+                    else:
+                        thisflux = np.ones_like(flux[0]) * np.nan
+                        thisferr = np.ones_like(flux[0]) * np.nan
+                # Store the binned quantities.
+                if ii == 0:
+                    binned_flux = thisflux
+                    binned_ferr = thisferr
+                else:
+                    binned_flux = np.vstack([binned_flux, thisflux])
+                    binned_ferr = np.vstack([binned_ferr, thisferr])
+                # Move to the next bin.
+                ii = i
+                break
+
+    # If the input was 1D, reformat to match.
+    if np.ndim(flux) == 1:
+        binned_flux = binned_flux[:, 0]
+        binned_ferr = binned_ferr[:, 0]
+
+    return binned_waves, binned_werr, binned_flux, binned_ferr
 
 
 @ray.remote
@@ -492,3 +463,157 @@ def save_transmission_spectrum(wave, wave_err, dppm, dppm_err, order, outdir,
     f.write('#\n')
     df.to_csv(f, index=False)
     f.close()
+
+######## FUNTIONS TO SCRAP AFTER CONFIRMATION #######
+
+
+def bin_at_resolution_old(wavelengths, depths, depth_error, res, method='sum'):
+    """Function that bins input wavelengths and transit depths (or any other
+    observable, like flux) to a given resolution "res". Useful for binning
+    transit depths down to a target resolution on a transit spectrum.
+    Adapted from Néstor Espinoza.
+
+    Parameters
+    ----------
+    wavelengths : array-like[float]
+        Wavelength values.
+    depths : array-like[float]
+        Depth values at each wavelength.
+    depth_error : array-like[float]
+        Errors corresponding to each depth measurement.
+    res : int
+        Target resolution at which to bin.
+    method : str
+        Method to bin depths.
+
+    Returns
+    -------
+    wout : np.ndarray[float]
+        Wavelength of the given bin at resolution R.
+    werrout : list[float]
+        Width of the wavelength bin.
+    dout : np.ndarray[float]
+        Binned depth.
+    derrout : np.ndarray[float]
+        Error on binned depth.
+    """
+
+    # Prepare output arrays:
+    wout, dout, derrout = np.array([]), np.array([]), np.array([])
+
+    # Sort wavelengths from lowest to highest:
+    idx = np.argsort(wavelengths)
+    ww = wavelengths[idx]
+    dd = depths[idx]
+    de = depth_error[idx]
+
+    oncall = False
+    # Loop over all wavelengths:
+    for i in range(len(ww)):
+        if not oncall:
+            # If we are in a given bin, initialize it:
+            current_wavs = np.array([ww[i]])
+            current_depths = np.array(dd[i])
+            current_errors = np.array(de[i])
+            oncall = True
+        else:
+            # On a given bin, append next wavelength/depth:
+            current_wavs = np.append(current_wavs, ww[i])
+            current_errors = np.append(current_errors, de[i])
+            current_depths = np.append(current_depths, dd[i])
+
+            # Calculate current mean R:
+            current_r = np.mean(current_wavs) / np.abs(current_wavs[0] - current_wavs[-1])
+
+            # If the current set of wavs/depths is below or at the target
+            # resolution, stop and move to next bin:
+            if current_r <= res:
+                wout = np.append(wout, np.nanmean(current_wavs))
+                if method == 'sum':
+                    dout = np.append(dout, np.nansum(current_depths))
+                    derrout = np.append(derrout, np.sqrt(np.nansum(current_errors**2)))
+                elif method == 'average':
+                    ii = np.where(~np.isfinite(current_depths) | ~np.isfinite(current_errors))
+                    current_errors = np.delete(current_errors, ii)
+                    current_depths = np.delete(current_depths, ii)
+                    cd = np.average(current_depths, weights=1/current_errors**2)
+                    dout = np.append(dout, cd)
+                    derrout = np.append(derrout, np.sqrt(np.nansum(current_errors**2))/len(current_errors))
+                else:
+                    raise ValueError('Unidentified method {}.'.format(method))
+                oncall = False
+
+    # Calculate the wavelength limits of each bin.
+    lw = np.concatenate([wout[:, None], np.roll(wout, 1)[:, None]], axis=1)
+    up = np.concatenate([wout[:, None], np.roll(wout, -1)[:, None]], axis=1)
+
+    uperr = (np.mean(up, axis=1) - wout)[:-1]
+    uperr = np.insert(uperr, -1, uperr[-1])
+    lwerr = (wout - np.mean(lw, axis=1))[1:]
+    lwerr = np.insert(lwerr, 0, lwerr[0])
+    werrout = [lwerr, uperr]
+
+    return wout, werrout, dout, derrout
+
+
+def bin_2d_spectra(wave2d, flux2d, err2d, res=150):
+    """Utility to loop over bin_at_resolution for 2D dataframes (e.g., 2D
+    spectroscopic lightcurves).
+
+    Parameters
+    ----------
+    wave2d : array-like[float]
+        2D array of wavelengths.
+    flux2d : array-like[float]
+        Flux values at to each wavelength.
+    err2d : array-like[float]
+        Errors on the correspondng fluxes.
+    res : int
+        Resolution to which to bin.
+
+    Returns
+    -------
+    wc_bin : np.ndarray[float]
+        Central wavelength of the bin.
+    wl_bin : np.ndarray[float]
+        Lower wavelength limit of the bin.
+    wu_bin : np.ndarray[float]
+        Upper wavelength limit of the bin.
+    f_bin : np.ndarray[float]
+        Binned flux.
+    e_bin : np.ndarray[float]
+        Binned error.
+    """
+
+    nints, nwave = np.shape(wave2d)
+
+    # Simply loop over each integration and bin the flux values down to the
+    # desired resolution.
+    for i in range(nints):
+        if i == 0:
+            bin_res = bin_at_resolution(wave2d[i], flux2d[i], err2d[i],
+                                        res=res)
+            wc_bin, we_bin, f_bin, e_bin = bin_res
+            wl_bin, wu_bin = we_bin
+        elif i == 1:
+            bin_res = bin_at_resolution(wave2d[i], flux2d[i], err2d[i],
+                                        res=res)
+            wc_bin_i, we_bin_i, f_bin_i, e_bin_i = bin_res
+            wl_bin_i, wu_bin_i = we_bin_i
+            wc_bin = np.stack([wc_bin, wc_bin_i])
+            wl_bin = np.stack([wl_bin, wl_bin_i])
+            wu_bin = np.stack([wu_bin, wu_bin_i])
+            f_bin = np.stack([f_bin, f_bin_i])
+            e_bin = np.stack([e_bin, e_bin_i])
+        else:
+            bin_res = bin_at_resolution(wave2d[i], flux2d[i], err2d[i],
+                                        res=res)
+            wc_bin_i, we_bin_i, f_bin_i, e_bin_i = bin_res
+            wl_bin_i, wu_bin_i = we_bin_i
+            wc_bin = np.concatenate([wc_bin, wc_bin_i[None, :]], axis=0)
+            wl_bin = np.concatenate([wl_bin, wl_bin_i[None, :]], axis=0)
+            wu_bin = np.concatenate([wu_bin, wu_bin_i[None, :]], axis=0)
+            f_bin = np.concatenate([f_bin, f_bin_i[None, :]], axis=0)
+            e_bin = np.concatenate([e_bin, e_bin_i[None, :]], axis=0)
+
+    return wc_bin, wl_bin, wu_bin, f_bin, e_bin
