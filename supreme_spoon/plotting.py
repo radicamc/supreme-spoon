@@ -126,7 +126,8 @@ def do_lightcurve_plot(t, data, model, scatter, errors, outpdf=None,
             outpdf.savefig(fig)
         else:
             fig.savefig(outpdf)
-        plt.close()
+        fig.clear()
+        plt.close(fig)
     else:
         plt.show()
 
@@ -151,20 +152,19 @@ def make_corner(fit_params, results, posterior_names=None, outpdf=None,
             pos = results.posteriors['posterior_samples'][param]
             first_time = False
         else:
-            pos = np.vstack(
-                (pos, results.posteriors['posterior_samples'][param]))
+            pos = np.vstack((pos, results.posteriors['posterior_samples'][param]))
 
     figure = corner.corner(pos.T, labels=posterior_names, color='black',
-                           show_titles=True,
-                           title_fmt='.3f', label_kwargs=dict(fontsize=14),
-                           truths=truths,
+                           show_titles=True, title_fmt='.3f',
+                           label_kwargs=dict(fontsize=14), truths=truths,
                            facecolor='white')
     if outpdf is not None:
         if isinstance(outpdf, matplotlib.backends.backend_pdf.PdfPages):
             outpdf.savefig(figure)
         else:
             figure.savefig(outpdf)
-        plt.close()
+        figure.clear()
+        plt.close(figure)
     else:
         plt.show()
 
@@ -224,6 +224,7 @@ def plot_2dlightcurves(wave1, flux1, wave2=None, flux2=None, outpdf=None,
             outpdf.savefig(fig)
         else:
             fig.savefig(outpdf)
-        plt.close()
+        fig.clear()
+        plt.close(fig)
     else:
         plt.show()

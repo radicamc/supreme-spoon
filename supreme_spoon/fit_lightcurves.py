@@ -91,7 +91,7 @@ else:
 formatted_names = {'P_p1': r'$P$', 't0_p1': r'$T_0$', 'p_p1': r'$R_p/R_*$',
                    'b_p1': r'$b$', 'q1_SOSS': r'$q_1$', 'q2_SOSS': r'$q_2$',
                    'ecc_p1': r'$e$', 'omega_p1': r'$\Omega$',
-                   'a_p1': r'$a/R_*$', 'sigma_w': r'$\sigma_w_SOSS$',
+                   'a_p1': r'$a/R_*$', 'sigma_w_SOSS': r'$\sigma_w$',
                    'theta0_SOSS': r'$\theta_0$', 'theta1_SOSS': r'$\theta_1$',
                    'theta2_SOSS': r'$\theta_2$',
                    'GP_sigma_SOSS': r'$GP_\sigma$', 'GP_rho_SOSS': r'$GP_rho$',
@@ -320,8 +320,7 @@ orders = np.concatenate([2*np.ones_like(results_dict['order 2']['dppm']),
 infile_header = fits.getheader(infile, 0)
 extract_type = infile_header['METHOD']
 target = infile_header['TARGET'] + planet_letter
-filename = target + '_NIRISS_SOSS_' + extract_type + '_transmission_spectrum' \
-           + fit_suffix + '.csv'
+filename = target + '_NIRISS_SOSS_transmission_spectrum' + fit_suffix + '.csv'
 # Get fit metadata.
 # Include fixed parameter values.
 fit_metadata = '#\n# Fit Metadata\n'
