@@ -95,6 +95,55 @@ class SourceTypeStep:
         return results
 
 
+class BackgroundStep:
+    """Wrapper around custom Background Subtraction step.
+    """
+
+    def __init__(self, input_data, background_model, output_dir='./'):
+        """Step initializer.
+        """
+
+        self.tag = 'backgroundstep.fits'
+        self.background_model = background_model
+        self.output_dir = output_dir
+        self.datafiles = np.atleast_1d(input_data)
+        self.fileroots = utils.get_filename_root(self.datafiles)
+        self.fileroot_noseg = utils.get_filename_root_noseg(self.fileroots)
+
+    def run(self, save_results=True, force_redo=False):
+        """Method to run the step.
+        """
+
+        all_files = glob.glob(self.output_dir + '*')
+        do_step = 1
+        results, background_models = [], []
+        for i in range(len(self.datafiles)):
+            # If an output file for this segment already exists, skip the step.
+            expected_file = self.output_dir + self.fileroots[i] + self.tag
+            expected_bkg = self.output_dir + self.fileroot_noseg + 'background.npy'
+            if expected_file not in all_files or expected_bkg not in all_files:
+                do_step *= 0
+            else:
+                results.append(datamodels.open(expected_file))
+                background_models.append(fits.getdata(expected_bkg))
+        if do_step == 1 and force_redo is False:
+            print('Output files already exist.')
+            print('Skipping Background Subtraction Step.')
+        # If no output files are detected, run the step.
+        else:
+            with warnings.catch_warnings():
+                warnings.filterwarnings('ignore')
+                step_results = backgroundstep(self.datafiles,
+                                              self.background_model,
+                                              output_dir=self.output_dir,
+                                              save_results=save_results,
+                                              fileroots=self.fileroots,
+                                              fileroot_noseg=self.fileroot_noseg)
+                results, background_models = step_results
+
+        return results, background_models
+
+
 class FlatFieldStep:
     """Wrapper around default calwebb_spec2 Flat Field Correction step.
     """
@@ -161,14 +210,14 @@ class BadPixStep:
             # If an output file for this segment already exists, skip the step.
             expected_file = self.output_dir + self.fileroots[i] + self.tag
             expected_deep = self.output_dir + self.fileroot_noseg + 'deepframe.fits'
-            if expected_file not in all_files:
+            if expected_file not in all_files or expected_deep not in all_files:
                 do_step *= 0
             else:
                 results.append(datamodels.open(expected_file))
+                deepframe = fits.getdata(expected_deep)
         if do_step == 1 and force_redo is False:
             print('Output files already exist.')
             print('Skipping Bad Pixel Correction Step.\n')
-            deepframe = fits.getdata(expected_deep)
         # If no output files are detected, run the step.
         else:
             step_results = badpixstep(self.datafiles,
@@ -210,9 +259,9 @@ class TracingStep:
         suffix = 'tracemask_width{}.fits'.format(mask_width)
         expected_file = self.output_dir + self.fileroot_noseg + suffix
         expected_cen = self.output_dir + self.fileroot_noseg + 'centroids.csv'
-        if expected_file in all_files and force_redo is False:
-            print('Output file {} already exists.'.format(expected_file))
-            print('Skipping Tracing Step.\n')
+        if expected_file in all_files and expected_cen in all_files and force_redo is False:
+            print('Output files already exist.')
+            print('Skipping Bad Pixel Correction Step.\n')
             tracemask = fits.getdata(expected_file)
             centroids = pd.read_csv(expected_cen, comment='#')
         # If no output files are detected, run the step.
@@ -269,6 +318,127 @@ class LightCurveEstimateStep:
                                          smoothing_scale=smoothing_scale)
 
         return smoothed_lc
+
+
+def backgroundstep(datafiles, background_model, output_dir='./',
+                   save_results=True, show_plots=False, fileroots=None,
+                   fileroot_noseg=''):
+    """Background subtraction must be carefully treated with SOSS observations.
+    Due to the extent of the PSF wings, there are very few, if any,
+    non-illuminated pixels to serve as a sky region. Furthermore, the zodi
+    background has a unique stepped shape, which would render a constant
+    background subtraction ill-advised. Therefore, a background subtracton is
+    performed by scaling a model background to the countns level of a median
+    stack of the exposure. This scaled model background is then subtracted
+    from each integration.
+
+    Parameters
+    ----------
+    datafiles : array-like[str], array-like[CubeModel]
+        Paths to data segments for a SOSS exposure, or the datamodels
+        themselves.
+    background_model : array-like[float]
+        Background model. Should be 2D (dimy, dimx)
+    output_dir : str
+        Directory to which to save outputs.
+    save_results : bool
+        If True, save outputs to file.
+    show_plots : bool
+        If True, show plots.
+    fileroots : array-like[str]
+        Root names for output files.
+    fileroot_noseg : str
+        Root name with no segment information.
+
+    Returns
+    -------
+    results : array-like[CubeModel]
+        Input data segments, corrected for the background.
+    model_scaled : array-like[float]
+        Background model, scaled to the flux level of each group median.
+    """
+
+    print('Starting background subtraction step.')
+    # Output directory formatting.
+    if output_dir is not None:
+        if output_dir[-1] != '/':
+            output_dir += '/'
+
+    datafiles = np.atleast_1d(datafiles)
+    opened_datafiles = []
+    # Load in each of the datafiles.
+    for i, file in enumerate(datafiles):
+        currentfile = utils.open_filetype(file)
+        opened_datafiles.append(currentfile)
+        # To create the deepstack, join all segments together.
+        if i == 0:
+            cube = currentfile.data
+        else:
+            cube = np.concatenate([cube, currentfile.data], axis=0)
+    datafiles = opened_datafiles
+
+    # Make median stack of all integrations to use for background scaling.
+    # This is to limit the influence of cosmic rays, which can greatly effect
+    # the background scaling factor calculated for an individual inegration.
+    print('Generating a deep stack using all integrations.')
+    deepstack = utils.make_deepstack(cube)
+    # If applied at the integration level, reshape deepstack to 3D.
+    if np.ndim(deepstack) != 3:
+        dimy, dimx = np.shape(deepstack)
+        deepstack = deepstack.reshape(1, dimy, dimx)
+    ngroup, dimy, dimx = np.shape(deepstack)
+
+    print('Calculating background model scaling.')
+    model_scaled = np.zeros_like(deepstack)
+    print(' Scale factor(s):')
+    first_time = True
+    for i in range(ngroup):
+        # Calculate the scaling of the model background to the median stack.
+        if dimy == 96:
+            # Use area in bottom left corner of detector for SUBSTRIP96.
+            xl, xu = 5, 21
+            yl, yu = 5, 401
+        else:
+            # Use area in the top left corner of detector for SUBSTRIP256
+            xl, xu = 210, 250
+            yl, yu = 250, 500
+        bkg_ratio = deepstack[i, xl:xu, yl:yu] / background_model[xl:xu, yl:yu]
+        # Instead of a straight median, use the median of the 2nd quartile to
+        # limit the effect of any remaining illuminated pixels.
+        q1 = np.nanpercentile(bkg_ratio, 25)
+        q2 = np.nanpercentile(bkg_ratio, 50)
+        ii = np.where((bkg_ratio > q1) & (bkg_ratio < q2))
+        scale_factor = np.nanmedian(bkg_ratio[ii])
+        model_scaled[i] = background_model * scale_factor
+        print('  Background scale factor: {1:.5f}'.format(i+1, scale_factor))
+
+    # Loop over all segments in the exposure and subtract the background from
+    # each of them.
+    results = []
+    for i, currentfile in enumerate(datafiles):
+        # Subtract the scaled background model.
+        data_backsub = currentfile.data - model_scaled
+        currentfile.data = data_backsub
+
+        # Save the results to file if requested.
+        if save_results is True:
+            if first_time is True:
+                # Scaled model background.
+                np.save(output_dir + fileroot_noseg + 'background.npy',
+                        model_scaled)
+                first_time = False
+            # Background subtracted data.
+            currentfile.write(output_dir + fileroots[i] + 'backgroundstep.fits')
+
+        # Show background scaling plot if requested.
+        if show_plots is True:
+            plotting.do_backgroundsubtraction_plot(currentfile.data[:, -1],
+                                                   background_model,
+                                                   scale_factor)
+        results.append(currentfile)
+        currentfile.close()
+
+    return results, model_scaled
 
 
 def badpixstep(datafiles, baseline_ints, smoothed_wlc=None, thresh=3,
@@ -634,10 +804,11 @@ def tracingstep(datafiles, deepframe, calculate_stability=True,
     return tracemask, centroids
 
 
-def run_stage2(results, baseline_ints, smoothed_wlc=None, save_results=True,
-               force_redo=False, mask_width=30, calculate_stability=True,
-               stability_params='ALL', root_dir='./', output_tag='',
-               occultation_type='transit', smoothing_scale=None):
+def run_stage2(results, background_model, baseline_ints, smoothed_wlc=None,
+               save_results=True, force_redo=False, mask_width=30,
+               calculate_stability=True, stability_params='ALL',
+               root_dir='./', output_tag='', occultation_type='transit',
+               smoothing_scale=None):
     """Run the supreme-SPOON Stage 2 pipeline: spectroscopic processing,
     using a combination of official STScI DMS and custom steps. Documentation
     for the official DMS steps can be found here:
@@ -647,6 +818,8 @@ def run_stage2(results, baseline_ints, smoothed_wlc=None, save_results=True,
     ----------
     results : array-like[str], array-like[CubeModel]
         supreme-SPOON Stage 1 output files.
+    background_model : array-like[float]
+        SOSS background model.
     baseline_ints : array-like[int]
         Integrations of ingress and egress.
     smoothed_wlc : array-like[float], None
@@ -708,6 +881,12 @@ def run_stage2(results, baseline_ints, smoothed_wlc=None, save_results=True,
     # Default DMS step.
     step = SourceTypeStep(results, output_dir=outdir)
     results = step.run(save_results=save_results, force_redo=force_redo)
+
+    # ===== Background Subtraction Step =====
+    # Custom DMS step.
+    step = BackgroundStep(results, background_model=background_model,
+                          output_dir=outdir)
+    results = step.run(save_results=save_results, force_redo=force_redo)[0]
 
     # ===== Flat Field Correction Step =====
     # Default DMS step.

@@ -117,6 +117,7 @@ if 2 in run_stages:
     background_model = np.load(background_file)
     results = stage2.run_stage2(stage1_results,
                                 smoothed_wlc=smoothed_wlc,
+                                background_model=background_model,
                                 baseline_ints=baseline_ints,
                                 save_results=save_results,
                                 force_redo=force_redo, root_dir=root_dir,

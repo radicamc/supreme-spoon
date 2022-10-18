@@ -405,7 +405,7 @@ def run_juliet(priors, t_lc, y_lc, yerr_lc, out_folder,
 
 def save_transmission_spectrum(wave, wave_err, dppm, dppm_err, order, outdir,
                                filename, target, extraction_type, resolution,
-                               fit_meta=None):
+                               fit_meta=''):
     """Write a transmission spectrum to file.
 
     Parameters
@@ -430,7 +430,7 @@ def save_transmission_spectrum(wave, wave_err, dppm, dppm_err, order, outdir,
         Type of extraction: either box or atoca.
     resolution: int, str
         Spectral resolution of spectrum.
-    fit_meta: str, None
+    fit_meta: str
         Fitting metadata.
     """
 
