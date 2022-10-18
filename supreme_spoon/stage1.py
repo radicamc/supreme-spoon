@@ -7,7 +7,7 @@ Created on Thurs Jul 21 17:30 2022
 
 Custom JWST DMS pipeline steps for Stage 1 (detector level processing).
 """
-# TODO: double chceck all plotting
+# TODO: double check all plotting
 from astropy.io import fits
 import bottleneck as bn
 import glob
@@ -217,6 +217,7 @@ class BackgroundStep:
         self.output_dir = output_dir
         self.datafiles = np.atleast_1d(input_data)
         self.fileroots = utils.get_filename_root(self.datafiles)
+        self.fileroot_noseg = utils.get_filename_root_noseg(self.fileroots)
 
     def run(self, save_results=True, force_redo=False):
         """Method to run the step.
@@ -233,7 +234,10 @@ class BackgroundStep:
                 do_step *= 0
             else:
                 results.append(datamodels.open(expected_file))
-                background_models.append(fits.getdata(expected_bkg))
+                try:
+                    background_models.append(fits.getdata(expected_bkg))
+                except FileNotFoundError:
+                    do_step *= 0
         if do_step == 1 and force_redo is False:
             print('Output files already exist.')
             print('Skipping Background Subtraction Step.')
@@ -245,7 +249,8 @@ class BackgroundStep:
                                               self.background_model,
                                               output_dir=self.output_dir,
                                               save_results=save_results,
-                                              fileroots=self.fileroots)
+                                              fileroots=self.fileroots,
+                                              fileroot_noseg=self.fileroot_noseg)
                 results, background_models = step_results
 
         return results, background_models
@@ -257,7 +262,7 @@ class OneOverFStep:
 
     def __init__(self, input_data, baseline_ints, output_dir='./',
                  smoothed_wlc=None, outlier_maps=None, trace_mask=None,
-                 occultation_type='transit'):
+                 background=None, occultation_type='transit'):
         """Step initializer.
         """
 
@@ -267,6 +272,7 @@ class OneOverFStep:
         self.smoothed_wlc = smoothed_wlc
         self.trace_mask = trace_mask
         self.outlier_maps = outlier_maps
+        self.background = background
         self.occultation_type = occultation_type
         self.datafiles = np.atleast_1d(input_data)
         self.fileroots = utils.get_filename_root(self.datafiles)
@@ -293,6 +299,7 @@ class OneOverFStep:
             results = oneoverfstep(self.datafiles,
                                    baseline_ints=self.baseline_ints,
                                    even_odd_rows=even_odd_rows,
+                                   background=self.background,
                                    smoothed_wlc=self.smoothed_wlc,
                                    output_dir=self.output_dir,
                                    save_results=save_results,
@@ -467,7 +474,8 @@ class GainScaleStep:
 
 
 def backgroundstep(datafiles, background_model, output_dir='./',
-                   save_results=True, show_plots=False, fileroots=None):
+                   save_results=True, show_plots=False, fileroots=None,
+                   fileroot_noseg=''):
     """Background subtraction must be carefully treated with SOSS observations.
     Due to the extent of the PSF wings, there are very few, if any,
     non-illuminated pixels to serve as a sky region. Furthermore, the zodi
@@ -492,6 +500,8 @@ def backgroundstep(datafiles, background_model, output_dir='./',
         If True, show plots.
     fileroots : array-like[str]
         Root names for output files.
+    fileroot_noseg : str
+        Root name with no segment information.
 
     Returns
     -------
@@ -525,11 +535,16 @@ def backgroundstep(datafiles, background_model, output_dir='./',
     # the background scaling factor calculated for an individual inegration.
     print('Generating a deep stack using all integrations.')
     deepstack = utils.make_deepstack(cube)
+    # If applied at the integration level, reshape deepstack to 3D.
+    if np.ndim(deepstack) != 3:
+        dimy, dimx = np.shape(deepstack)
+        deepstack = deepstack.reshape(1, dimy, dimx)
     ngroup, dimy, dimx = np.shape(deepstack)
 
     print('Calculating background model scaling.')
     model_scaled = np.zeros_like(deepstack)
-    print(' Scale factors:')
+    print(' Scale factor(s):')
+    first_time = True
     for i in range(ngroup):
         # Calculate the scaling of the model background to the median stack.
         if dimy == 96:
@@ -548,7 +563,7 @@ def backgroundstep(datafiles, background_model, output_dir='./',
         ii = np.where((bkg_ratio > q1) & (bkg_ratio < q2))
         scale_factor = np.nanmedian(bkg_ratio[ii])
         model_scaled[i] = background_model * scale_factor
-        print('  Group {0}: {1:.5f}'.format(i+1, scale_factor))
+        print('  Background scale factor: {1:.5f}'.format(i+1, scale_factor))
 
     # Loop over all segments in the exposure and subtract the background from
     # each of them.
@@ -560,10 +575,11 @@ def backgroundstep(datafiles, background_model, output_dir='./',
 
         # Save the results to file if requested.
         if save_results is True:
-            # Scaled model background.
-            hdu = fits.PrimaryHDU(model_scaled)
-            hdu.writeto(output_dir + fileroots[i] + 'background.fits',
-                        overwrite=True)
+            if first_time is True:
+                # Scaled model background.
+                np.save(output_dir + fileroot_noseg + 'background.npy',
+                        model_scaled)
+                first_time = False
             # Background subtracted data.
             currentfile.write(output_dir + fileroots[i] + 'backgroundstep.fits')
 
@@ -579,9 +595,9 @@ def backgroundstep(datafiles, background_model, output_dir='./',
 
 
 def oneoverfstep(datafiles, baseline_ints, even_odd_rows=True,
-                 smoothed_wlc=None, output_dir='./', save_results=True,
-                 outlier_maps=None, trace_mask=None, fileroots=None,
-                 occultation_type='transit'):
+                 background=None, smoothed_wlc=None, output_dir='./',
+                 save_results=True, outlier_maps=None, trace_mask=None,
+                 fileroots=None, occultation_type='transit'):
     """Custom 1/f correction routine to be applied at the group level. A
     median stack is constructed using all out-of-transit integrations and
     subtracted from each individual integration. The column-wise median of
@@ -598,6 +614,8 @@ def oneoverfstep(datafiles, baseline_ints, even_odd_rows=True,
         Integration numbers of ingress and egress.
     even_odd_rows : bool
         If True, calculate 1/f noise seperately for even and odd numbered rows.
+    background : str, array-like[float], None
+        Model of background flux.
     smoothed_wlc : array-like[float], None
         Estimate of the normalized light curve.
     output_dir : str
@@ -668,6 +686,14 @@ def oneoverfstep(datafiles, baseline_ints, even_odd_rows=True,
         # Smooth the time series on a timescale of roughly 2%.
         smoothed_wlc = median_filter(timeseries,
                                      int(0.02*np.shape(cube)[0]))
+
+    # Background must be subtracted to accurately subtract off the target
+    # trace and isolate 1/f noise. However, the background flux must also be
+    # corrected for non-linearity. Therefore, it should be added back after
+    # the 1/f is subtracted to be re-subtracted later.
+    if background is not None:
+        if isinstance(background, str):
+            background = np.load(background)
 
     # Individually treat each segment.
     corrected_rampmodels = []
@@ -759,6 +785,10 @@ def oneoverfstep(datafiles, baseline_ints, even_odd_rows=True,
             dc = np.where(np.isfinite(dc), dc, 0)
             corr_data[i] -= dc
         current_int += nint
+
+        # Add back the zodi background.
+        if background is not None:
+            corr_data += background
 
         # Store results.
         rampmodel_corr = datamodel.copy()
@@ -867,13 +897,15 @@ def run_stage1(results, background_model, baseline_ints=None,
     # Custom DMS step.
     step = BackgroundStep(results, background_model=background_model,
                           output_dir=outdir)
-    results = step.run(save_results=save_results, force_redo=force_redo)[0]
+    results = step.run(save_results=False, force_redo=force_redo)
+    results, background_model = results
 
     # ===== 1/f Noise Correction Step =====
     # Custom DMS step.
     step = OneOverFStep(results, baseline_ints=baseline_ints,
                         output_dir=outdir, outlier_maps=outlier_maps,
                         trace_mask=trace_mask, smoothed_wlc=smoothed_wlc,
+                        background=background_model,
                         occultation_type=occultation_type)
     results = step.run(even_odd_rows=even_odd_rows, save_results=save_results,
                        force_redo=force_redo)
