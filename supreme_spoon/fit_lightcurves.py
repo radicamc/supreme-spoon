@@ -116,7 +116,8 @@ for order in config['orders']:
         wave, wave_low, wave_up, flux, err = binned_vals
         wave, wave_low, wave_up = wave[0], wave_low[0], wave_up[0]
     else:
-        binned_vals = stage4.bin_at_resolution(wave[0], flux.T, err.T,
+        binned_vals = stage4.bin_at_resolution(wave_low[0], wave_up[0],
+                                               flux.T, err.T,
                                                res=config['res'])
         wave, wave_err, flux, err = binned_vals
         flux, err = flux.T, err.T

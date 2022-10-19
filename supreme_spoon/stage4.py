@@ -77,7 +77,8 @@ def bin_at_pixel(flux, error, wave, npix):
     return wave_bin, wave_low, wave_up, flux_bin, err_bin
 
 
-def bin_at_resolution(waves, flux, flux_err, res, method='sum'):
+def bin_at_resolution(inwave_low, inwave_up, flux, flux_err, res,
+                      method='sum'):
     """Function that bins input wavelengths and transit depths (or any other
     observable, like flux) to a given resolution "res". Can handle 1D or 2D
     flux arrays.
@@ -113,11 +114,13 @@ def bin_at_resolution(waves, flux, flux_err, res, method='sum'):
         return w * (2 * r + 1) / (2 * r - 1)
 
     # Sort quantities in order of increasing wavelength.
+    waves = np.nanmean([inwave_low, inwave_up], axis=0)
     if np.ndim(waves) > 1:
         msg = 'Input wavelength array must be 1D.'
         raise ValueError(msg)
     ii = np.argsort(waves)
     waves, flux, flux_err = waves[ii], flux[ii], flux_err[ii]
+    inwave_low, inwave_up = inwave_low[ii], inwave_up[ii]
     # Calculate the input resolution and check that we are not trying to bin
     # to a higher R.
     average_input_res = np.mean(waves[1:] / np.diff(waves))
@@ -129,28 +132,58 @@ def bin_at_resolution(waves, flux, flux_err, res, method='sum'):
               'R={:.0f} to R={}'.format(average_input_res, res))
 
     # Make the binned wavelength grid.
-    wavebin_low = []
+    outwave_low = []
     w_i, w_ip1 = waves[0], waves[0]
     while w_ip1 < waves[-1]:
-        wavebin_low.append(w_ip1)
+        outwave_low.append(w_ip1)
         w_ip1 = nextstep(w_i, res)
         w_i = w_ip1
-    wavebin_low = np.array(wavebin_low)
-    wavebin_up = np.append(wavebin_low[1:], waves[-1])
-    binned_waves = np.mean([wavebin_low, wavebin_up], axis=0)
-    binned_werr = (wavebin_up - wavebin_low)/2
+    outwave_low = np.array(outwave_low)
+    outwave_up = np.append(outwave_low[1:], waves[-1])
+    binned_waves = np.mean([outwave_low, outwave_up], axis=0)
+    binned_werr = (outwave_up - outwave_low) / 2
 
     # Loop over all wavelengths in the input and bin flux and error into the
     # new wavelength grid.
     ii = 0
-    for wl, wu in zip(wavebin_low, wavebin_up):
+    for wl, wu in zip(outwave_low, outwave_up):
         first_time, count = True, 0
         current_flux = np.ones_like(flux[ii]) * np.nan
         current_ferr = np.ones_like(flux_err[ii]) * np.nan
+        weight = []
         for i in range(ii, len(waves)):
-            # If the wavelength is within the bin, append the flux and error
-            # to the current bin info.
-            if wl <= waves[i] < wu:
+            # If the wavelength is fully within the bin, append the flux and
+            # error to the current bin info.
+            if inwave_low[i] >= wl and inwave_up[i] < wu:
+                if np.ndim(flux) == 1:
+                    current_flux = np.hstack([flux[i], current_flux])
+                    current_ferr = np.hstack([flux_err[i], current_ferr])
+                else:
+                    current_flux = np.vstack([flux[i], current_flux])
+                    current_ferr = np.vstack([flux_err[i], current_ferr])
+                count += 1
+                weight.append(1)
+
+            # For edge cases where one of the input bins falls on the edge of
+            # the binned wavelength grid, linearly interpolate the flux into
+            # the new bins.
+            # Upper edge split.
+            elif inwave_low[i] < wu <= inwave_up[i]:
+                inbin_width = inwave_up[i] - inwave_low[i]
+                in_frac = (inwave_up[i] - wu) / inbin_width
+                weight.append(in_frac)
+                if np.ndim(flux) == 1:
+                    current_flux = np.hstack([flux[i], current_flux])
+                    current_ferr = np.hstack([flux_err[i], current_ferr])
+                else:
+                    current_flux = np.vstack([flux[i], current_flux])
+                    current_ferr = np.vstack([flux_err[i], current_ferr])
+                count += 1
+            # Lower edge split.
+            elif inwave_low[i] < wl <= inwave_up[i]:
+                inbin_width = inwave_up[i] - inwave_low[i]
+                in_frac = (wl - inwave_low[i]) / inbin_width
+                weight.append(in_frac)
                 if np.ndim(flux) == 1:
                     current_flux = np.hstack([flux[i], current_flux])
                     current_ferr = np.hstack([flux_err[i], current_ferr])
@@ -159,17 +192,30 @@ def bin_at_resolution(waves, flux, flux_err, res, method='sum'):
                     current_ferr = np.vstack([flux_err[i], current_ferr])
                 count += 1
             # Since wavelengths are in increasing order, once we exit the bin
-            # we're done.
-            if waves[i] >= wu:
+            # completely we're done.
+            if inwave_low[i] >= wu:
                 if count != 0:
                     # If something was put into this bin, bin it using the
                     # requested method.
+                    weight.append(0)
+                    weight = np.array(weight)
                     if method == 'sum':
-                        thisflux = np.nansum(current_flux, axis=0)
+                        if np.ndim(current_flux) != 1:
+                            thisflux = np.nansum(current_flux * weight[:, None],
+                                                 axis=0)
+                        else:
+                            thisflux = np.nansum(current_flux * weight, axis=0)
                         thisferr = np.sqrt(np.nansum(current_ferr**2, axis=0))
                     elif method == 'average':
-                        thisflux = np.nanmean(current_flux, axis=0)
-                        thisferr = np.sqrt(np.nansum(current_ferr**2, axis=0)) / count
+                        if np.ndim(current_flux) != 1:
+                            thisflux = np.nansum(current_flux * weight[:, None],
+                                                 axis=0)
+                            thisflux /= np.nansum(weight)
+                        else:
+                            thisflux = np.nansum(current_flux * weight, axis=0)
+                            thisflux /= np.nansum(weight)
+                        thisferr = np.sqrt(np.nansum(current_ferr**2, axis=0))
+                        thisferr /= np.nansum(weight)
                     else:
                         raise ValueError('Unknown method.')
                 else:
@@ -189,7 +235,7 @@ def bin_at_resolution(waves, flux, flux_err, res, method='sum'):
                     binned_flux = np.vstack([binned_flux, thisflux])
                     binned_ferr = np.vstack([binned_ferr, thisferr])
                 # Move to the next bin.
-                ii = i
+                ii = i-1
                 break
 
     # If the input was 1D, reformat to match.
