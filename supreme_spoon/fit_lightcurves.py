@@ -7,9 +7,10 @@ Created on Wed Jul 27 14:35 2022
 
 Juliet light curve fitting script
 """
-# TODO: Skip plotting if plot already exists
+
 from astropy.io import fits
 import copy
+import glob
 import juliet
 import matplotlib.backends.backend_pdf
 import numpy as np
@@ -33,6 +34,9 @@ if config['output_tag'] != '':
 utils.verify_path('pipeline_outputs_directory' + config['output_tag'])
 utils.verify_path('pipeline_outputs_directory' + config['output_tag'] + '/Stage4')
 outdir = 'pipeline_outputs_directory' + config['output_tag'] + '/Stage4/'
+
+# Get all files in output directory for checks.
+all_files = glob.glob(outdir + '*')
 
 # Tag for this particular fit.
 if config['fit_suffix'] != '':
@@ -89,8 +93,9 @@ baseline_ints = utils.format_out_frames(config['baseline_ints'],
 results_dict = {}
 for order in config['orders']:
     first_time = True
-    if config['do_plots'] is True:
-        outpdf = matplotlib.backends.backend_pdf.PdfPages(outdir + 'lightcurve_fit_order{0}{1}.pdf'.format(order, fit_suffix))
+    expected_file = outdir + 'lightcurve_fit_order{0}{1}.pdf'.format(order, fit_suffix)
+    if config['do_plots'] is True and expected_file not in all_files:
+        outpdf = matplotlib.backends.backend_pdf.PdfPages(expected_file)
     else:
         outpdf = None
 
