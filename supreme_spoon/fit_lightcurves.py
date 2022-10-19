@@ -8,7 +8,6 @@ Created on Wed Jul 27 14:35 2022
 Juliet light curve fitting script
 """
 # TODO: Skip plotting if plot already exists
-# TODO: cut ref pixel columns
 from astropy.io import fits
 import copy
 import juliet
@@ -97,12 +96,12 @@ for order in config['orders']:
 
     # === Set Up Priors and Fit Parameters ===
     print('\nFitting order {} at {}\n'.format(order, res_str))
-    # Unpack wave, flux and error
-    wave_low = fits.getdata(config['infile'],  1 + 4*(order - 1))
-    wave_up = fits.getdata(config['infile'], 2 + 4*(order - 1))
+    # Unpack wave, flux and error, cutting reference pixel columns.
+    wave_low = fits.getdata(config['infile'],  1 + 4*(order - 1))[:, 5:-5]
+    wave_up = fits.getdata(config['infile'], 2 + 4*(order - 1))[:, 5:-5]
     wave = np.nanmean(np.stack([wave_low, wave_up]), axis=0)
-    flux = fits.getdata(config['infile'], 3 + 4*(order - 1))
-    err = fits.getdata(config['infile'], 4 + 4*(order - 1))
+    flux = fits.getdata(config['infile'], 3 + 4*(order - 1))[:, 5:-5]
+    err = fits.getdata(config['infile'], 4 + 4*(order - 1))[:, 5:-5]
 
     # Bin input spectra to desired resolution.
     if config['res'] == 'pixel':
