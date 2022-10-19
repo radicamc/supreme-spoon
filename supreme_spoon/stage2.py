@@ -773,11 +773,11 @@ def tracingstep(datafiles, deepframe, calculate_stability=True,
 
         # Construct datacube from the data files.
         for i, file in enumerate(datafiles):
-            data = fits.getdata(file)
+            currentfile = utils.open_filetype(file)
             if i == 0:
-                cube = data
+                cube = currentfile.data
             else:
-                cube = np.concatenate([cube, data])
+                cube = np.concatenate([cube, currentfile.data], axis=0)
 
         # Calculate the stability of the requested parameters.
         stability_results = {}

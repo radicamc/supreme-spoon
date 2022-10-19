@@ -21,6 +21,7 @@ from scipy.ndimage import median_filter
 from scipy.optimize import curve_fit
 from tqdm import tqdm
 import warnings
+import yaml
 
 from applesoss.edgetrigger_centroids import get_soss_centroids
 from jwst import datamodels
@@ -544,7 +545,7 @@ def open_filetype(datafile):
 
 
 def open_stage2_secondary_outputs(deep_file, centroid_file, smoothed_wlc_file,
-                                  root_dir, output_tag=''):
+                                  output_tag='', root_dir='./'):
     """Utlity to locate and read in secondary outputs from stage 2.
 
     Parameters
@@ -774,6 +775,30 @@ def pack_spectra(filename, wl1, wu1, f1, e1, wl2, wu2, f2, e2, t,
                   'Flux O2': f2, 'Flux Err O2': e2, 'Time': t}
 
     return param_dict
+
+
+def parse_config(config_file):
+    """Parse a yaml config file.
+
+    Parameters
+    ----------
+    config_file : str
+        Path to config file.
+
+    Returns
+    -------
+    config : dict
+        Dictionary of config parameters.
+    """
+
+    with open(config_file) as f:
+        config = yaml.load(f, Loader=yaml.FullLoader)
+
+    for key in config.keys():
+        if config[key] == 'None':
+            config[key] = None
+
+    return config
 
 
 def read_ld_coefs(filename, wavebin_low, wavebin_up, ld_model='quadratic'):

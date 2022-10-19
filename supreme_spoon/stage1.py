@@ -725,7 +725,7 @@ def run_stage1(results, background_model, baseline_ints=None,
     # Custom DMS step - imported from Stage2.
     step = BackgroundStep(results, background_model=background_model,
                           output_dir=outdir)
-    results = step.run(save_results=False, force_redo=force_redo)
+    results = step.run(save_results=save_results, force_redo=force_redo)
     results, background_model = results
 
     # ===== 1/f Noise Correction Step =====

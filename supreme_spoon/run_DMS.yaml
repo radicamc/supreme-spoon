@@ -1,0 +1,69 @@
+# ========================= BEGIN DMS CONFIG FILE =============================
+#
+# This is the configuration file for run_DMS.py.
+#
+# ===== Key Parameters =====
+# Input data file directory.
+input_dir : 'DMS_uncal/'
+# Input file tag.
+input_filetag : 'uncal'
+
+# ===== Stage 1 Input Files & Parameters =====
+# For 1/f correction; outlier pixel maps (optional).
+outlier_maps : None
+# For 1/f correcton; trace mask (optional).
+trace_mask : None
+# For 1/f correction; estimate of white light curve (optional).
+smoothed_wlc : None
+# Background model. Using STScI background model from here:
+# https://jwst-docs.stsci.edu/jwst-calibration-pipeline-caveats/jwst-time-series-observations-pipeline-caveats/niriss-time-series-observation-pipeline-caveats#NIRISSTimeSeriesObservationPipelineCaveats-SOSSskybackground
+background_file : 'model_background256.npy'
+# For 1/f correction; treat even and odd numbered rows seperately.
+even_odd_rows : True
+
+# ===== Stage 2 Input Parameters =====
+# Timescale on which to smooth lightcurve estimate  (optional).
+smoothing_scale : None
+# Size of box to mask for 1/f correction. Should be wider than extraction box.
+mask_width : 30
+# If True, calculate the stability of the SOSS trace over the course of the
+# TSO. These parameters can be useful for lightcurve detrending.
+calculate_stability : True
+# Parameters for which to calcuate the stability: 'x', 'y', 'FWHM, or 'ALL'.
+stability_params : 'ALL'
+
+# ===== Stage 3 Input Files & Parameters =====
+# Specprofile reference file for ATOCA (optional).
+specprofile : None
+# SOSS estmate file for ATOCA (optional).
+soss_estimate : None
+# Median stack of the TSO (optional; not necessary if running Stage 2).
+deepframe : None
+# Centroids for all three orders (optional; not necessary if running Stage 2).
+centroids : None
+# Box width to extract around the trace center.
+soss_width : 25
+# Tikhonov regularization factor (optional).
+soss_tikfac : None
+
+# ===== Other General Parameters =====
+# Name tag for output file directory.
+output_tag : ''
+# Pipeline stages to run.
+run_stages : [1, 2, 3]
+# Type of exposure; either CLEAR or F277W.
+exposure_type : 'CLEAR'
+# Extraction method, box or atoca.
+extract_method : 'box'
+# For ATOCA extractions only: if True, construct a SpecProfile reference
+# tailored to this TSO. If False, use the default.
+use_applesoss : True
+# Save results of each intermediate step to file.
+save_results : True
+# Force redo of steps which have already been completed.
+force_redo : False
+# Integrations of ingress and egress.
+baseline_ints : [50, -50]
+# Type of occultation: 'transit' or 'eclipse'.
+occultation_type : 'transit'
+# ========================= END DMS CONFIG FILE =============================
