@@ -85,8 +85,10 @@ def bin_at_resolution(inwave_low, inwave_up, flux, flux_err, res,
 
     Parameters
     ----------
-    waves : array-like[float]
-        Wavelength values. Must be 1D.
+    inwave_low : array-like[float]
+        Lower edge of wavelength bin. Must be 1D.
+    inwave_up : array-like[float]
+        Upper edge of wavelength bin. Must be 1D.
     flux : array-like[float]
         Flux values at each wavelength. Can be 1D or 2D. If 2D, the first axis
         must be the one corresponding to wavelength.
@@ -163,7 +165,6 @@ def bin_at_resolution(inwave_low, inwave_up, flux, flux_err, res,
                     current_ferr = np.vstack([flux_err[i], current_ferr])
                 count += 1
                 weight.append(1)
-
             # For edge cases where one of the input bins falls on the edge of
             # the binned wavelength grid, linearly interpolate the flux into
             # the new bins.

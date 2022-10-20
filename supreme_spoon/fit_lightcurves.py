@@ -5,7 +5,7 @@ Created on Wed Jul 27 14:35 2022
 
 @author: MCR
 
-Juliet light curve fitting script
+Juliet light curve fitting script.
 """
 
 from astropy.io import fits
@@ -230,12 +230,14 @@ for order in config['orders']:
                     t0 = config['hyperps'][t0_loc]
                 else:
                     t0 = np.median(fit_results[wavebin].posteriors['posterior_samples']['t0_p1'])
-                plotting.do_lightcurve_plot(t=(t-t0)*24, data=norm_flux[:, i],
-                                            model=transit_model,
-                                            scatter=scatter,
-                                            errors=norm_err[:, i],
-                                            outpdf=outpdf, nfit=nfit,
-                                            title='bin {0} | {1:.3f}µm'.format(i, wave[i]))
+                plotting.make_lightcurve_plot(t=(t - t0) * 24,
+                                              data=norm_flux[:, i],
+                                              model=transit_model,
+                                              scatter=scatter,
+                                              errors=norm_err[:, i],
+                                              outpdf=outpdf,
+                                              title='bin {0} | {1:.3f}µm'.format(
+                                                  i, wave[i]), nfit=nfit)
                 # Corner plot for fit.
                 fit_params, posterior_names = [], []
                 for param, dist in zip(config['params'], config['dists']):
@@ -245,9 +247,9 @@ for order in config['orders']:
                             posterior_names.append(formatted_names[param])
                         else:
                             posterior_names.append(param)
-                plotting.make_corner(fit_params, fit_results[wavebin],
-                                     outpdf=outpdf,
-                                     posterior_names=posterior_names)
+                plotting.make_corner_plot(fit_params, fit_results[wavebin],
+                                          posterior_names=posterior_names,
+                                          outpdf=outpdf)
 
                 data[:, i] = norm_flux[:, i]
                 models[:, i] = transit_model
@@ -257,12 +259,12 @@ for order in config['orders']:
     results_dict['order {}'.format(order)] = order_results
     # Plot 2D lightcurves.
     if config['do_plots'] is True:
-        plotting.plot_2dlightcurves(wave, data, outpdf=outpdf,
-                                    title='Normalized Lightcurves')
-        plotting.plot_2dlightcurves(wave, models, outpdf=outpdf,
-                                    title='Model Lightcurves')
-        plotting.plot_2dlightcurves(wave, residuals, outpdf=outpdf,
-                                    title='Residuals')
+        plotting.make_2d_lightcurve_plot(wave, data, outpdf=outpdf,
+                                         title='Normalized Lightcurves')
+        plotting.make_2d_lightcurve_plot(wave, models, outpdf=outpdf,
+                                         title='Model Lightcurves')
+        plotting.make_2d_lightcurve_plot(wave, residuals, outpdf=outpdf,
+                                         title='Residuals')
         outpdf.close()
 
 # === Transmission Spectrum ===

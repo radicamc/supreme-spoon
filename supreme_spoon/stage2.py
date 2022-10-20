@@ -7,6 +7,7 @@ Created on Thurs Jul 21 17:33 2022
 
 Custom JWST DMS pipeline steps for Stage 2 (Spectroscopic processing).
 """
+
 from astropy.io import fits
 import glob
 import numpy as np
@@ -20,7 +21,7 @@ from jwst import datamodels
 from jwst.extract_1d.soss_extract import soss_boxextract
 from jwst.pipeline import calwebb_spec2
 
-from supreme_spoon import plotting, utils
+from supreme_spoon import utils
 
 
 class AssignWCSStep:
@@ -250,7 +251,7 @@ class TracingStep:
         self.fileroot_noseg = utils.get_filename_root_noseg(self.fileroots)
 
     def run(self, mask_width, calculate_stability=True, stability_params='ALL',
-            save_results=True, force_redo=False, show_plots=False):
+            save_results=True, force_redo=False):
         """Method to run the step.
         """
 
@@ -272,7 +273,6 @@ class TracingStep:
                                        output_dir=self.output_dir,
                                        mask_width=mask_width,
                                        save_results=save_results,
-                                       show_plots=show_plots,
                                        fileroot_noseg=self.fileroot_noseg)
             tracemask, centroids = step_results
 
@@ -321,8 +321,7 @@ class LightCurveEstimateStep:
 
 
 def backgroundstep(datafiles, background_model, output_dir='./',
-                   save_results=True, show_plots=False, fileroots=None,
-                   fileroot_noseg=''):
+                   save_results=True, fileroots=None, fileroot_noseg=''):
     """Background subtraction must be carefully treated with SOSS observations.
     Due to the extent of the PSF wings, there are very few, if any,
     non-illuminated pixels to serve as a sky region. Furthermore, the zodi
@@ -343,8 +342,6 @@ def backgroundstep(datafiles, background_model, output_dir='./',
         Directory to which to save outputs.
     save_results : bool
         If True, save outputs to file.
-    show_plots : bool
-        If True, show plots.
     fileroots : array-like[str]
         Root names for output files.
     fileroot_noseg : str
@@ -430,11 +427,6 @@ def backgroundstep(datafiles, background_model, output_dir='./',
             # Background subtracted data.
             currentfile.write(output_dir + fileroots[i] + 'backgroundstep.fits')
 
-        # Show background scaling plot if requested.
-        if show_plots is True:
-            plotting.do_backgroundsubtraction_plot(currentfile.data[:, -1],
-                                                   background_model,
-                                                   scale_factor)
         results.append(currentfile)
         currentfile.close()
 
@@ -666,7 +658,7 @@ def lcestimatestep(datafiles, baseline_ints, save_results=True,
 
 def tracingstep(datafiles, deepframe, calculate_stability=True,
                 stability_params='ALL', output_dir='./', mask_width=30,
-                save_results=True, show_plots=False, fileroot_noseg=''):
+                save_results=True, fileroot_noseg=''):
     """Locate the centroids of all three SOSS orders via the edgetrigger
     algorithm. Then create a mask of a given width around the centroids.
 
@@ -689,8 +681,6 @@ def tracingstep(datafiles, deepframe, calculate_stability=True,
         Mask width, in pixels, around the trace centroids.
     save_results : bool
         If Tre, save results to file.
-    show_plots : bool
-        If True, display plots.
     fileroot_noseg : str
         Root file name with no segment information.
 
@@ -726,9 +716,6 @@ def tracingstep(datafiles, deepframe, calculate_stability=True,
     x1, y1 = centroids[0][0], centroids[0][1]
     x2, y2 = centroids[1][0], centroids[1][1]
     x3, y3 = centroids[2][0], centroids[2][1]
-    # Show the extracted centroids over the deepframe is requested.
-    if show_plots is True:
-        plotting.do_centroid_plot(deepframe, x1, y1, x2, y2, x3, y3)
 
     # Create the masks for each order.
     weights1 = soss_boxextract.get_box_weights(y1, mask_width, (dimy, dimx),
@@ -753,9 +740,6 @@ def tracingstep(datafiles, deepframe, calculate_stability=True,
     tracemask[0] = weights1
     tracemask[1] = weights2
     tracemask[2] = weights3
-    # Plot the mask if requested.
-    if show_plots is True:
-        plotting.do_tracemask_plot(weights1 | weights2 | weights3)
 
     # Save the trace mask to file if requested.
     if save_results is True:

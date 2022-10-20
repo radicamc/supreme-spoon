@@ -7,7 +7,7 @@ Created on Thurs Jul 21 17:30 2022
 
 Custom JWST DMS pipeline steps for Stage 1 (detector level processing).
 """
-# TODO: double check all plotting
+
 from astropy.io import fits
 import bottleneck as bn
 import glob
