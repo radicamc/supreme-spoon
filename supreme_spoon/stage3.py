@@ -230,7 +230,8 @@ class Extract1DStep:
                                         soss_width=soss_width,
                                         soss_modelname=soss_modelname,
                                         override_specprofile=specprofile,
-                                        soss_estimate=soss_estimate)
+                                        soss_estimate=soss_estimate,
+                                        soss_tikfac=soss_tikfac)
                     # If any other error pops up, raise it.
                     else:
                         raise err

@@ -15,7 +15,7 @@ setup(name='supreme_spoon',
       package_data={'': ['README.md', 'LICENSE']},
       install_requires=['applesoss', 'astropy', 'bottleneck', 'corner',
                         'juliet', 'jwst', 'matplotlib', 'numpy', 'pandas',
-                        'ray', 'scipy', 'tqdm'],
+                        'ray', 'scipy', 'tqdm', 'pyyaml'],
       classifiers=[
         'Development Status :: 3 - Alpha',
         'Intended Audience :: Science/Research',

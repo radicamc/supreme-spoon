@@ -108,6 +108,12 @@ for order in config['orders']:
     flux = fits.getdata(config['infile'], 3 + 4*(order - 1))[:, 5:-5]
     err = fits.getdata(config['infile'], 4 + 4*(order - 1))[:, 5:-5]
 
+    # For order 2, only fit wavelength bins between 0.6 and 0.85µm.
+    if order == 2:
+        ii = np.where((wave[0] >= 0.6) & (wave[0] <= 0.85))[0]
+        flux, err = flux[:, ii], err[:, ii]
+        wave, wave_low, wave_up = wave[:, ii], wave_low[:, ii], wave_up[:, ii]
+
     # Bin input spectra to desired resolution.
     if config['res'] == 'pixel':
         wave, wave_low, wave_up = wave[0], wave_low[0], wave_up[0]
@@ -123,11 +129,6 @@ for order in config['orders']:
         flux, err = flux.T, err.T
         wave_low, wave_up = wave - wave_err, wave + wave_err
 
-    # For order 2, only fit wavelength bins between 0.6 and 0.85µm.
-    if order == 2:
-        ii = np.where((wave >= 0.6) & (wave <= 0.85))[0]
-        flux, err = flux[:, ii], err[:, ii]
-        wave, wave_low, wave_up = wave[ii], wave_low[ii], wave_up[ii]
     nints, nbins = np.shape(flux)
 
     # Sort input arrays in order of increasing wavelength.

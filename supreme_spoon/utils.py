@@ -410,18 +410,18 @@ def get_trace_centroids(deepframe, tracetable, subarray, save_results=True,
     dimy, dimx = np.shape(deepframe)
     with warnings.catch_warnings():
         warnings.filterwarnings('ignore')
-        centroids = get_soss_centroids(deepframe, tracetable,
-                                       subarray=subarray)
+        cens = get_soss_centroids(deepframe, tracetable,
+                                  subarray=subarray)
 
-    x1, y1 = centroids['order 1']['X centroid'], centroids['order 1']['Y centroid']
+    x1, y1 = cens['order 1']['X centroid'], cens['order 1']['Y centroid']
     ii = np.where((x1 >= 0) & (y1 <= dimx - 1))
     # Interpolate onto native pixel grid
     xx1 = np.arange(dimx)
     yy1 = np.interp(xx1, x1[ii], y1[ii])
 
     if subarray != 'SUBSTRIP96':
-        x2, y2 = centroids['order 2']['X centroid'], centroids['order 2']['Y centroid']
-        x3, y3 = centroids['order 3']['X centroid'], centroids['order 3']['Y centroid']
+        x2, y2 = cens['order 2']['X centroid'], cens['order 2']['Y centroid']
+        x3, y3 = cens['order 3']['X centroid'], cens['order 3']['Y centroid']
         ii2 = np.where((x2 >= 0) & (x2 <= dimx - 1) & (y2 <= dimy - 1))
         ii3 = np.where((x3 >= 0) & (x3 <= dimx - 1) & (y3 <= dimy - 1))
         # Interpolate onto native pixel grid
@@ -827,7 +827,8 @@ def read_ld_coefs(filename, wavebin_low, wavebin_up, ld_model='quadratic'):
     # Open the LD model file and convert c1 and c2 parameters to q1 and q2 of
     # the Kipping (2013) parameterization.
     ld = pd.read_csv(filename, comment='#', sep=',')
-    q1s, q2s = juliet.reverse_q_coeffs(ld_model, ld['c1'].values, ld['c2'].values)
+    q1s, q2s = juliet.reverse_q_coeffs(ld_model, ld['c1'].values,
+                                       ld['c2'].values)
 
     # Get model wavelengths and sort in increasing order.
     waves = ld['wave'].values
@@ -841,7 +842,7 @@ def read_ld_coefs(filename, wavebin_low, wavebin_up, ld_model='quadratic'):
     for wl, wu in zip(wavebin_low, wavebin_up):
         current_q1, current_q2 = [], []
         for w, q1, q2 in zip(waves, q1s, q2s):
-            if w > wl and w <= wu:
+            if wl < w <= wu:
                 current_q1.append(q1)
                 current_q2.append(q2)
             elif w > wu:
