@@ -581,7 +581,6 @@ def oneoverfstep(datafiles, baseline_ints, even_odd_rows=True,
         corr_data = np.copy(datamodel.data)
         # Loop over all integrations to determine the 1/f noise level via a
         # difference image, and correct it.
-        # TODO: Add option for LP's method
         for i in tqdm(range(nint)):
             # i counts ints in this particular segment, whereas ii counts
             # ints from the start of the exposure.

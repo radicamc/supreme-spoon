@@ -40,7 +40,7 @@ for file in input_files:
 if 1 in config['run_stages']:
     background_model = np.load(config['background_file'])
     if config['smoothed_wlc'] is not None:
-        smoothed_wlc = np.load(config['smoothed_wlc'])
+        config['smoothed_wlc'] = np.load(config['smoothed_wlc'])
     stage1_results = stage1.run_stage1(input_files,
                                        background_model=background_model,
                                        baseline_ints=config['baseline_ints'],

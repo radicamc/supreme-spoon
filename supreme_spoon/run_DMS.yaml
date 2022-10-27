@@ -25,7 +25,7 @@ even_odd_rows : True
 # Timescale on which to smooth lightcurve estimate  (optional).
 smoothing_scale : None
 # Size of box to mask for 1/f correction. Should be wider than extraction box.
-mask_width : 30
+mask_width : 45
 # If True, calculate the stability of the SOSS trace over the course of the
 # TSO. These parameters can be useful for lightcurve detrending.
 calculate_stability : True
