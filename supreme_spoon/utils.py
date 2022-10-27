@@ -1013,8 +1013,12 @@ def soss_stability_fwhm(cube, ycens_o1):
                 ii = np.where(np.isnan(data))
                 data[ii] = np.nanmedian(data)
             # Fit a Gaussian to the profile, and save the FWHM.
-            coeff, var_matrix = curve_fit(gauss, np.arange(dimy), data, p0=p0)
-            fwhm[j, i-250] = coeff[2] * 2.355
+            try:
+                coeff, var_matrix = curve_fit(gauss, np.arange(dimy), data,
+                                              p0=p0)
+                fwhm[j, i-250] = coeff[2] * 2.355
+            except RuntimeError:
+                fwhm[j, i-250] = np.nan
 
     # Get median FWHM per integration.
     fwhm = np.nanmedian(fwhm, axis=1)
