@@ -74,7 +74,7 @@ if 2 in config['run_stages']:
     deepframe = results[1]
     centroids = results[3]
     smoothed_wlc = results[4]
-elif 3 in config['run_stages']:
+else:
     # Get the existing secondary outputs from Stage 2 necessary for Stage 3.
     stage2_results = input_files
     stage2_secondary = utils.open_stage2_secondary_outputs(config['deepframe'],
@@ -86,8 +86,8 @@ elif 3 in config['run_stages']:
 # === Run Stage 3 ===
 if 3 in config['run_stages']:
     stage3_results = stage3.run_stage3(stage2_results,
-                                       deepframe=config['deepframe'],
-                                       smoothed_wlc=config['smoothed_wlc'],
+                                       deepframe=deepframe,
+                                       smoothed_wlc=smoothed_wlc,
                                        baseline_ints=config['baseline_ints'],
                                        save_results=config['save_results'],
                                        force_redo=config['force_redo'],
