@@ -126,7 +126,7 @@ class BackgroundStep:
                 do_step *= 0
             else:
                 results.append(datamodels.open(expected_file))
-                background_models.append(fits.getdata(expected_bkg))
+                background_models.append(np.load(expected_bkg))
         if do_step == 1 and force_redo is False:
             print('Output files already exist.')
             print('Skipping Background Subtraction Step.')
