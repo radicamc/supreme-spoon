@@ -12,10 +12,16 @@ from astropy.io import fits
 import bottleneck as bn
 from datetime import datetime
 import glob
+import juliet
 import numpy as np
 import os
 import pandas as pd
+from scipy.interpolate import interp2d
+from scipy.ndimage import median_filter
+from scipy.optimize import curve_fit
+from tqdm import tqdm
 import warnings
+import yaml
 
 from applesoss.edgetrigger_centroids import get_soss_centroids
 from jwst import datamodels
@@ -58,7 +64,7 @@ def do_replacement(frame, badpix_map, dq=None, box_size=5):
                 continue
             # If pixel is flagged, replace it with the box median.
             else:
-                med = get_interp_box(frame, box_size, i, j, dimx, dimy)[0]
+                med = get_interp_box(frame, box_size, i, j, dimx)[0]
                 frame_out[j, i] = med
                 # Set dq flag of inerpolated pixel to zero (use the pixel).
                 dq_out[j, i] = 0
@@ -67,7 +73,7 @@ def do_replacement(frame, badpix_map, dq=None, box_size=5):
 
 
 def fix_filenames(old_files, to_remove, outdir, to_add=''):
-    """Hacky function to remove fle extensions that get added when running a
+    """Hacky function to remove file extensions that get added when running a
     default JWST DMS step after a custom one.
 
     Parameters
@@ -281,7 +287,7 @@ def get_filename_root_noseg(fileroots):
     return fileroot_noseg
 
 
-def get_interp_box(data, box_size, i, j, dimx, dimy):
+def get_interp_box(data, box_size, i, j, dimx):
     """Get median and standard deviation of a box centered on a specified
     pixel.
 
@@ -297,8 +303,6 @@ def get_interp_box(data, box_size, i, j, dimx, dimy):
         Y pixel.
     dimx : int
         Size of x dimension.
-    dimy : int
-        Size of y dimension.
 
     Returns
     -------
@@ -309,12 +313,10 @@ def get_interp_box(data, box_size, i, j, dimx, dimy):
     # Get the box limits.
     low_x = np.max([i - box_size, 0])
     up_x = np.min([i + box_size, dimx - 1])
-    low_y = np.max([j - box_size, 0])
-    up_y = np.min([j + box_size, dimy - 1])
 
     # Calculate median and std deviation of box.
-    median = np.nanmedian(data[low_y:up_y, low_x:up_x])
-    stddev = np.nanstd(data[low_y:up_y, low_x:up_x])
+    median = np.nanmedian(data[j, low_x:up_x])
+    stddev = np.nanstd(data[j, low_x:up_x])
 
     # Pack into array.
     box_properties = np.array([median, stddev])
@@ -369,6 +371,7 @@ def get_timestamps(datafiles):
     datafiles = np.atleast_1d(datafiles)
     # Loop over all data files and get mid integration time stamps.
     for i, data in enumerate(datafiles):
+        data = datamodels.open(data)
         if i == 0:
             times = data.int_times['int_mid_BJD_TDB']
         else:
@@ -407,23 +410,28 @@ def get_trace_centroids(deepframe, tracetable, subarray, save_results=True,
     dimy, dimx = np.shape(deepframe)
     with warnings.catch_warnings():
         warnings.filterwarnings('ignore')
-        centroids = get_soss_centroids(deepframe, tracetable,
-                                       subarray=subarray)
+        cens = get_soss_centroids(deepframe, tracetable,
+                                  subarray=subarray)
 
-    x1, y1 = centroids['order 1']['X centroid'], centroids['order 1']['Y centroid']
-    x2, y2 = centroids['order 2']['X centroid'], centroids['order 2']['Y centroid']
-    x3, y3 = centroids['order 3']['X centroid'], centroids['order 3']['Y centroid']
+    x1, y1 = cens['order 1']['X centroid'], cens['order 1']['Y centroid']
     ii = np.where((x1 >= 0) & (y1 <= dimx - 1))
-    ii2 = np.where((x2 >= 0) & (x2 <= dimx - 1) & (y2 <= dimy - 1))
-    ii3 = np.where((x3 >= 0) & (x3 <= dimx - 1) & (y3 <= dimy - 1))
-
     # Interpolate onto native pixel grid
     xx1 = np.arange(dimx)
     yy1 = np.interp(xx1, x1[ii], y1[ii])
-    xx2 = np.arange(np.max(np.floor(x2[ii2]).astype(int)))
-    yy2 = np.interp(xx2, x2[ii2], y2[ii2])
-    xx3 = np.arange(np.max(np.floor(x3[ii3]).astype(int)))
-    yy3 = np.interp(xx3, x3[ii3], y3[ii3])
+
+    if subarray != 'SUBSTRIP96':
+        x2, y2 = cens['order 2']['X centroid'], cens['order 2']['Y centroid']
+        x3, y3 = cens['order 3']['X centroid'], cens['order 3']['Y centroid']
+        ii2 = np.where((x2 >= 0) & (x2 <= dimx - 1) & (y2 <= dimy - 1))
+        ii3 = np.where((x3 >= 0) & (x3 <= dimx - 1) & (y3 <= dimy - 1))
+        # Interpolate onto native pixel grid
+        xx2 = np.arange(np.max(np.floor(x2[ii2]).astype(int)))
+        yy2 = np.interp(xx2, x2[ii2], y2[ii2])
+        xx3 = np.arange(np.max(np.floor(x3[ii3]).astype(int)))
+        yy3 = np.interp(xx3, x3[ii3], y3[ii3])
+    else:
+        xx2, yy2 = xx1, np.ones_like(xx1) * np.nan
+        xx3, yy3 = xx1, np.ones_like(xx1) * np.nan
 
     if save_results is True:
         yyy2 = np.ones_like(xx1) * np.nan
@@ -439,7 +447,8 @@ def get_trace_centroids(deepframe, tracetable, subarray, save_results=True,
         outfile_name = save_filename + 'centroids.csv'
         outfile = open(outfile_name, 'a')
         outfile.write('# File Contents: Edgetrigger trace centroids\n')
-        outfile.write('# File Creation Date: {}\n'.format(datetime.utcnow().replace(microsecond=0).isoformat()))
+        outfile.write('# File Creation Date: {}\n'.format(
+            datetime.utcnow().replace(microsecond=0).isoformat()))
         outfile.write('# File Author: MCR\n')
         df.to_csv(outfile, index=False)
         outfile.close()
@@ -536,7 +545,7 @@ def open_filetype(datafile):
 
 
 def open_stage2_secondary_outputs(deep_file, centroid_file, smoothed_wlc_file,
-                                  root_dir, output_tag=''):
+                                  output_tag='', root_dir='./'):
     """Utlity to locate and read in secondary outputs from stage 2.
 
     Parameters
@@ -603,6 +612,67 @@ def open_stage2_secondary_outputs(deep_file, centroid_file, smoothed_wlc_file,
     smoothed_wlc = np.load(smoothed_wlc_file)
 
     return deepframe, centroids, smoothed_wlc
+
+
+def outlier_resistant_variance(data):
+    """Calculate the varaince of some data in an outlier resistant manner.
+    """
+
+    var = (np.nanmedian(np.abs(data - np.nanmedian(data))) / 0.6745) ** 2
+    return var
+
+
+def pack_ld_priors(wave, c1, c2, order, target, m_h, teff, logg, outdir):
+    """Write model limb darkening parameters to a file to be used as priors
+    for light curve fitting.
+
+    Parameters
+    ----------
+    wave : array-like[float]
+        Wavelength axis.
+    c1 : array-like[float]
+        c1 parameter for 2-parameter limb darkening law.
+    c2 : array-like[float]
+        c2 parameter for 2-parameter limb darkening law.
+    order : int
+        SOSS order.
+    target : str
+        Name of the target.
+    m_h : float
+        Host star metallicity.
+    teff : float
+        Host star effective temperature.
+    logg : float
+        Host star gravity.
+    outdir : str
+        Directory to which to save file.
+    """
+
+    # Create dictionary with model LD info.
+    dd = {'wave': wave, 'c1': c1,  'c2': c2}
+    df = pd.DataFrame(data=dd)
+    # Remove old LD file if one exists.
+    filename = target+'_order' + str(order) + '_exotic-ld_quadratic.csv'
+    if os.path.exists(outdir + filename):
+        os.remove(outdir + filename)
+    # Add header info.
+    f = open(outdir + filename, 'a')
+    f.write('# Target: {}\n'.format(target))
+    f.write('# Instrument: NIRISS/SOSS\n')
+    f.write('# Order: {}\n'.format(order))
+    f.write('# Author: {}\n'.format(os.environ.get('USER')))
+    f.write('# Date: {}\n'.format(datetime.utcnow().replace(microsecond=0).isoformat()))
+    f.write('# Stellar M/H: {}\n'.format(m_h))
+    f.write('# Stellar log g: {}\n'.format(logg))
+    f.write('# Stellar Teff: {}\n'.format(teff))
+    f.write('# Algorithm: ExoTiC-LD\n')
+    f.write('# Limb Darkening Model: quadratic\n')
+    f.write('# Column wave: Central wavelength of bin (micron)\n')
+    f.write('# Column c1: Quadratic Coefficient 1\n')
+    f.write('# Column c2: Quadratic Coefficient 2\n')
+    f.write('#\n')
+    df.to_csv(f, index=False)
+    f.close()
 
 
 def pack_spectra(filename, wl1, wu1, f1, e1, wl2, wu2, f2, e2, t,
@@ -707,6 +777,82 @@ def pack_spectra(filename, wl1, wu1, f1, e1, wl2, wu2, f2, e2, t,
     return param_dict
 
 
+def parse_config(config_file):
+    """Parse a yaml config file.
+
+    Parameters
+    ----------
+    config_file : str
+        Path to config file.
+
+    Returns
+    -------
+    config : dict
+        Dictionary of config parameters.
+    """
+
+    with open(config_file) as f:
+        config = yaml.load(f, Loader=yaml.FullLoader)
+
+    for key in config.keys():
+        if config[key] == 'None':
+            config[key] = None
+
+    return config
+
+
+def read_ld_coefs(filename, wavebin_low, wavebin_up, ld_model='quadratic'):
+    """Unpack limb darkening coefficients and interpolate to the wavelength
+    grid of data being fit.
+
+    Parameters
+    ----------
+    filename : str
+        Path to file containing model limb darkening coefficients.
+    wavebin_low : array-like[float]
+        Lower edge of wavelength bins being fit.
+    wavebin_up : array-like[float]
+        Upper edge of wavelength bins being fit.
+    ld_model : str
+        Limb darkening model.
+
+    Returns
+    -------
+    prior_q1 : array-like[float]
+        Model estimates for q1 parameter.
+    prior_q2 : array-like[float]
+        Model estimates for q2 parameter.
+    """
+
+    # Open the LD model file and convert c1 and c2 parameters to q1 and q2 of
+    # the Kipping (2013) parameterization.
+    ld = pd.read_csv(filename, comment='#', sep=',')
+    q1s, q2s = juliet.reverse_q_coeffs(ld_model, ld['c1'].values,
+                                       ld['c2'].values)
+
+    # Get model wavelengths and sort in increasing order.
+    waves = ld['wave'].values
+    ii = np.argsort(waves)
+    waves = waves[ii]
+    q1s, q2s = q1s[ii], q2s[ii]
+
+    prior_q1, prior_q2 = [], []
+    # Loop over all fitting bins. Calculate mean of model LD coefs within that
+    # range.
+    for wl, wu in zip(wavebin_low, wavebin_up):
+        current_q1, current_q2 = [], []
+        for w, q1, q2 in zip(waves, q1s, q2s):
+            if wl < w <= wu:
+                current_q1.append(q1)
+                current_q2.append(q2)
+            elif w > wu:
+                prior_q1.append(np.nanmean(current_q1))
+                prior_q2.append(np.nanmean(current_q2))
+                break
+
+    return prior_q1, prior_q2
+
+
 def remove_nans(datafile):
     """Remove any NaN values remaining in a datamodel, either in the flux or
     flux error arrays, before passing to an ATOCA extraction.
@@ -768,6 +914,119 @@ def sigma_clip_lightcurves(flux, ferr, thresh=5):
     print('{0} pixels clipped ({1:.3f}%)'.format(clipsum, clipsum / nints / nwave * 100))
 
     return flux_clipped
+
+
+def soss_stability(cube, nsteps=501, axis='x', smoothing_scale=None):
+    """ Perform a CCF analysis to track the movement of the SOSS trace
+    relative to the median stack over the course of a TSO.
+
+    Parameters
+    ----------
+    cube : array-like[float]
+        Data cube. Should be 3D (ints, dimy, dimx).
+    nsteps : int
+        Number of CCF steps to test.
+    axis : str
+        Axis over which to calculate the CCF - either 'x', or 'y'.
+    smoothing_scale : int
+        Length scale over which to smooth results.
+
+    Returns
+    -------
+    ccf : array-like[float]
+        The cross-correlation results.
+    """
+
+    # Get data dimensions.
+    nints, dimy, dimx = np.shape(cube)
+
+    # Subtract integration-wise median from cube for CCF.
+    cube_sub = cube - np.nanmedian(cube, axis=(1, 2))[:, None, None]
+    # Calculate median stack.
+    med = bn.nanmedian(cube_sub, axis=0)
+
+    # Initialize CCF variables.
+    ccf = np.zeros((nints, nsteps))
+    f = interp2d(np.arange(dimx), np.arange(dimy), med, kind='cubic')
+    # Perform cross-correlation over desired axis.
+    for i in tqdm(range(nints)):
+        for j, jj in enumerate(np.linspace(-0.01, 0.01, nsteps)):
+            if axis == 'x':
+                interp = f(np.arange(dimx) + jj, np.arange(dimy))
+            elif axis == 'y':
+                interp = f(np.arange(dimx), np.arange(dimy) + jj)
+            else:
+                msg = 'Unknown axis: {}'.format(axis)
+                raise ValueError(msg)
+            ccf[i, j] = np.nansum(cube_sub[i] * interp)
+
+    # Determine the peak of the CCF for each integration to get the
+    # best-fitting shift.
+    maxvals = []
+    for i in range(nints):
+        maxvals.append(np.where(ccf[i] == np.max(ccf[i]))[0])
+    maxvals = np.array(maxvals)
+    # Smooth results.
+    if smoothing_scale is None:
+        smoothing_scale = int(0.2 * nints)
+    ccf = median_filter(np.linspace(-0.01, 0.01, nsteps)[maxvals],
+                        smoothing_scale)
+    ccf = ccf.reshape(nints)
+
+    return ccf
+
+
+def soss_stability_fwhm(cube, ycens_o1):
+    """Estimate the FWHM of the trace over the course of a TSO by fitting a
+    Gaussian to each detector column.
+
+    Parameters
+    ----------
+    cube : array-like[float]
+        Data cube. Should be 3D (ints, dimy, dimx).
+    ycens_o1 : arrray-like[float]
+        Y-centroid positions of the order 1 trace. Should have length dimx.
+
+    Returns
+    -------
+    fwhm : array-like[float]
+        FWHM estimates for each column at every integration.
+    """
+
+    def gauss(x, *p):
+        amp, mu, sigma = p
+        return amp * np.exp(-(x - mu) ** 2 / (2. * sigma ** 2))
+
+    # Get data dimensions.
+    nints, dimy, dimx = np.shape(cube)
+    # Initialize storage array for widths.
+    fwhm = np.zeros((nints, dimx-254))
+
+    # Fit a Gaussian to the PSF in each detector column.
+    for j in tqdm(range(nints)):
+        # Cut out first 500 columns as there is order 2 contmination.
+        for i in range(250, dimx-4):
+            p0 = [1., ycens_o1[i], 1.]
+            data = np.copy(cube[j, :, i])
+            # Replace any NaN values with a median.
+            if np.isnan(data).any():
+                ii = np.where(np.isnan(data))
+                data[ii] = np.nanmedian(data)
+            # Fit a Gaussian to the profile, and save the FWHM.
+            try:
+                coeff, var_matrix = curve_fit(gauss, np.arange(dimy), data,
+                                              p0=p0)
+                fwhm[j, i-250] = coeff[2] * 2.355
+            except RuntimeError:
+                fwhm[j, i-250] = np.nan
+
+    # Get median FWHM per integration.
+    fwhm = np.nanmedian(fwhm, axis=1)
+    fwhm -= np.median(fwhm)
+    # Smooth the trend.
+    fwhm = median_filter(fwhm, int(0.2 * nints))
+
+    return fwhm
 
 
 def unpack_input_directory(indir, filetag='', exposure_type='CLEAR'):

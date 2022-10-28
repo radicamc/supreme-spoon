@@ -4,7 +4,7 @@
 from setuptools import setup
 
 setup(name='supreme_spoon',
-      version='0.1.0',
+      version='0.2.0',
       license='MIT',
       author='Michael Radica',
       author_email='michael.radica@umontreal.ca',
@@ -14,8 +14,8 @@ setup(name='supreme_spoon',
       description='Tools for Reduction of NIRISS/SOSS TSOs',
       package_data={'': ['README.md', 'LICENSE']},
       install_requires=['applesoss', 'astropy', 'bottleneck', 'corner',
-                        'jwst', 'matplotlib', 'numpy', 'pandas', 'scipy',
-                        'tqdm'],
+                        'juliet', 'jwst', 'matplotlib', 'numpy', 'pandas',
+                        'ray', 'scipy', 'tqdm', 'pyyaml'],
       classifiers=[
         'Development Status :: 3 - Alpha',
         'Intended Audience :: Science/Research',

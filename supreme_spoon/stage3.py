@@ -19,7 +19,7 @@ from jwst import datamodels
 from jwst.extract_1d.soss_extract import soss_solver
 from jwst.pipeline import calwebb_spec2
 
-from supreme_spoon import plotting, utils
+from supreme_spoon import utils
 
 
 class SpecProfileStep:
@@ -101,7 +101,8 @@ class Extract1DStep:
         self.scaled_deep = deepframe[None, :, :] * smoothed_wlc[:, None, None]
 
     def run(self, soss_transform, soss_width=25, specprofile=None,
-            soss_estimate=None, save_results=True, force_redo=False):
+            soss_estimate=None, save_results=True, force_redo=False,
+            soss_tikfac=None):
         """Method to run the step.
         """
 
@@ -113,6 +114,10 @@ class Extract1DStep:
         results = []
         completed_segments, redo_segments = [], []
         all_files = glob.glob(self.output_dir + '*')
+
+        # Calculate time axis. For some reason the extrat1d outputs lose the
+        # timestamps, so this must be done before extracting.
+        times = utils.get_timestamps(self.datafiles)
 
         # To accomodate the need to occasionally iteratively run the ATOCA
         # extraction, extract segments as long as all segments are not
@@ -180,7 +185,8 @@ class Extract1DStep:
                                     soss_bad_pix=soss_bad_pix,
                                     soss_width=soss_width,
                                     soss_modelname=soss_modelname,
-                                    override_specprofile=specprofile)
+                                    override_specprofile=specprofile,
+                                    soss_tikfac=soss_tikfac)
                     # If the step ran successfully, and ATOCA was used, save
                     # the AtocaSpectra output for potential use as the
                     # soss_estimate for later segments.
@@ -224,7 +230,8 @@ class Extract1DStep:
                                         soss_width=soss_width,
                                         soss_modelname=soss_modelname,
                                         override_specprofile=specprofile,
-                                        soss_estimate=soss_estimate)
+                                        soss_estimate=soss_estimate,
+                                        soss_tikfac=soss_tikfac)
                     # If any other error pops up, raise it.
                     else:
                         raise err
@@ -249,14 +256,14 @@ class Extract1DStep:
                           'soss_width': soss_width,
                           'method': self.extract_method}
 
-        return results, extract_params
+        return results, extract_params, times
 
 
 class LightCurveStep:
     """Wrapper around custom Light Curve Construction step.
     """
 
-    def __init__(self, datafiles, extract_dict, baseline_ints,
+    def __init__(self, datafiles, extract_dict, baseline_ints, times,
                  occultation_type='transit', output_dir='./'):
         """Step initializer.
         """
@@ -266,24 +273,24 @@ class LightCurveStep:
         self.extract_dict = extract_dict
         self.baseline_ints = baseline_ints
         self.occultation_type = occultation_type
+        self.times = times
 
-    def run(self, save_results=True, show_plots=False):
+    def run(self, save_results=True):
         """Method to run the step.
         """
 
-        stellar_spectra = lightcurvestep(self.datafiles,
+        stellar_spectra = lightcurvestep(self.datafiles, times=self.times,
                                          extract_params=self.extract_dict,
                                          baseline_ints=self.baseline_ints,
                                          occultation_type=self.occultation_type,
                                          save_results=save_results,
-                                         output_dir=self.output_dir,
-                                         show_plots=show_plots)
+                                         output_dir=self.output_dir)
 
         return stellar_spectra
 
 
-def lightcurvestep(datafiles, baseline_ints, extract_params, output_dir='./',
-                   save_results=True, show_plots=False,
+def lightcurvestep(datafiles, times, baseline_ints, extract_params,
+                   output_dir='./', save_results=True,
                    occultation_type='transit'):
     """Upack the outputs of the 1D extraction and format them into lightcurves
     at the native detector resolution.
@@ -292,14 +299,14 @@ def lightcurvestep(datafiles, baseline_ints, extract_params, output_dir='./',
     ----------
     datafiles : array-like[str], array-like[MultiSpecModel]
         Input extract1d data files.
+    times : array-like[float]
+        Time stamps corresponding to each integration.
     baseline_ints : array-like[int]
         Integrations of ingress and egress.
     output_dir : str
         Directory to which to save outputs.
     save_results : bool
         If True, save outputs to file.
-    show_plots : bool
-        If True, show diagnostic plots.
     extract_params : dict
         Dictonary of parameters used for the 1D extraction.
     occultation_type : str
@@ -318,9 +325,6 @@ def lightcurvestep(datafiles, baseline_ints, extract_params, output_dir='./',
                                             occultation_type)
     # Calculate the DN/s to e- conversion factor for this TSO.
     dn2e = utils.get_dn2e(datafiles[0])
-
-    # Generate the time axis of the TSO
-    t = utils.get_timestamps(datafiles)
 
     # Open the datafiles, and pack the wavelength, flux, and flux error
     # information into data cubes.
@@ -356,15 +360,6 @@ def lightcurvestep(datafiles, baseline_ints, extract_params, output_dir='./',
     # Clip remaining 5-sigma outliers.
     nflux_o1_clip = utils.sigma_clip_lightcurves(nflux_o1, nferr_o1)
     nflux_o2_clip = utils.sigma_clip_lightcurves(nflux_o2, nferr_o2)
-    # If requested, do diagnostic plot of the sigma clip.
-    if show_plots is True:
-        kwargs = {'vmax': 1e-4, 'vmin': -1e-4}
-        plotting.plot_2dlightcurves(wave1d_o1, nflux_o1, wave1d_o2, nflux_o2)
-        plotting.plot_2dlightcurves(wave1d_o1, nflux_o1 - nflux_o1_clip,
-                                    wave1d_o2, nflux_o2 - nflux_o2_clip,
-                                    **kwargs)
-        plotting.plot_2dlightcurves(wave1d_o1, nflux_o1_clip, wave1d_o2,
-                                    nflux_o2_clip)
 
     # Return the light curves back to their un-normalized state.
     flux_o1_clip = nflux_o1_clip * norm_factor_o1
@@ -400,14 +395,14 @@ def lightcurvestep(datafiles, baseline_ints, extract_params, output_dir='./',
     # Pack the stellar spectra and save to file if requested.
     stellar_spectra = utils.pack_spectra(filename, wl1, wu1, flux_o1_clip,
                                          ferr_o1, wl2, wu2, flux_o2_clip,
-                                         ferr_o2, t, header_dict,
+                                         ferr_o2, times, header_dict,
                                          header_comments,
                                          save_results=save_results)
 
     return stellar_spectra
 
 
-def sosssolverstep(datafile, deepframe, show_plots=False, centroids=None):
+def sosssolverstep(datafile, deepframe):
     """Determine the rotation, as well as vertical and horizontal offsets
     necessary to match the observed trace to the reference files.
 
@@ -417,11 +412,6 @@ def sosssolverstep(datafile, deepframe, show_plots=False, centroids=None):
         Median baseline stack.
     datafile : str, jwst.datamodel
         Datamodel, or path to datamodel for one segment.
-    show_plots : bool
-        If True, show diagnostic plot.
-    centroids : array-like[float]
-        Extracted centroids for all three SOSS orders. Only necessary if
-        plotting.
 
     Returns
     -------
@@ -455,30 +445,6 @@ def sosssolverstep(datafile, deepframe, show_plots=False, centroids=None):
                                                 is_fitted=(True, True, True),
                                                 guess_transform=(0, 0, 0))
     print('Determined a transform of:\nx = {}\ny = {}\ntheta = {}'.format(*transform))
-
-    # If diagnostic plot to be shown, unpack the actual data centroids.
-    if show_plots is True:
-        if centroids is None:
-            msg = 'No data centroids provided for plotting.'
-            raise ValueError(msg)
-        # Unpack the reference centroids.
-        xdat_o1, ydat_o1 = centroids[0][0], centroids[0][1]
-        xdat_o2, ydat_o2 = centroids[1][0], centroids[1][1]
-        xdat_o3, ydat_o3 = centroids[2][0], centroids[2][1]
-
-        # Transform the reference centroids based on the determined transform.
-        xtrans_o1, ytrans_o1 = soss_solver.transform_coords(*transform,
-                                                            xref_o1, yref_o1)
-        xtrans_o2, ytrans_o2 = soss_solver.transform_coords(*transform,
-                                                            xref_o2, yref_o2)
-        # Do diagnostic plot.
-        labels = ['Extracted Centroids', 'Reference Centroids',
-                  'Transformed Centroids']
-        plotting.do_centroid_plot(deepframe, [xdat_o1, xref_o1, xtrans_o1],
-                                  [ydat_o1, yref_o1, ytrans_o1],
-                                  [xdat_o2, xref_o2, xtrans_o2],
-                                  [ydat_o2, yref_o2, ytrans_o2],
-                                  [xdat_o3], [ydat_o3], labels=labels)
 
     return transform
 
@@ -543,10 +509,10 @@ def specprofilestep(datafiles, save_results=True, output_dir='./'):
 
 
 def run_stage3(results, deepframe, baseline_ints, smoothed_wlc,
-               save_results=True, show_plots=False, root_dir='./',
-               force_redo=False, extract_method='box', specprofile=None,
-               soss_estimate=None, soss_width=25, output_tag='',
-               use_applesoss=True, occultation_type='transit'):
+               save_results=True, root_dir='./', force_redo=False,
+               extract_method='box', specprofile=None, soss_estimate=None,
+               soss_width=25, output_tag='', use_applesoss=True,
+               occultation_type='transit', soss_tikfac=None):
     """Run the supreme-SPOON Stage 3 pipeline: 1D spectral extraction, using
     a combination of official STScI DMS and custom steps.
 
@@ -562,8 +528,6 @@ def run_stage3(results, deepframe, baseline_ints, smoothed_wlc,
         Estimate of the normalized light curve.
     save_results : bool
         If True, save the results of each step to file.
-    show_plots : bool
-        If True, show diagnostic plots.
     root_dir : str
         Directory from which all relative paths are defined.
     force_redo : bool
@@ -583,6 +547,8 @@ def run_stage3(results, deepframe, baseline_ints, smoothed_wlc,
         applesoss module.
     occultation_type : str
         Type of occultation, either 'transit' or 'eclipse'.
+    soss_tikfac : int, None
+        Tikhonov regularization factor.
 
     Returns
     -------
@@ -633,15 +599,15 @@ def run_stage3(results, deepframe, baseline_ints, smoothed_wlc,
     step_results = step.run(soss_transform=soss_transform,
                             soss_width=soss_width, specprofile=specprofile,
                             soss_estimate=soss_estimate,
-                            save_results=save_results, force_redo=force_redo)
-    results, extract_params = step_results
+                            save_results=save_results, force_redo=force_redo,
+                            soss_tikfac=soss_tikfac)
+    results, extract_params, times = step_results
 
     # ===== Light Curve Construction Step =====
     # Custom DMS step.
-    step = LightCurveStep(results, extract_dict=extract_params,
+    step = LightCurveStep(results, extract_dict=extract_params, times=times,
                           baseline_ints=baseline_ints,
                           occultation_type=occultation_type, output_dir=outdir)
-    stellar_spectra = step.run(save_results=save_results,
-                               show_plots=show_plots)
+    stellar_spectra = step.run(save_results=save_results)
 
     return stellar_spectra

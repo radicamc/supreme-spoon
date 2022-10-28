@@ -16,60 +16,44 @@ import numpy as np
 import warnings
 
 
-def do_backgroundsubtraction_plot(data, model, scale_factor):
-    """Plot background subtraction results.
+def make_corner_plot(fit_params, results, posterior_names=None, outpdf=None,
+                     truths=None):
+    """make corner plot for lightcurve fitting.
     """
 
-    plt.figure(figsize=(7, 5), facecolor='white')
-    tt = data + model*scale_factor
-    plt.plot(tt[10, 220], label='Before Subtraction', c='salmon')
-    plt.plot(data[10, 220], label='After Subtraction', c='royalblue')
-    plt.plot((model[220]*scale_factor), c='black', label='Background Model')
-    plt.ylim(-100, 600)
-    plt.xlabel('Spectral Pixel', fontsize=16)
-    plt.ylabel('Counts', fontsize=16)
-    plt.legend(fontsize=12, loc=4)
-    plt.show()
+    first_time = True
+    for param in fit_params:
+        if first_time:
+            pos = results.posteriors['posterior_samples'][param]
+            first_time = False
+        else:
+            pos = np.vstack((pos, results.posteriors['posterior_samples'][param]))
+
+    figure = corner.corner(pos.T, labels=posterior_names, color='black',
+                           show_titles=True, title_fmt='.3f',
+                           label_kwargs=dict(fontsize=14), truths=truths,
+                           facecolor='white')
+    if outpdf is not None:
+        if isinstance(outpdf, matplotlib.backends.backend_pdf.PdfPages):
+            outpdf.savefig(figure)
+        else:
+            figure.savefig(outpdf)
+        figure.clear()
+        plt.close(figure)
+    else:
+        plt.show()
 
 
-def do_centroid_plot(deepstack, x1, y1, x2, y2, x3, y3, labels=None):
-    """Plot centroiding results.
-    """
-
-    x1, y1 = np.atleast_2d(x1), np.atleast_2d(y1)
-    x2, y2 = np.atleast_2d(x2), np.atleast_2d(y2)
-    x3, y3 = np.atleast_2d(x3), np.atleast_2d(y3)
-    colours = ['red', 'blue', 'white', 'green']
-    if labels is None:
-        labels = [None for xx in x1]
-
-    plt.figure(figsize=(10, 4), facecolor='white')
-    plt.imshow(deepstack, origin='lower', aspect='auto', vmin=0, vmax=25)
-    for i in range(x1.shape[0]):
-        plt.plot(x1[i], y1[i], c=colours[i], ls='--', label=labels[i])
-    for i in range(x2.shape[0]):
-        plt.plot(x2[i], y2[i], c=colours[i], ls='--')
-    for i in range(x3.shape[0]):
-        plt.plot(x3[i], y3[i], c=colours[i], ls='--')
-
-    plt.colorbar()
-    plt.xlim(0, 2047)
-    plt.ylim(0, 255)
-    plt.legend(fontsize=12)
-    plt.show()
-
-
-def do_lightcurve_plot(t, data, model, scatter, out_dev, outpdf=None,
-                       title=None, nfit=8):
+def make_lightcurve_plot(t, data, model, scatter, errors, outpdf=None,
+                         title=None, nfit=8):
     """Plot results of lightcurve fit.
     """
 
     def gaus(x, m, s):
-        return np.exp(-0.5 * (x - m) ** 2 / s ** 2) / np.sqrt(
-            2 * np.pi * s ** 2)
+        return np.exp(-0.5 * (x - m)**2 / s**2) / np.sqrt(2 * np.pi * s**2)
 
     def chi2(o, m, e):
-        return np.nansum((o - m) ** 2 / e ** 2)
+        return np.nansum((o - m)**2 / e**2)
 
     fig = plt.figure(figsize=(13, 7), facecolor='white')
     gs = GridSpec(4, 1, height_ratios=[3, 1, 0.3, 1])
@@ -79,13 +63,16 @@ def do_lightcurve_plot(t, data, model, scatter, out_dev, outpdf=None,
     ax1.errorbar(t, data, yerr=scatter * 1e-6, fmt='o', capsize=0,
                  color='royalblue', ms=5, alpha=1)
     ax1.plot(t, model, color='black', zorder=100)
-    ax1.set_ylabel('Relative Flux', fontsize=14)
+    ax1.set_ylabel('Relative Flux', fontsize=18)
     ax1.set_xlim(np.min(t), np.max(t))
     ax1.xaxis.set_major_formatter(plt.NullFormatter())
-    chi2_v = chi2(data * 1e6, model * 1e6, out_dev * 1e6) / (len(t) - nfit)
-    err_mult = scatter / (out_dev * 1e6)
-    ax1.text(t[2], np.min(model), r'$\chi_\nu^2 = {:.2f}$''\n'r'$\sigma={:.2f}$ppm''\n'r'$e={:.2f}$'.format(chi2_v, out_dev*1e6, err_mult),
+    chi2_v = chi2(data*1e6, model*1e6, errors*1e6) / (len(t) - nfit)
+    mean_err = np.nanmean(errors)
+    err_mult = scatter / (mean_err*1e6)
+    ax1.text(t[2], np.min(model), r'$\chi_\nu^2 = {:.2f}$''\n'r'$\sigma={:.2f}$ppm''\n'r'$e={:.2f}$'.format(chi2_v, mean_err*1e6, err_mult),
              fontsize=14)
+    ax1.tick_params(axis='x', labelsize=12)
+    ax1.tick_params(axis='y', labelsize=12)
 
     if title is not None:
         plt.title(title, fontsize=16)
@@ -100,8 +87,10 @@ def do_lightcurve_plot(t, data, model, scatter, out_dev, outpdf=None,
              r'{:.2f}$\,$ppm'.format(scatter))
     ax2.fill_between(t, -scatter, scatter, color='black', alpha=0.1)
     ax2.set_xlim(np.min(t), np.max(t))
-    ax2.set_ylabel('Residuals\n(ppm)', fontsize=16)
-    ax2.set_xlabel('Time [BJD]', fontsize=16)
+    ax2.set_ylabel('Residuals\n(ppm)', fontsize=18)
+    ax2.set_xlabel('Time from Transit Midpoint [hrs]', fontsize=18)
+    ax2.tick_params(axis='x', labelsize=12)
+    ax2.tick_params(axis='y', labelsize=12)
 
     # Histogram of residuals
     ax3 = plt.subplot(gs[3])
@@ -111,60 +100,25 @@ def do_lightcurve_plot(t, data, model, scatter, out_dev, outpdf=None,
     area = np.sum(hist[0] * np.diff(bins))
     ax3.plot(np.linspace(-15, 15, 500),
              gaus(np.linspace(-15, 15, 500), 0, 1) * area, c='black')
-    ax3.set_ylabel('Counts', fontsize=16)
-    ax3.set_xlabel('Residuals/Scatter', fontsize=16)
+    ax3.set_ylabel('Counts', fontsize=18)
+    ax3.set_xlabel('Residuals/Scatter', fontsize=18)
     ax3.set_xlim(-5, 5)
+    ax3.tick_params(axis='x', labelsize=12)
+    ax3.tick_params(axis='y', labelsize=12)
 
     if outpdf is not None:
         if isinstance(outpdf, matplotlib.backends.backend_pdf.PdfPages):
             outpdf.savefig(fig)
         else:
             fig.savefig(outpdf)
-        plt.close()
+        fig.clear()
+        plt.close(fig)
     else:
         plt.show()
 
 
-def do_tracemask_plot(tracemask, **kwargs):
-    """Plot results of trace mask construction.
-    """
-
-    plt.figure(figsize=(8, 4), facecolor='white')
-    plt.imshow(tracemask, origin='lower', aspect='auto', **kwargs)
-    plt.show()
-
-
-def make_corner(fit_params, results, posterior_names=None, outpdf=None,
-                truths=None):
-    """make corner plot for lightcurve fitting.
-    """
-
-    first_time = True
-    for param in fit_params:
-        if first_time:
-            pos = results.posteriors['posterior_samples'][param]
-            first_time = False
-        else:
-            pos = np.vstack(
-                (pos, results.posteriors['posterior_samples'][param]))
-
-    figure = corner.corner(pos.T, labels=posterior_names, color='black',
-                           show_titles=True,
-                           title_fmt='.3f', label_kwargs=dict(fontsize=14),
-                           truths=truths,
-                           facecolor='white')
-    if outpdf is not None:
-        if isinstance(outpdf, matplotlib.backends.backend_pdf.PdfPages):
-            outpdf.savefig(figure)
-        else:
-            figure.savefig(outpdf)
-        plt.close()
-    else:
-        plt.show()
-
-
-def plot_2dlightcurves(wave1, flux1, wave2=None, flux2=None, outpdf=None,
-                       title='', **kwargs):
+def make_2d_lightcurve_plot(wave1, flux1, wave2=None, flux2=None, outpdf=None,
+                            title='', **kwargs):
     """Plot 2D spectroscopic light curves.
     """
 
@@ -201,11 +155,13 @@ def plot_2dlightcurves(wave1, flux1, wave2=None, flux2=None, outpdf=None,
         if wave2 is not None:
             ax2 = fig.add_subplot(gs[0, 1])
             pp = ax2.imshow(flux2.T, aspect='auto', origin='lower',
-                            extent=(0, flux2.shape[0]-1, wave2[0], wave2[-1]), **kwargs)
+                            extent=(0, flux2.shape[0]-1, wave2[0], wave2[-1]),
+                            **kwargs)
             cax = ax2.inset_axes([1.05, 0.005, 0.03, 0.99],
                                  transform=ax2.transAxes)
             cb = fig.colorbar(pp, ax=ax2, cax=cax)
-            cb.set_label('Normalized Flux', labelpad=15, rotation=270, fontsize=16)
+            cb.set_label('Normalized Flux', labelpad=15, rotation=270,
+                         fontsize=16)
             ax2.set_xlabel('Integration Number', fontsize=16)
             plt.title('Order 2' + title, fontsize=18)
             plt.xticks(fontsize=12)
@@ -218,6 +174,7 @@ def plot_2dlightcurves(wave1, flux1, wave2=None, flux2=None, outpdf=None,
             outpdf.savefig(fig)
         else:
             fig.savefig(outpdf)
-        plt.close()
+        fig.clear()
+        plt.close(fig)
     else:
         plt.show()

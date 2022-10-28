@@ -1,0 +1,50 @@
+# ======================= BEGIN LIGHTCURVE FIT CONFIG FILE ===========================
+#
+# This is the configuration file for fit_lightcurves.py.
+#
+# ===== Fit Metadata =====
+# Name tag for output file directory.
+output_tag : ''
+# File containing lightcurves to fit.
+infile : ''
+# Orders to fit.
+orders : [1, 2]
+# Suffix to apply to fit output files.
+fit_suffix : ''
+# Integrations of ingress and egress.
+baseline_ints : [50, -50]
+# Type of occultation: 'transit' or 'eclipse'.
+occultation_type : 'transit'
+# If True, make summary plots.
+do_plots : True
+# Number of cores for multiprocessing.
+ncores : 4
+# Spectral resolution at which to fit lightcurves.
+res : 'native'
+# Planet identifier.
+planet_letter : 'b'
+
+# ===== Fit Priors + Parameters =====
+# Fitting priors in juliet format.
+params : ['P_p1', 't0_p1', 'p_p1', 'b_p1',
+          'q1_SOSS', 'q2_SOSS', 'ecc_p1', 'omega_p1', 'a_p1',
+          'mdilution_SOSS', 'mflux_SOSS', 'sigma_w_SOSS']
+dists : ['fixed', 'fixed', 'uniform', 'fixed',
+         'uniform', 'uniform', 'fixed', 'fixed', 'fixed',
+         'fixed', 'fixed', 'loguniform']
+hyperps : [3.42525650, 2459751.821681146, [0.01, 0.9], 0.748,
+           [0., 1.], [0., 1.], 0.0, 90., 8.82,
+           1.0, 0, [0.1, 10000]]
+
+# Paths to files containing model limb-darkening coefficients.
+ldcoef_file_o1 : None
+ldcoef_file_o2 : None
+# Path to file containing linear detrending parameters.
+lm_file : None
+# Key names for detrending parametrers.
+lm_parameters : ['x']
+# Path to file containing GP training parameters.
+gp_file : None
+# Key names for GP training parametrers.
+gp_parameters : []
+# ======================= END LIGHTCURVE FIT CONFIG FILE ===========================
