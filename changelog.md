@@ -14,7 +14,7 @@ All notable changes to this project will be documented in this file.
 - Speed improvements for 1/f and hot pixel corrections.
 - stage4.py: code including routines for light curve binning and parallelized fitting using ray and juliet (transit only currently).
 - fit_lightcurves.py: script to fit spectrophotometric light curves.
-- fit_lightcurves.yaml: config file for fi_lightcurves.py.
+- fit_lightcurves.yaml: config file for fit_lightcurves.py.
 
 #### Removed
 - Redundant plotting routines.
