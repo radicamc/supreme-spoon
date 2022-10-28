@@ -96,7 +96,9 @@ for order in config['orders']:
     expected_file = outdir + 'lightcurve_fit_order{0}{1}.pdf'.format(order, fit_suffix)
     if config['do_plots'] is True and expected_file not in all_files:
         outpdf = matplotlib.backends.backend_pdf.PdfPages(expected_file)
+        doplot = True
     else:
+        doplot = False
         outpdf = None
 
     # === Set Up Priors and Fit Parameters ===
@@ -220,7 +222,7 @@ for order in config['orders']:
             order_results['dppm_err'].append(np.mean([err_up, err_low]))
 
         # Make summary plots.
-        if skip is False and config['do_plots'] is True:
+        if skip is False and doplot is True:
             try:
                 # Plot transit model and residuals.
                 transit_model = fit_results[wavebin].lc.evaluate('SOSS')
@@ -259,7 +261,7 @@ for order in config['orders']:
                 pass
     results_dict['order {}'.format(order)] = order_results
     # Plot 2D lightcurves.
-    if config['do_plots'] is True:
+    if doplot is True:
         plotting.make_2d_lightcurve_plot(wave, data, outpdf=outpdf,
                                          title='Normalized Lightcurves')
         plotting.make_2d_lightcurve_plot(wave, models, outpdf=outpdf,
