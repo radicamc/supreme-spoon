@@ -357,7 +357,7 @@ def lightcurvestep(datafiles, times, baseline_ints, extract_params,
         nflux_o2 = flux_o2 / norm_factor_o2
         nferr_o2 = ferr_o2 / norm_factor_o2
 
-    # Clip remaining 5-sigma outliers.
+    # Clip remaining 3-sigma outliers.
     nflux_o1_clip = utils.sigma_clip_lightcurves(nflux_o1, nferr_o1)
     nflux_o2_clip = utils.sigma_clip_lightcurves(nflux_o2, nferr_o2)
 

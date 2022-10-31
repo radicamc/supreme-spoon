@@ -882,8 +882,8 @@ def remove_nans(datafile):
     return modelout
 
 
-def sigma_clip_lightcurves(flux, ferr, thresh=5):
-    """Sigma clip outliers in wavelength from final lightcurves.
+def sigma_clip_lightcurves(flux, ferr, thresh=3, window=10):
+    """Sigma clip outliers in time from final lightcurves.
 
     Parameters
     ----------
@@ -893,6 +893,8 @@ def sigma_clip_lightcurves(flux, ferr, thresh=5):
         Flux error array.
     thresh : int
         Sigma level to be clipped.
+    window : int
+        Window function to calculate median.
 
     Returns
     -------
@@ -901,17 +903,17 @@ def sigma_clip_lightcurves(flux, ferr, thresh=5):
     """
 
     flux_clipped = np.copy(flux)
-    nints, nwave = np.shape(flux)
+    nints, nwaves = np.shape(flux)
     clipsum = 0
     # Loop over all integrations, and set pixels which deviate by more than
     # the given threshold from the median lightcurve by the median value.
-    for itg in range(nints):
-        med = np.nanmedian(flux[itg])
-        ii = np.where(np.abs(flux[itg] - med) / ferr[itg] > thresh)[0]
-        flux_clipped[itg, ii] = med
+    for wave in range(nwaves):
+        med = median_filter(flux[:, wave], window)
+        ii = np.where(np.abs(flux[:, wave] - med) > thresh*ferr[:, wave])[0]
+        flux_clipped[:, wave][ii] = med[ii]
         clipsum += len(ii)
 
-    print('{0} pixels clipped ({1:.3f}%)'.format(clipsum, clipsum / nints / nwave * 100))
+    print('{0} pixels clipped ({1:.3f}%)'.format(clipsum, clipsum / nints / nwaves * 100))
 
     return flux_clipped
 
