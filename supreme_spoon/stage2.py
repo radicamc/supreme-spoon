@@ -406,6 +406,8 @@ def backgroundstep(datafiles, background_model, output_dir='./',
         q2 = np.nanpercentile(bkg_ratio, 50)
         ii = np.where((bkg_ratio > q1) & (bkg_ratio < q2))
         scale_factor = np.nanmedian(bkg_ratio[ii])
+        if scale_factor < 0:
+            scale_factor = 0
         model_scaled[i] = background_model * scale_factor
         print('  Background scale factor: {1:.5f}'.format(i+1, scale_factor))
 
