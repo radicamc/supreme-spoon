@@ -123,7 +123,8 @@ class BackgroundStep:
             expected_file = self.output_dir + self.fileroots[i] + self.tag
             expected_bkg = self.output_dir + self.fileroot_noseg + 'background.npy'
             if expected_file not in all_files or expected_bkg not in all_files:
-                do_step *= 0
+                do_step = 0
+                break
             else:
                 results.append(datamodels.open(expected_file))
                 background_models.append(np.load(expected_bkg))
@@ -212,7 +213,8 @@ class BadPixStep:
             expected_file = self.output_dir + self.fileroots[i] + self.tag
             expected_deep = self.output_dir + self.fileroot_noseg + 'deepframe.fits'
             if expected_file not in all_files or expected_deep not in all_files:
-                do_step *= 0
+                do_step = 0
+                break
             else:
                 results.append(datamodels.open(expected_file))
                 deepframe = fits.getdata(expected_deep)

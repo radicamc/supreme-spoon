@@ -237,7 +237,8 @@ class OneOverFStep:
             # If an output file for this segment already exists, skip the step.
             expected_file = self.output_dir + self.fileroots[i] + self.tag
             if expected_file not in all_files:
-                do_step *= 0
+                do_step = 0
+                break
             else:
                 results.append(datamodels.open(expected_file))
         if do_step == 1 and force_redo is False:
