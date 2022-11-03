@@ -587,6 +587,7 @@ def badpixstep(datafiles, baseline_ints, smoothed_wlc=None, thresh=3,
             with warnings.catch_warnings():
                 warnings.simplefilter('ignore')
                 file.write(output_dir + fileroots[n] + 'badpixstep.fits')
+        file.close()
 
     if save_results is True:
         # Save deep frame.
