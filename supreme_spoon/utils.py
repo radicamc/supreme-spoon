@@ -622,7 +622,8 @@ def outlier_resistant_variance(data):
     return var
 
 
-def pack_ld_priors(wave, c1, c2, order, target, m_h, teff, logg, outdir):
+def pack_ld_priors(wave, c1_mean, c1_dev, c2_mean, c2_dev, order, target, m_h,
+                   teff, logg, outdir):
     """Write model limb darkening parameters to a file to be used as priors
     for light curve fitting.
 
@@ -630,10 +631,14 @@ def pack_ld_priors(wave, c1, c2, order, target, m_h, teff, logg, outdir):
     ----------
     wave : array-like[float]
         Wavelength axis.
-    c1 : array-like[float]
+    c1_mean : array-like[float]
         c1 parameter for 2-parameter limb darkening law.
-    c2 : array-like[float]
+    c1_dev : array-like[float]
+        Spread in c1 parameter.
+    c2_mean : array-like[float]
         c2 parameter for 2-parameter limb darkening law.
+    c2_dev : array-like[float]
+        Spread in c2 parameter.
     order : int
         SOSS order.
     target : str
@@ -649,7 +654,8 @@ def pack_ld_priors(wave, c1, c2, order, target, m_h, teff, logg, outdir):
     """
 
     # Create dictionary with model LD info.
-    dd = {'wave': wave, 'c1': c1,  'c2': c2}
+    dd = {'wave': wave, 'c1': c1_mean, 'c1_err': c1_dev, 'c2': c2_mean,
+          'c2_err': c2_dev}
     df = pd.DataFrame(data=dd)
     # Remove old LD file if one exists.
     filename = target+'_order' + str(order) + '_exotic-ld_quadratic.csv'
@@ -669,7 +675,9 @@ def pack_ld_priors(wave, c1, c2, order, target, m_h, teff, logg, outdir):
     f.write('# Limb Darkening Model: quadratic\n')
     f.write('# Column wave: Central wavelength of bin (micron)\n')
     f.write('# Column c1: Quadratic Coefficient 1\n')
+    f.write('# Column c1_err: Error in c1\n')
     f.write('# Column c2: Quadratic Coefficient 2\n')
+    f.write('# Column c2_err: Error in c2\n')
     f.write('#\n')
     df.to_csv(f, index=False)
     f.close()
@@ -818,39 +826,73 @@ def read_ld_coefs(filename, wavebin_low, wavebin_up, ld_model='quadratic'):
 
     Returns
     -------
-    prior_q1 : array-like[float]
+    mean_q1 : array-like[float]
         Model estimates for q1 parameter.
-    prior_q2 : array-like[float]
+    width_q1 : array-like[float]
+        Model error in q1 parameter.
+    mean_q2 : array-like[float]
         Model estimates for q2 parameter.
+    width_q2 : array-like[float]
+        Model error in q2 parameter.
     """
 
     # Open the LD model file and convert c1 and c2 parameters to q1 and q2 of
     # the Kipping (2013) parameterization.
     ld = pd.read_csv(filename, comment='#', sep=',')
-    q1s, q2s = juliet.reverse_q_coeffs(ld_model, ld['c1'].values,
-                                       ld['c2'].values)
+    c1_up = ld['c1'].values + ld['c1_err'].values
+    c1_low = ld['c1'].values - ld['c1_err'].values
+    c2_up = ld['c2'].values + ld['c2_err'].values
+    c2_low = ld['c2'].values - ld['c2_err'].values
+
+    q1_up, q2_up = juliet.reverse_q_coeffs(ld_model, c1_up, c2_up)
+    q1_low, q2_low = juliet.reverse_q_coeffs(ld_model, c1_low, c2_low)
 
     # Get model wavelengths and sort in increasing order.
     waves = ld['wave'].values
     ii = np.argsort(waves)
     waves = waves[ii]
-    q1s, q2s = q1s[ii], q2s[ii]
+    q1_up, q2_up = q1_up[ii], q2_up[ii]
+    q1_low, q2_low = q1_low[ii], q2_low[ii]
 
-    prior_q1, prior_q2 = [], []
+    mean_q1, mean_q2 = [], []
+    width_q1, width_q2 = [], []
     # Loop over all fitting bins. Calculate mean of model LD coefs within that
     # range.
     for wl, wu in zip(wavebin_low, wavebin_up):
-        current_q1, current_q2 = [], []
-        for w, q1, q2 in zip(waves, q1s, q2s):
+        current_q1u, current_q2u = [], []
+        current_q1l, current_q2l = [], []
+        for w, q1u, q2u, q1l, q2l in zip(waves, q1_up, q2_up, q1_low, q2_low):
             if wl < w <= wu:
-                current_q1.append(q1)
-                current_q2.append(q2)
+                current_q1u.append(q1u)
+                current_q2u.append(q2u)
+                current_q1l.append(q1l)
+                current_q2l.append(q2l)
             elif w > wu:
-                prior_q1.append(np.nanmean(current_q1))
-                prior_q2.append(np.nanmean(current_q2))
+                # Calculate mean q1 and q2 in the bin.
+                q1_m = np.nanmean(np.stack([current_q1u, current_q1l]))
+                q2_m = np.nanmean(np.stack([current_q2u, current_q2l]))
+                mean_q1.append(q1_m)
+                mean_q2.append(q2_m)
+                # Calculate spread in each coefficient in the bin.
+                q1_d = np.abs(np.array(current_q1u) - np.array(current_q1l))
+                q2_d = np.abs(np.array(current_q2u) - np.array(current_q2l))
+                width_q1.append(np.nanmean(q1_d))
+                width_q2.append(np.nanmean(q2_d))
                 break
 
-    return prior_q1, prior_q2
+    # Since the q1/q2 parameterization is only defined from 0 to 1, set any
+    # values out of these bounds to the extreme.
+    mean_q1, width_q1 = np.array(mean_q1), np.array(width_q1)
+    mean_q2, width_q2 = np.array(mean_q2), np.array(width_q2)
+    mean_q1 = np.where(mean_q1 < 0, 0, mean_q1)
+    mean_q1 = np.where(mean_q1 > 1, 1, mean_q1)
+    mean_q2 = np.where(mean_q2 < 0, 0, mean_q2)
+    mean_q2 = np.where(mean_q2 > 1, 1, mean_q2)
+    # Also set any spreads <0.05 to 0.05.
+    width_q1 = np.where(width_q1 < 0.05, 0.05, width_q1)
+    width_q2 = np.where(width_q2 < 0.05, 0.05, width_q2)
+
+    return mean_q1, width_q1, mean_q2, width_q2
 
 
 def remove_nans(datafile):
