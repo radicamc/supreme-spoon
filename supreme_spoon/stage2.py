@@ -200,7 +200,7 @@ class BadPixStep:
         self.fileroots = utils.get_filename_root(self.datafiles)
         self.fileroot_noseg = utils.get_filename_root_noseg(self.fileroots)
 
-    def run(self, thresh=3, box_size=5, max_iter=3, save_results=True,
+    def run(self, thresh=10, box_size=5, max_iter=1, save_results=True,
             force_redo=False):
         """Method to run the step.
         """
@@ -437,12 +437,13 @@ def backgroundstep(datafiles, background_model, output_dir='./',
     return results, model_scaled
 
 
-def badpixstep(datafiles, baseline_ints, smoothed_wlc=None, thresh=3,
-               box_size=2, max_iter=3, output_dir='./', save_results=True,
+def badpixstep(datafiles, baseline_ints, smoothed_wlc=None, thresh=10,
+               box_size=5, max_iter=1, output_dir='./', save_results=True,
                fileroots=None, fileroot_noseg='', occultation_type='transit'):
     """Identify and correct hot pixels remaining in the dataset. Find outlier
     pixels in the median stack and correct them via the median of a box of
-    surrounding pixels in each integration.
+    surrounding pixels. Then replace these pixels in each integration via the
+    wlc scaled median.
 
     Parameters
     ----------
@@ -514,14 +515,14 @@ def badpixstep(datafiles, baseline_ints, smoothed_wlc=None, thresh=3,
         print('Starting iteration {0} of {1}.'.format(it + 1, max_iter))
 
         # Generate the deepstack.
-        print(' Generating a deep stack using all integrations...')
+        print(' Generating a deep stack...')
         deepframe = utils.make_deepstack(newdata[baseline_ints])
         badpix = np.zeros_like(deepframe)
         count = 0
         nint, dimy, dimx = np.shape(newdata)
 
         # Loop over whole deepstack and flag deviant pixels.
-        for i in tqdm(range(dimx)):
+        for i in tqdm(range(4, dimx-4)):
             for j in range(dimy):
                 box_size_i = box_size
                 box_prop = utils.get_interp_box(deepframe, box_size_i, i, j,
@@ -534,8 +535,8 @@ def badpixstep(datafiles, baseline_ints, smoothed_wlc=None, thresh=3,
                                                     j, dimx)
                 med, std = box_prop[0], box_prop[1]
 
-                # If central pixel is too deviant (or nan) flag it.
-                if np.abs(deepframe[j, i] - med) >= (thresh * std) or np.isnan(deepframe[j, i]):
+                # If central pixel is too deviant (or nan/negative) flag it.
+                if np.abs(deepframe[j, i] - med) >= (thresh * std) or np.isnan(deepframe[j, i]) or deepframe[j, i] < 0:
                     mini, maxi = np.max([0, i - 1]), np.min([dimx - 1, i + 1])
                     minj, maxj = np.max([0, j - 1]), np.min([dimy - 1, j + 1])
                     badpix[j, i] = 1
@@ -573,6 +574,7 @@ def badpixstep(datafiles, baseline_ints, smoothed_wlc=None, thresh=3,
         newdq[:, deepdq] = 0
 
         it += 1
+        thresh += 1
 
     # Generate a final corrected deep frame for the baseline integrations.
     deepframe = utils.make_deepstack(newdata[baseline_ints])
@@ -794,7 +796,7 @@ def tracingstep(datafiles, deepframe, calculate_stability=True,
 
 
 def run_stage2(results, background_model, baseline_ints, smoothed_wlc=None,
-               save_results=True, force_redo=False, mask_width=30,
+               save_results=True, force_redo=False, mask_width=40,
                calculate_stability=True, stability_params='ALL',
                root_dir='./', output_tag='', occultation_type='transit',
                smoothing_scale=None):

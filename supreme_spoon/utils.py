@@ -314,9 +314,10 @@ def get_interp_box(data, box_size, i, j, dimx):
     low_x = np.max([i - box_size, 0])
     up_x = np.min([i + box_size, dimx - 1])
 
-    # Calculate median and std deviation of box.
-    median = np.nanmedian(data[j, low_x:up_x])
-    stddev = np.nanstd(data[j, low_x:up_x])
+    # Calculate median and std deviation of box - excluding central pixel.
+    box = np.concatenate([data[j, low_x:i], data[j, (i+1):up_x]])
+    median = np.nanmedian(box)
+    stddev = np.sqrt(outlier_resistant_variance(box))
 
     # Pack into array.
     box_properties = np.array([median, stddev])
@@ -618,7 +619,7 @@ def outlier_resistant_variance(data):
     """Calculate the varaince of some data in an outlier resistant manner.
     """
 
-    var = (np.nanmedian(np.abs(data - np.nanmedian(data))) / 0.6745) ** 2
+    var = (np.nanmedian(np.abs(data - np.nanmedian(data))) / 0.6745)**2
     return var
 
 
