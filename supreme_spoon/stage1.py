@@ -318,7 +318,7 @@ class JumpStep:
         self.fileroots = utils.get_filename_root(self.datafiles)
 
     def run(self, save_results=True, force_redo=False, rejection_threshold=5,
-            **kwargs):
+            ngroup_flag=False, **kwargs):
         """Method to run the step.
         """
 
@@ -330,17 +330,43 @@ class JumpStep:
             if expected_file in all_files and force_redo is False:
                 print('Output file {} already exists.'.format(expected_file))
                 print('Skipping Jump Detection Step.\n')
-                res = datamodels.open(expected_file)
-            # If no output files are detected, run the step.
+                results.append(datamodels.open(expected_file))
+            # If no output files are detected, proceed.
             else:
-                step = calwebb_detector1.jump_step.JumpStep()
-                res = step.call(segment, output_dir=self.output_dir,
-                                save_results=save_results,
-                                rejection_threshold=rejection_threshold,
-                                maximum_cores='quarter', **kwargs)
-            results.append(res)
+                # Get number of groups in the observation - ngroup=2 must be
+                # treated in a special way as the default pipeline JumpStep
+                # will fail.
+                testfile = datamodels.open(self.datafiles[0])
+                ngroups = testfile.meta.exposure.ngroups
+                testfile.close()
+                # for ngroup > 2, use the default JumpStep.
+                if ngroups > 2:
+                    step = calwebb_detector1.jump_step.JumpStep()
+                    res = step.call(segment, output_dir=self.output_dir,
+                                    save_results=save_results,
+                                    rejection_threshold=rejection_threshold,
+                                    maximum_cores='quarter', **kwargs)
+                    results.append(res)
+                # If ngroup = 2, use a custom temporal domain jump flagging
+                # algorithm, which is applied after ramp fitting.
+                elif ngroups == 2 and ngroup_flag is False:
+                    # If before the RampFitStep, just pass.
+                    print('Observation has ngroups=2.')
+                    print('Jump detection will be treated after ramp fitting.')
+                    ngroup_flag = True
+                    results = self.datafiles
+                    break
+                else:
+                    # If after the RampFitStep, run the two group jump
+                    # detection.
+                    results = two_group_jumpstep(self.datafiles,
+                                                 thresh=rejection_threshold,
+                                                 fileroots=self.fileroots,
+                                                 save_results=save_results,
+                                                 output_dir=self.output_dir)
+                    break
 
-        return results
+        return results, ngroup_flag
 
 
 class RampFitStep:
@@ -418,6 +444,13 @@ class GainScaleStep:
                 step = calwebb_detector1.gain_scale_step.GainScaleStep()
                 res = step.call(segment, output_dir=self.output_dir,
                                 save_results=save_results, **kwargs)
+                # Hack to remove jump tag from file name.
+                try:
+                    res = utils.fix_filenames(res, '_jump_',
+                                              self.output_dir)[0]
+                    res = datamodels.open(res)
+                except IndexError:
+                    pass
             results.append(res)
 
         return results
@@ -634,6 +667,94 @@ def oneoverfstep(datafiles, baseline_ints, even_odd_rows=True,
     return corrected_rampmodels
 
 
+def two_group_jumpstep(datafiles, window=5, thresh=10, fileroots=None,
+                       save_results=True, output_dir='./'):
+    """ Jump detection step for ngroup=2 observations. The standard JWST
+    pipeline JumpStep fails for these observations as deviations in a linear
+    ramp cannot be identified with only 2 groups. This algorithm is based off
+    of Nikolov+ (2014) and identifies cosmic ray hits in the temporal domain.
+    All jumps are replaced with the median of surrounding integrations.
+
+    Parameters
+    ----------
+    datafiles : array-like[str], array-like[CubeModel]
+        List of paths to data files, or RampModels themselves for each segment
+        of the TSO. Should be 3D rate files.
+    window : int
+        Number of integrations before and after to use for cosmic ray flagging.
+    thresh : int
+        Sigma threshold for a pixel to be flagged.
+    output_dir : str
+        Directory to which to save results.
+    save_results : bool
+        If True, save results to disk.
+    fileroots : array-like[str], None
+        Root names for output files.
+
+    Returns
+    -------
+    corrected_rampmodels : array-like[CubeModel]
+        Data files corrected for cosmic ray hits.
+    """
+
+    print('Starting two-group jump detection step.')
+
+    datafiles = np.atleast_1d(datafiles)
+    opened_datafiles = []
+    # Load in each of the datafiles.
+    for i, file in enumerate(datafiles):
+        currentfile = utils.open_filetype(file)
+        opened_datafiles.append(currentfile)
+        # Make cube of data and DQ flags.
+        if i == 0:
+            cube = currentfile.data
+            dqcube = currentfile.dq
+        else:
+            cube = np.concatenate([cube, currentfile.data], axis=0)
+            dqcube = np.concatenate([dqcube, currentfile.dq], axis=0)
+    corrected_rampmodels = opened_datafiles
+
+    nints, dimy, dimx = np.shape(cube)
+    # Jump detection algorithm based on Nikolov+ (2014). For each integration,
+    # create a difference image using the median of surrounding integrations.
+    # Flag all pixels with deviations more than X-sigma as comsic rays hits.
+    count = 0
+    for i in tqdm(range(nints)):
+        # Create a stack of the integrations before and after the current
+        # integration.
+        up = np.min([nints, i + window + 1])
+        low = np.max([0, i - window])
+        stack = np.concatenate([cube[low:i], cube[(i + 1):up]])
+        # Get median and standard deviation of the stack.
+        local_med = np.nanmedian(stack, axis=0)
+        local_std = np.nanstd(stack, axis=0)
+        # Find deviant pixels.
+        ii = np.where(np.abs(cube[i] - local_med) >= thresh * local_std)
+        # Replace flagged pixels with the stack median and remove the dq flag.
+        cube[i][ii] = local_med[ii]
+        dqcube[i][ii] = 0
+        count += len(ii[0])
+    print(' {} jumps flagged'.format(count))
+
+    current_int = 0
+    # Save interpolated data.
+    for n, file in enumerate(corrected_rampmodels):
+        currentdata = file.data
+        nints = np.shape(currentdata)[0]
+        file.data = cube[current_int:(current_int + nints)]
+        file.dq = dqcube[current_int:(current_int + nints)]
+        current_int += nints
+        if save_results is True:
+            with warnings.catch_warnings():
+                warnings.simplefilter('ignore')
+                file.write(output_dir + fileroots[n] + 'jump.fits')
+        file.close()
+
+    print('Done')
+
+    return corrected_rampmodels
+
+
 def run_stage1(results, background_model, baseline_ints=None,
                smoothed_wlc=None, save_results=True, outlier_maps=None,
                trace_mask=None,  even_odd_rows=True, force_redo=False,
@@ -746,13 +867,22 @@ def run_stage1(results, background_model, baseline_ints=None,
     # ===== Jump Detection Step =====
     # Default DMS step.
     step = JumpStep(results, output_dir=outdir)
-    results = step.run(save_results=save_results, force_redo=force_redo,
-                       rejection_threshold=rejection_threshold)
+    step_results = step.run(save_results=save_results, force_redo=force_redo,
+                            rejection_threshold=rejection_threshold)
+    results, ngroup_flag = step_results
 
     # ===== Ramp Fit Step =====
     # Default DMS step.
     step = RampFitStep(results, output_dir=outdir)
     results = step.run(save_results=save_results, force_redo=force_redo)
+
+    # ===== Jump Detection Step =====
+    # Custom DMS step - specifically for ngroup=2.
+    if ngroup_flag is True:
+        step = JumpStep(results, output_dir=outdir)
+        results = step.run(save_results=save_results, force_redo=force_redo,
+                           rejection_threshold=rejection_threshold,
+                           ngroup_flag=True)[0]
 
     # ===== Gain Scale Correcton Step =====
     # Default DMS step.

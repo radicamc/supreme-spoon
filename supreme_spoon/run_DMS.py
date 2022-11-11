@@ -51,7 +51,8 @@ if 1 in config['run_stages']:
                                        even_odd_rows=config['even_odd_rows'],
                                        force_redo=config['force_redo'],
                                        output_tag=config['output_tag'],
-                                       occultation_type=config['occultation_type'])
+                                       occultation_type=config['occultation_type'],
+                                       rejection_threshold=config['rejection_threshold'])
 else:
     stage1_results = input_files
 

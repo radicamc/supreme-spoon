@@ -15,11 +15,12 @@ outlier_maps : None
 trace_mask : None
 # For 1/f correction; estimate of white light curve (optional).
 smoothed_wlc : None
-# Background model. Using STScI background model from here:
-# https://jwst-docs.stsci.edu/jwst-calibration-pipeline-caveats/jwst-time-series-observations-pipeline-caveats/niriss-time-series-observation-pipeline-caveats#NIRISSTimeSeriesObservationPipelineCaveats-SOSSskybackground
+# Background model.
 background_file : 'model_background256.npy'
 # For 1/f correction; treat even and odd numbered rows seperately.
 even_odd_rows : True
+# For jump detection; sigma threshold for a pixel to be flagged as an outlier.
+rejection_threshold : 5
 
 # ===== Stage 2 Input Parameters =====
 # Timescale on which to smooth lightcurve estimate  (optional).
