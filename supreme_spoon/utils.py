@@ -130,7 +130,7 @@ def format_out_frames(out_frames, occultation_type='transit'):
     out_frames : array-like[int]
         Integration numbers of ingress and egress.
     occultation_type : str
-        Type of occultation, either 'transit' or 'eclipse'.
+        Type of occultation, either 'transit', 'eclipse', or 'phase curve'.
 
     Returns
     -------
@@ -149,7 +149,7 @@ def format_out_frames(out_frames, occultation_type='transit'):
         out_frames = np.abs(out_frames)
         out_frames = np.concatenate([np.arange(out_frames[0]),
                                      np.arange(out_frames[1]) - out_frames[1]])
-    elif occultation_type == 'eclipse':
+    elif occultation_type == 'eclipse' or occultation_type == 'phase_curve':
         # Format the in-eclpse integration numbers.
         out_frames = np.linspace(out_frames[0], out_frames[1],
                                  out_frames[1] - out_frames[0] + 1).astype(int)
