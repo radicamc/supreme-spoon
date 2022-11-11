@@ -616,10 +616,11 @@ def open_stage2_secondary_outputs(deep_file, centroid_file, smoothed_wlc_file,
 
 
 def outlier_resistant_variance(data):
-    """Calculate the varaince of some data in an outlier resistant manner.
+    """Calculate the varaince of some data along the 0th axis in an outlier
+    resistant manner.
     """
 
-    var = (np.nanmedian(np.abs(data - np.nanmedian(data))) / 0.6745)**2
+    var = (bn.nanmedian(np.abs(data - bn.nanmedian(data, axis=0)), axis=0) / 0.6745)**2
     return var
 
 
