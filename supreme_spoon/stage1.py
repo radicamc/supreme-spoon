@@ -469,9 +469,9 @@ def oneoverfstep(datafiles, baseline_ints, even_odd_rows=True,
 
     Parameters
     ----------
-    datafiles : array-like[str], array-like[RampModel]
+    datafiles : array-like[str], array-like[RampModel], array-like[CubeModel]
         List of paths to data files, or RampModels themselves for each segment
-        of the TSO. Should be 4D ramps and not rate files.
+        of the TSO. Should be 4D ramps, but 3D rate files can also be accepted.
     baseline_ints : array-like[int]
         Integration numbers of ingress and egress.
     even_odd_rows : bool
@@ -563,10 +563,13 @@ def oneoverfstep(datafiles, baseline_ints, even_odd_rows=True,
     for n, datamodel in enumerate(data):
         print('Starting segment {} of {}.'.format(n + 1, len(data)))
 
-        # Define the readout setup.
-        nint, ngroup, dimy, dimx = np.shape(datamodel.data)
+        # Define the readout setup - can be 4D (recommended) or 3D.
+        if np.ndim(datamodel.data) == 4:
+            nint, ngroup, dimy, dimx = np.shape(datamodel.data)
+        else:
+            nint, dimy, dimx = np.shape(datamodel.data)
 
-        # Read in the outlier map -- a (nints, dimy, dimx) 3D cube
+        # Read in the outlier map - a (nints, dimy, dimx) 3D cube
         if outlier_maps is None:
             print(' No outlier maps passed, ignoring outliers.')
             outliers = np.zeros((nint, dimy, dimx))
@@ -636,12 +639,23 @@ def oneoverfstep(datafiles, baseline_ints, even_odd_rows=True,
                     # rows. This should be taken care of by the RefPixStep,
                     # but it doesn't hurt to do it again.
                     dc = np.zeros_like(sub)
-                    dc[:, ::2] = bn.nanmedian(sub[:, ::2], axis=1)[:, None, :]
-                    dc[:, 1::2] = bn.nanmedian(sub[:, 1::2], axis=1)[:, None, :]
+                    # For group-level corrections.
+                    if np.ndim(datamodel.data == 4):
+                        dc[:, ::2] = bn.nanmedian(sub[:, ::2], axis=1)[:, None, :]
+                        dc[:, 1::2] = bn.nanmedian(sub[:, 1::2], axis=1)[:, None, :]
+                    # For integration-level corrections.
+                    else:
+                        dc[::2] = bn.nanmedian(sub[::2], axis=0)[None, :]
+                        dc[1::2] = bn.nanmedian(sub[1::2], axis=0)[None, :]
                 else:
                     # Single 1/f scaling for all rows.
                     dc = np.zeros_like(sub)
-                    dc[:, :, :] = bn.nanmedian(sub, axis=1)
+                    # For group-level corrections.
+                    if np.ndim(datamodel.data == 4):
+                        dc[:, :, :] = bn.nanmedian(sub, axis=1)[:, None, :]
+                    # For integration-level corrections.
+                    else:
+                        dc[:, :] = bn.nanmedian(sub, axis=0)[None, :]
             # Make sure no NaNs are in the DC map
             dc = np.where(np.isfinite(dc), dc, 0)
             corr_data[i] -= dc
