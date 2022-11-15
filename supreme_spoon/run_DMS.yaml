@@ -32,6 +32,8 @@ mask_width : 45
 calculate_stability : True
 # Parameters for which to calcuate the stability: 'x', 'y', 'FWHM, or 'ALL'.
 stability_params : 'ALL'
+# Number of CPUs for stability parameter calculation multiprocessing.
+nthreads : 4
 
 # ===== Stage 3 Input Files & Parameters =====
 # Specprofile reference file for ATOCA (optional).

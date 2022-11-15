@@ -253,7 +253,7 @@ class TracingStep:
         self.fileroot_noseg = utils.get_filename_root_noseg(self.fileroots)
 
     def run(self, mask_width, calculate_stability=True, stability_params='ALL',
-            save_results=True, force_redo=False):
+            nthreads=4, save_results=True, force_redo=False):
         """Method to run the step.
         """
 
@@ -272,6 +272,7 @@ class TracingStep:
             step_results = tracingstep(self.datafiles, self.deepframe,
                                        calculate_stability=calculate_stability,
                                        stability_params=stability_params,
+                                       nthreads=nthreads,
                                        output_dir=self.output_dir,
                                        mask_width=mask_width,
                                        save_results=save_results,
@@ -664,8 +665,8 @@ def lcestimatestep(datafiles, baseline_ints, save_results=True,
 
 
 def tracingstep(datafiles, deepframe, calculate_stability=True,
-                stability_params='ALL', output_dir='./', mask_width=30,
-                save_results=True, fileroot_noseg=''):
+                stability_params='ALL', nthreads=4, output_dir='./',
+                mask_width=30, save_results=True, fileroot_noseg=''):
     """Locate the centroids of all three SOSS orders via the edgetrigger
     algorithm. Then create a mask of a given width around the centroids.
 
@@ -682,6 +683,8 @@ def tracingstep(datafiles, deepframe, calculate_stability=True,
     stability_params : str, array-like[str]
         List of parameters for which to calculate the stability. Any of: 'x',
         'y', and/or 'FWHM', or 'ALL' for all three.
+    nthreads : int
+        Number of CPUs for stability parameter calculation multiprocessing.
     output_dir : str
         Directory to which to save outputs.
     mask_width : int
@@ -774,15 +777,15 @@ def tracingstep(datafiles, deepframe, calculate_stability=True,
         stability_results = {}
         if 'x' in stability_params:
             print('Getting trace X-positions...')
-            ccf_x = utils.soss_stability(cube, axis='x')
+            ccf_x = utils.soss_stability(cube, axis='x', nthreads=nthreads)
             stability_results['X'] = ccf_x
         if 'y' in stability_params:
             print('Getting trace Y-positions...')
-            ccf_y = utils.soss_stability(cube, axis='y')
+            ccf_y = utils.soss_stability(cube, axis='y', nthreads=nthreads)
             stability_results['Y'] = ccf_y
         if 'FWHM' in stability_params:
             print('Getting trace FWHM values...')
-            fwhm = utils.soss_stability_fwhm(cube, y1)
+            fwhm = utils.soss_stability_fwhm(cube, y1, nthreads=nthreads)
             stability_results['FWHM'] = fwhm
 
         # Save stability results.
@@ -797,7 +800,7 @@ def tracingstep(datafiles, deepframe, calculate_stability=True,
 
 def run_stage2(results, background_model, baseline_ints, smoothed_wlc=None,
                save_results=True, force_redo=False, mask_width=40,
-               calculate_stability=True, stability_params='ALL',
+               calculate_stability=True, stability_params='ALL', nthreads=4,
                root_dir='./', output_tag='', occultation_type='transit',
                smoothing_scale=None):
     """Run the supreme-SPOON Stage 2 pipeline: spectroscopic processing,
@@ -827,6 +830,8 @@ def run_stage2(results, background_model, baseline_ints, smoothed_wlc=None,
     stability_params : str, array-like[str]
         List of parameters for which to calculate the stability. Any of: 'x',
         'y', and/or 'FWHM', or 'ALL' for all three.
+    nthreads : int
+        Number of CPUs for stability parameter calculation multiprocessing.
     root_dir : str
         Directory from which all relative paths are defined.
     output_tag : str
@@ -898,7 +903,7 @@ def run_stage2(results, background_model, baseline_ints, smoothed_wlc=None,
     step_results = step.run(mask_width=mask_width,
                             calculate_stability=calculate_stability,
                             stability_params=stability_params,
-                            save_results=save_results,
+                            nthreads=nthreads, save_results=save_results,
                             force_redo=force_redo)
     tracemask, centroids = step_results
 

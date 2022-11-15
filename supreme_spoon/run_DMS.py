@@ -70,6 +70,7 @@ if 2 in config['run_stages']:
                                 mask_width=config['mask_width'],
                                 calculate_stability=config['calculate_stability'],
                                 stability_params=config['stability_params'],
+                                nthreads=config['nthreads'],
                                 smoothing_scale=config['smoothing_scale'])
     stage2_results = results[0]
     deepframe = results[1]

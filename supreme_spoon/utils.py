@@ -16,6 +16,7 @@ import juliet
 import numpy as np
 import os
 import pandas as pd
+import ray
 from scipy.interpolate import interp2d
 from scipy.ndimage import median_filter
 from scipy.optimize import curve_fit
@@ -962,9 +963,10 @@ def sigma_clip_lightcurves(flux, ferr, thresh=3, window=10):
     return flux_clipped
 
 
-def soss_stability(cube, nsteps=501, axis='x', smoothing_scale=None):
-    """ Perform a CCF analysis to track the movement of the SOSS trace
-    relative to the median stack over the course of a TSO.
+def soss_stability(cube, nsteps=501, axis='x', nthreads=4,
+                   smoothing_scale=None):
+    """Perform a CCF analysis to track the movement of the SOSS trace
+        relative to the median stack over the course of a TSO.
 
     Parameters
     ----------
@@ -974,6 +976,8 @@ def soss_stability(cube, nsteps=501, axis='x', smoothing_scale=None):
         Number of CCF steps to test.
     axis : str
         Axis over which to calculate the CCF - either 'x', or 'y'.
+    nthreads : int
+        Number of CPUs for multiprocessing.
     smoothing_scale : int
         Length scale over which to smooth results.
 
@@ -983,19 +987,136 @@ def soss_stability(cube, nsteps=501, axis='x', smoothing_scale=None):
         The cross-correlation results.
     """
 
-    # Get data dimensions.
-    nints, dimy, dimx = np.shape(cube)
+    # Initialize ray with specified number of threads.
+    ray.shutdown()
+    ray.init(num_cpus=nthreads)
 
     # Subtract integration-wise median from cube for CCF.
-    cube_sub = cube - np.nanmedian(cube, axis=(1, 2))[:, None, None]
+    cube = cube - np.nanmedian(cube, axis=(1, 2))[:, None, None]
     # Calculate median stack.
-    med = bn.nanmedian(cube_sub, axis=0)
+    deep = bn.nanmedian(cube, axis=0)
+
+    # Divide total data cube into segments and run each segment in parallel
+    # with ray.
+    ii = 0
+    all_fits = []
+    nints = np.shape(cube)[0]
+    seglen = nints // nthreads
+    for i in range(nthreads):
+        if i == nthreads - 1:
+            cube_seg = cube[ii:]
+        else:
+            cube_seg = cube[ii:ii + seglen]
+
+        all_fits.append(soss_stability_run.remote(cube_seg, deep, seg_no=i+1,
+                                                  nsteps=nsteps, axis=axis))
+        ii += seglen
+
+    # Run the CCFs.
+    ray_results = ray.get(all_fits)
+
+    # Stack all the CCF results into a single array.
+    maxvals = []
+    for i in range(nthreads):
+        if i == 0:
+            maxvals = ray_results[i]
+        else:
+            maxvals = np.concatenate([maxvals, ray_results[i]])
+
+    # Smooth results.
+    if smoothing_scale is None:
+        smoothing_scale = int(0.2*nints)
+    ccf = median_filter(np.linspace(-0.01, 0.01, nsteps)[maxvals],
+                        smoothing_scale)
+    ccf = ccf.reshape(nints)
+
+    return ccf
+
+
+def soss_stability_fwhm(cube, ycens_o1, nthreads=4, smoothing_scale=None):
+    """Estimate the FWHM of the trace over the course of a TSO by fitting a
+    Gaussian to each detector column.
+
+    Parameters
+    ----------
+    cube : array-like[float]
+        Data cube. Should be 3D (ints, dimy, dimx).
+    ycens_o1 : arrray-like[float]
+        Y-centroid positions of the order 1 trace. Should have length dimx.
+    nthreads : int
+        Number of CPUs for multiprocessing.
+    smoothing_scale : int
+        Length scale over which to smooth results.
+
+    Returns
+    -------
+    fwhm : array-like[float]
+        FWHM estimates for each column at every integration.
+    """
+
+    # Initialize ray with specified number of threads.
+    ray.shutdown()
+    ray.init(num_cpus=nthreads)
+
+    # Divide total data cube into segments and run each segment in parallel
+    # with ray.
+    ii = 0
+    all_fits = []
+    nints = np.shape(cube)[0]
+    seglen = nints // nthreads
+    for i in range(nthreads):
+        if i == nthreads - 1:
+            cube_seg = cube[ii:]
+        else:
+            cube_seg = cube[ii:ii + seglen]
+
+        all_fits.append(soss_stability_run.remote(cube_seg, ycens_o1,
+                                                  seg_no=i+1))
+        ii += seglen
+
+    # Run the CCFs.
+    ray_results = ray.get(all_fits)
+
+    # Stack all the CCF results into a single array.
+    fwhm = []
+    for i in range(nthreads):
+        if i == 0:
+            fwhm = ray_results[i]
+        else:
+            fwhm = np.concatenate([fwhm, ray_results[i]])
+
+    # Set median of trend to zero.
+    fwhm -= np.median(fwhm)
+    # Smooth the trend.
+    if smoothing_scale is None:
+        smoothing_scale = int(0.2*nints)
+    fwhm = median_filter(fwhm, smoothing_scale)
+
+    return fwhm
+
+
+@ray.remote
+def soss_stability_run(cube_sub, med, seg_no, nsteps=501, axis='x'):
+    """Wrapper to perform CCF calculations in parallel with ray.
+    """
+
+    # Get data dimensions.
+    nints, dimy, dimx = np.shape(cube_sub)
+
+    # Get integration numbers to show progress prints.
+    marks = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
+    locs = np.nanpercentile(np.arange(nints), marks)
 
     # Initialize CCF variables.
     ccf = np.zeros((nints, nsteps))
     f = interp2d(np.arange(dimx), np.arange(dimy), med, kind='cubic')
     # Perform cross-correlation over desired axis.
-    for i in tqdm(range(nints)):
+    loc = 0
+    for i in range(nints):
+        # Progress print.
+        if i >= int(locs[loc]):
+            print('Slice {}: {}% complete.'.format(seg_no, marks[loc]))
+            loc += 1
         for j, jj in enumerate(np.linspace(-0.01, 0.01, nsteps)):
             if axis == 'x':
                 interp = f(np.arange(dimx) + jj, np.arange(dimy))
@@ -1012,31 +1133,14 @@ def soss_stability(cube, nsteps=501, axis='x', smoothing_scale=None):
     for i in range(nints):
         maxvals.append(np.where(ccf[i] == np.max(ccf[i]))[0])
     maxvals = np.array(maxvals)
-    # Smooth results.
-    if smoothing_scale is None:
-        smoothing_scale = int(0.2 * nints)
-    ccf = median_filter(np.linspace(-0.01, 0.01, nsteps)[maxvals],
-                        smoothing_scale)
-    ccf = ccf.reshape(nints)
+    maxvals = maxvals.reshape(maxvals.shape[0])
 
-    return ccf
+    return maxvals
 
 
-def soss_stability_fwhm(cube, ycens_o1):
-    """Estimate the FWHM of the trace over the course of a TSO by fitting a
-    Gaussian to each detector column.
-
-    Parameters
-    ----------
-    cube : array-like[float]
-        Data cube. Should be 3D (ints, dimy, dimx).
-    ycens_o1 : arrray-like[float]
-        Y-centroid positions of the order 1 trace. Should have length dimx.
-
-    Returns
-    -------
-    fwhm : array-like[float]
-        FWHM estimates for each column at every integration.
+@ray.remote
+def soss_stability_fwhm_run(cube, ycens_o1, seg_no):
+    """Wrapper to perform FWHM calculations in parallel with ray.
     """
 
     def gauss(x, *p):
@@ -1045,12 +1149,21 @@ def soss_stability_fwhm(cube, ycens_o1):
 
     # Get data dimensions.
     nints, dimy, dimx = np.shape(cube)
+
+    # Get integration numbers to show progress prints.
+    marks = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
+    locs = np.nanpercentile(np.arange(nints), marks)
+
     # Initialize storage array for widths.
     fwhm = np.zeros((nints, dimx-254))
-
     # Fit a Gaussian to the PSF in each detector column.
-    for j in tqdm(range(nints)):
-        # Cut out first 500 columns as there is order 2 contmination.
+    loc = 0
+    for j in range(nints):
+        # Progress print.
+        if j >= int(locs[loc]):
+            print('Slice {}: {}% complete.'.format(seg_no, marks[loc]))
+            loc += 1
+        # Cut out first 250 columns as there is order 2 contmination.
         for i in range(250, dimx-4):
             p0 = [1., ycens_o1[i], 1.]
             data = np.copy(cube[j, :, i])
@@ -1068,9 +1181,6 @@ def soss_stability_fwhm(cube, ycens_o1):
 
     # Get median FWHM per integration.
     fwhm = np.nanmedian(fwhm, axis=1)
-    fwhm -= np.median(fwhm)
-    # Smooth the trend.
-    fwhm = median_filter(fwhm, int(0.2 * nints))
 
     return fwhm
 
