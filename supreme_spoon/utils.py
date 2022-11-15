@@ -20,7 +20,6 @@ import ray
 from scipy.interpolate import interp2d
 from scipy.ndimage import median_filter
 from scipy.optimize import curve_fit
-from tqdm import tqdm
 import warnings
 import yaml
 
@@ -1070,8 +1069,8 @@ def soss_stability_fwhm(cube, ycens_o1, nthreads=4, smoothing_scale=None):
         else:
             cube_seg = cube[ii:ii + seglen]
 
-        all_fits.append(soss_stability_run.remote(cube_seg, ycens_o1,
-                                                  seg_no=i+1))
+        all_fits.append(soss_stability_fwhm_run.remote(cube_seg, ycens_o1,
+                                                       seg_no=i+1))
         ii += seglen
 
     # Run the CCFs.
