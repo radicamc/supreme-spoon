@@ -21,6 +21,8 @@ background_file : 'model_background256.npy'
 even_odd_rows : True
 # For jump detection; sigma threshold for a pixel to be flagged as an outlier.
 rejection_threshold : 5
+# DMS Stage 1 kwargs.
+stage1_kwargs : {}
 
 # ===== Stage 2 Input Parameters =====
 # Timescale on which to smooth lightcurve estimate  (optional).
@@ -34,6 +36,8 @@ calculate_stability : True
 stability_params : 'ALL'
 # Number of CPUs for stability parameter calculation multiprocessing.
 nthreads : 4
+# DMS Stage 2 kwargs.
+stage2_kwargs : {}
 
 # ===== Stage 3 Input Files & Parameters =====
 # Specprofile reference file for ATOCA (optional).

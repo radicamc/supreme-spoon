@@ -52,7 +52,8 @@ if 1 in config['run_stages']:
                                        force_redo=config['force_redo'],
                                        output_tag=config['output_tag'],
                                        occultation_type=config['occultation_type'],
-                                       rejection_threshold=config['rejection_threshold'])
+                                       rejection_threshold=config['rejection_threshold'],
+                                       **config['stage1_kwargs'])
 else:
     stage1_results = input_files
 
@@ -71,7 +72,8 @@ if 2 in config['run_stages']:
                                 calculate_stability=config['calculate_stability'],
                                 stability_params=config['stability_params'],
                                 nthreads=config['nthreads'],
-                                smoothing_scale=config['smoothing_scale'])
+                                smoothing_scale=config['smoothing_scale'],
+                                **config['stage2_kwargs'])
     stage2_results = results[0]
     deepframe = results[1]
     centroids = results[3]

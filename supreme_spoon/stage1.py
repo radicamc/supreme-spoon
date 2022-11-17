@@ -773,7 +773,7 @@ def run_stage1(results, background_model, baseline_ints=None,
                smoothed_wlc=None, save_results=True, outlier_maps=None,
                trace_mask=None,  even_odd_rows=True, force_redo=False,
                rejection_threshold=5, root_dir='./', output_tag='',
-               occultation_type='transit'):
+               occultation_type='transit', **kwargs):
     """Run the supreme-SPOON Stage 1 pipeline: detector level processing,
     using a combination of official STScI DMS and custom steps. Documentation
     for the official DMS steps can be found here:
@@ -833,28 +833,53 @@ def run_stage1(results, background_model, baseline_ints=None,
 
     # ===== Group Scale Step =====
     # Default DMS step.
+    if 'GroupScaleStep' in kwargs.keys():
+        step_kwargs = kwargs['GroupScaleStep']
+    else:
+        step_kwargs = {}
     step = GroupScaleStep(results, output_dir=outdir)
-    results = step.run(save_results=save_results, force_redo=force_redo)
+    results = step.run(save_results=save_results, force_redo=force_redo,
+                       **step_kwargs)
 
     # ===== Data Quality Initialization Step =====
     # Default DMS step.
+    if 'DQInitStep' in kwargs.keys():
+        step_kwargs = kwargs['DQInitStep']
+    else:
+        step_kwargs = {}
     step = DQInitStep(results, output_dir=outdir)
-    results = step.run(save_results=save_results, force_redo=force_redo)
+    results = step.run(save_results=save_results, force_redo=force_redo,
+                       **step_kwargs)
 
     # ===== Saturation Detection Step =====
     # Default DMS step.
+    if 'SaturationStep' in kwargs.keys():
+        step_kwargs = kwargs['SaturationStep']
+    else:
+        step_kwargs = {}
     step = SaturationStep(results, output_dir=outdir)
-    results = step.run(save_results=save_results, force_redo=force_redo)
+    results = step.run(save_results=save_results, force_redo=force_redo,
+                       **step_kwargs)
 
     # ===== Superbias Subtraction Step =====
     # Default DMS step.
+    if 'SuperBiasStep' in kwargs.keys():
+        step_kwargs = kwargs['SuperBiasStep']
+    else:
+        step_kwargs = {}
     step = SuperBiasStep(results, output_dir=outdir)
-    results = step.run(save_results=save_results, force_redo=force_redo)
+    results = step.run(save_results=save_results, force_redo=force_redo,
+                       **step_kwargs)
 
     # ===== Reference Pixel Correction Step =====
     # Default DMS step.
+    if 'RefPixStep' in kwargs.keys():
+        step_kwargs = kwargs['RefPixStep']
+    else:
+        step_kwargs = {}
     step = RefPixStep(results, output_dir=outdir)
-    results = step.run(save_results=save_results, force_redo=force_redo)
+    results = step.run(save_results=save_results, force_redo=force_redo,
+                       **step_kwargs)
 
     # ===== Background Subtraction Step =====
     # Custom DMS step - imported from Stage2.
@@ -875,20 +900,35 @@ def run_stage1(results, background_model, baseline_ints=None,
 
     # ===== Linearity Correction Step =====
     # Default DMS step.
+    if 'LinearityStep' in kwargs.keys():
+        step_kwargs = kwargs['LinearityStep']
+    else:
+        step_kwargs = {}
     step = LinearityStep(results, output_dir=outdir)
-    results = step.run(save_results=save_results, force_redo=force_redo)
+    results = step.run(save_results=save_results, force_redo=force_redo,
+                       **step_kwargs)
 
     # ===== Jump Detection Step =====
     # Default DMS step.
+    if 'JumpStep' in kwargs.keys():
+        step_kwargs = kwargs['JumpStep']
+    else:
+        step_kwargs = {}
     step = JumpStep(results, output_dir=outdir)
     step_results = step.run(save_results=save_results, force_redo=force_redo,
-                            rejection_threshold=rejection_threshold)
+                            rejection_threshold=rejection_threshold,
+                            **step_kwargs)
     results, ngroup_flag = step_results
 
     # ===== Ramp Fit Step =====
     # Default DMS step.
+    if 'RampFitStep' in kwargs.keys():
+        step_kwargs = kwargs['RampFitStep']
+    else:
+        step_kwargs = {}
     step = RampFitStep(results, output_dir=outdir)
-    results = step.run(save_results=save_results, force_redo=force_redo)
+    results = step.run(save_results=save_results, force_redo=force_redo,
+                       **step_kwargs)
 
     # ===== Jump Detection Step =====
     # Custom DMS step - specifically for ngroup=2.
@@ -900,7 +940,12 @@ def run_stage1(results, background_model, baseline_ints=None,
 
     # ===== Gain Scale Correcton Step =====
     # Default DMS step.
+    if 'GainScaleStep' in kwargs.keys():
+        step_kwargs = kwargs['GainScaleStep']
+    else:
+        step_kwargs = {}
     step = GainScaleStep(results, output_dir=outdir)
-    results = step.run(save_results=save_results, force_redo=force_redo)
+    results = step.run(save_results=save_results, force_redo=force_redo,
+                       **step_kwargs)
 
     return results

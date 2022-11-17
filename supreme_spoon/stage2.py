@@ -802,7 +802,7 @@ def run_stage2(results, background_model, baseline_ints, smoothed_wlc=None,
                save_results=True, force_redo=False, mask_width=40,
                calculate_stability=True, stability_params='ALL', nthreads=4,
                root_dir='./', output_tag='', occultation_type='transit',
-               smoothing_scale=None):
+               smoothing_scale=None, **kwargs):
     """Run the supreme-SPOON Stage 2 pipeline: spectroscopic processing,
     using a combination of official STScI DMS and custom steps. Documentation
     for the official DMS steps can be found here:
@@ -870,13 +870,23 @@ def run_stage2(results, background_model, baseline_ints, smoothed_wlc=None,
 
     # ===== Assign WCS Step =====
     # Default DMS step.
+    if 'AssignWCSStep' in kwargs.keys():
+        step_kwargs = kwargs['AssignWCSStep']
+    else:
+        step_kwargs = {}
     step = AssignWCSStep(results, output_dir=outdir)
-    results = step.run(save_results=save_results, force_redo=force_redo)
+    results = step.run(save_results=save_results, force_redo=force_redo,
+                       **step_kwargs)
 
     # ===== Source Type Determination Step =====
     # Default DMS step.
+    if 'SourceTypeStep' in kwargs.keys():
+        step_kwargs = kwargs['SourceTypeStep']
+    else:
+        step_kwargs = {}
     step = SourceTypeStep(results, output_dir=outdir)
-    results = step.run(save_results=save_results, force_redo=force_redo)
+    results = step.run(save_results=save_results, force_redo=force_redo,
+                       **step_kwargs)
 
     # ===== Background Subtraction Step =====
     # Custom DMS step.
@@ -886,8 +896,13 @@ def run_stage2(results, background_model, baseline_ints, smoothed_wlc=None,
 
     # ===== Flat Field Correction Step =====
     # Default DMS step.
+    if 'FlatFieldStep' in kwargs.keys():
+        step_kwargs = kwargs['FlatFieldStep']
+    else:
+        step_kwargs = {}
     step = FlatFieldStep(results, output_dir=outdir)
-    results = step.run(save_results=save_results, force_redo=force_redo)
+    results = step.run(save_results=save_results, force_redo=force_redo,
+                       **step_kwargs)
 
     # ===== Bad Pixel Correction Step =====
     # Custom DMS step.
