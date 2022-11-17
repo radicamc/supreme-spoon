@@ -248,10 +248,12 @@ def get_filename_root(datafiles):
         # Open the datamodel.
         if isinstance(file, str):
             data = datamodels.open(file)
+            filename = data.meta.filename
+            data.close()
         else:
-            data = file
+            filename = file.meta.filename
         # Get the last part of the path, and split file name into chunks.
-        filename_split = data.meta.filename.split('/')[-1].split('_')
+        filename_split = filename.split('/')[-1].split('_')
         fileroot = ''
         # Get the filename before the step info and save.
         for chunk in filename_split[:-1]:

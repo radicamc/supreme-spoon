@@ -21,6 +21,8 @@ background_file : 'model_background256.npy'
 even_odd_rows : True
 # For jump detection; sigma threshold for a pixel to be flagged as an outlier.
 rejection_threshold : 5
+# List of Stage 1 steps to skip, if any.
+stage1_skip : None
 # DMS Stage 1 kwargs.
 stage1_kwargs : {}
 
@@ -36,6 +38,8 @@ calculate_stability : True
 stability_params : 'ALL'
 # Number of CPUs for stability parameter calculation multiprocessing.
 nthreads : 4
+# List of Stage 2 steps to skip, if any.
+stage2_skip : None
 # DMS Stage 2 kwargs.
 stage2_kwargs : {}
 

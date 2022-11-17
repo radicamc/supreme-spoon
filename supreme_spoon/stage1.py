@@ -773,7 +773,7 @@ def run_stage1(results, background_model, baseline_ints=None,
                smoothed_wlc=None, save_results=True, outlier_maps=None,
                trace_mask=None,  even_odd_rows=True, force_redo=False,
                rejection_threshold=5, root_dir='./', output_tag='',
-               occultation_type='transit', **kwargs):
+               occultation_type='transit', skip_steps=None, **kwargs):
     """Run the supreme-SPOON Stage 1 pipeline: detector level processing,
     using a combination of official STScI DMS and custom steps. Documentation
     for the official DMS steps can be found here:
@@ -812,6 +812,8 @@ def run_stage1(results, background_model, baseline_ints=None,
         Name tag to append to pipeline outputs directory.
     occultation_type : str
         Type of occultation: transit or eclipse.
+    skip_steps : array-like[str], None
+        Step names to skip (if any).
 
     Returns
     -------
@@ -831,121 +833,135 @@ def run_stage1(results, background_model, baseline_ints=None,
     utils.verify_path(root_dir + 'pipeline_outputs_directory' + output_tag + '/Stage1')
     outdir = root_dir + 'pipeline_outputs_directory' + output_tag + '/Stage1/'
 
+    if skip_steps is None:
+        skip_steps = []
+
     # ===== Group Scale Step =====
     # Default DMS step.
-    if 'GroupScaleStep' in kwargs.keys():
-        step_kwargs = kwargs['GroupScaleStep']
-    else:
-        step_kwargs = {}
-    step = GroupScaleStep(results, output_dir=outdir)
-    results = step.run(save_results=save_results, force_redo=force_redo,
-                       **step_kwargs)
+    if 'GroupScaleStep' not in skip_steps:
+        if 'GroupScaleStep' in kwargs.keys():
+            step_kwargs = kwargs['GroupScaleStep']
+        else:
+            step_kwargs = {}
+        step = GroupScaleStep(results, output_dir=outdir)
+        results = step.run(save_results=save_results, force_redo=force_redo,
+                           **step_kwargs)
 
     # ===== Data Quality Initialization Step =====
     # Default DMS step.
-    if 'DQInitStep' in kwargs.keys():
-        step_kwargs = kwargs['DQInitStep']
-    else:
-        step_kwargs = {}
-    step = DQInitStep(results, output_dir=outdir)
-    results = step.run(save_results=save_results, force_redo=force_redo,
-                       **step_kwargs)
+    if 'DQInitStep' not in skip_steps:
+        if 'DQInitStep' in kwargs.keys():
+            step_kwargs = kwargs['DQInitStep']
+        else:
+            step_kwargs = {}
+        step = DQInitStep(results, output_dir=outdir)
+        results = step.run(save_results=save_results, force_redo=force_redo,
+                           **step_kwargs)
 
     # ===== Saturation Detection Step =====
     # Default DMS step.
-    if 'SaturationStep' in kwargs.keys():
-        step_kwargs = kwargs['SaturationStep']
-    else:
-        step_kwargs = {}
-    step = SaturationStep(results, output_dir=outdir)
-    results = step.run(save_results=save_results, force_redo=force_redo,
-                       **step_kwargs)
+    if 'SaturationStep' not in skip_steps:
+        if 'SaturationStep' in kwargs.keys():
+            step_kwargs = kwargs['SaturationStep']
+        else:
+            step_kwargs = {}
+        step = SaturationStep(results, output_dir=outdir)
+        results = step.run(save_results=save_results, force_redo=force_redo,
+                           **step_kwargs)
 
     # ===== Superbias Subtraction Step =====
     # Default DMS step.
-    if 'SuperBiasStep' in kwargs.keys():
-        step_kwargs = kwargs['SuperBiasStep']
-    else:
-        step_kwargs = {}
-    step = SuperBiasStep(results, output_dir=outdir)
-    results = step.run(save_results=save_results, force_redo=force_redo,
-                       **step_kwargs)
+    if 'SuperBiasStep' not in skip_steps:
+        if 'SuperBiasStep' in kwargs.keys():
+            step_kwargs = kwargs['SuperBiasStep']
+        else:
+            step_kwargs = {}
+        step = SuperBiasStep(results, output_dir=outdir)
+        results = step.run(save_results=save_results, force_redo=force_redo,
+                           **step_kwargs)
 
     # ===== Reference Pixel Correction Step =====
     # Default DMS step.
-    if 'RefPixStep' in kwargs.keys():
-        step_kwargs = kwargs['RefPixStep']
-    else:
-        step_kwargs = {}
-    step = RefPixStep(results, output_dir=outdir)
-    results = step.run(save_results=save_results, force_redo=force_redo,
-                       **step_kwargs)
+    if 'RefPixStep' not in skip_steps:
+        if 'RefPixStep' in kwargs.keys():
+            step_kwargs = kwargs['RefPixStep']
+        else:
+            step_kwargs = {}
+        step = RefPixStep(results, output_dir=outdir)
+        results = step.run(save_results=save_results, force_redo=force_redo,
+                           **step_kwargs)
 
-    # ===== Background Subtraction Step =====
-    # Custom DMS step - imported from Stage2.
-    step = BackgroundStep(results, background_model=background_model,
-                          output_dir=outdir)
-    results = step.run(save_results=save_results, force_redo=force_redo)
-    results, background_model = results
+    if 'OneOverFStep' not in skip_steps:
+        # ===== Background Subtraction Step =====
+        # Custom DMS step - imported from Stage2.
+        step = BackgroundStep(results, background_model=background_model,
+                              output_dir=outdir)
+        results = step.run(save_results=save_results, force_redo=force_redo)
+        results, background_model = results
 
-    # ===== 1/f Noise Correction Step =====
-    # Custom DMS step.
-    step = OneOverFStep(results, baseline_ints=baseline_ints,
-                        output_dir=outdir, outlier_maps=outlier_maps,
-                        trace_mask=trace_mask, smoothed_wlc=smoothed_wlc,
-                        background=background_model,
-                        occultation_type=occultation_type)
-    results = step.run(even_odd_rows=even_odd_rows, save_results=save_results,
-                       force_redo=force_redo)
+        # ===== 1/f Noise Correction Step =====
+        # Custom DMS step.
+        step = OneOverFStep(results, baseline_ints=baseline_ints,
+                            output_dir=outdir, outlier_maps=outlier_maps,
+                            trace_mask=trace_mask, smoothed_wlc=smoothed_wlc,
+                            background=background_model,
+                            occultation_type=occultation_type)
+        results = step.run(even_odd_rows=even_odd_rows,
+                           save_results=save_results, force_redo=force_redo)
 
     # ===== Linearity Correction Step =====
     # Default DMS step.
-    if 'LinearityStep' in kwargs.keys():
-        step_kwargs = kwargs['LinearityStep']
-    else:
-        step_kwargs = {}
-    step = LinearityStep(results, output_dir=outdir)
-    results = step.run(save_results=save_results, force_redo=force_redo,
-                       **step_kwargs)
+    if 'LinearityStep' not in skip_steps:
+        if 'LinearityStep' in kwargs.keys():
+            step_kwargs = kwargs['LinearityStep']
+        else:
+            step_kwargs = {}
+        step = LinearityStep(results, output_dir=outdir)
+        results = step.run(save_results=save_results, force_redo=force_redo,
+                           **step_kwargs)
 
     # ===== Jump Detection Step =====
     # Default DMS step.
-    if 'JumpStep' in kwargs.keys():
-        step_kwargs = kwargs['JumpStep']
-    else:
-        step_kwargs = {}
-    step = JumpStep(results, output_dir=outdir)
-    step_results = step.run(save_results=save_results, force_redo=force_redo,
-                            rejection_threshold=rejection_threshold,
-                            **step_kwargs)
-    results, ngroup_flag = step_results
+    if 'JumpStep' not in skip_steps:
+        if 'JumpStep' in kwargs.keys():
+            step_kwargs = kwargs['JumpStep']
+        else:
+            step_kwargs = {}
+        step = JumpStep(results, output_dir=outdir)
+        step_results = step.run(save_results=save_results, force_redo=force_redo,
+                                rejection_threshold=rejection_threshold,
+                                **step_kwargs)
+        results, ngroup_flag = step_results
 
     # ===== Ramp Fit Step =====
     # Default DMS step.
-    if 'RampFitStep' in kwargs.keys():
-        step_kwargs = kwargs['RampFitStep']
-    else:
-        step_kwargs = {}
-    step = RampFitStep(results, output_dir=outdir)
-    results = step.run(save_results=save_results, force_redo=force_redo,
-                       **step_kwargs)
+    if 'RampFitStep' not in skip_steps:
+        if 'RampFitStep' in kwargs.keys():
+            step_kwargs = kwargs['RampFitStep']
+        else:
+            step_kwargs = {}
+        step = RampFitStep(results, output_dir=outdir)
+        results = step.run(save_results=save_results, force_redo=force_redo,
+                           **step_kwargs)
 
     # ===== Jump Detection Step =====
     # Custom DMS step - specifically for ngroup=2.
-    if ngroup_flag is True:
-        step = JumpStep(results, output_dir=outdir)
-        results = step.run(save_results=save_results, force_redo=force_redo,
-                           rejection_threshold=rejection_threshold,
-                           ngroup_flag=True)[0]
+    if 'JumpStep' not in skip_steps:
+        if ngroup_flag is True:
+            step = JumpStep(results, output_dir=outdir)
+            results = step.run(save_results=save_results, force_redo=force_redo,
+                               rejection_threshold=rejection_threshold,
+                               ngroup_flag=True)[0]
 
     # ===== Gain Scale Correcton Step =====
     # Default DMS step.
-    if 'GainScaleStep' in kwargs.keys():
-        step_kwargs = kwargs['GainScaleStep']
-    else:
-        step_kwargs = {}
-    step = GainScaleStep(results, output_dir=outdir)
-    results = step.run(save_results=save_results, force_redo=force_redo,
-                       **step_kwargs)
+    if 'GainScaleStep' not in skip_steps:
+        if 'GainScaleStep' in kwargs.keys():
+            step_kwargs = kwargs['GainScaleStep']
+        else:
+            step_kwargs = {}
+        step = GainScaleStep(results, output_dir=outdir)
+        results = step.run(save_results=save_results, force_redo=force_redo,
+                           **step_kwargs)
 
     return results

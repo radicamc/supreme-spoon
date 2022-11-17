@@ -802,7 +802,7 @@ def run_stage2(results, background_model, baseline_ints, smoothed_wlc=None,
                save_results=True, force_redo=False, mask_width=40,
                calculate_stability=True, stability_params='ALL', nthreads=4,
                root_dir='./', output_tag='', occultation_type='transit',
-               smoothing_scale=None, **kwargs):
+               smoothing_scale=None, skip_steps=None, **kwargs):
     """Run the supreme-SPOON Stage 2 pipeline: spectroscopic processing,
     using a combination of official STScI DMS and custom steps. Documentation
     for the official DMS steps can be found here:
@@ -840,6 +840,8 @@ def run_stage2(results, background_model, baseline_ints, smoothed_wlc=None,
         Type of occultation: transit or eclipse.
     smoothing_scale : int, None
         Timescale on which to smooth the lightcurve.
+    skip_steps : array-like[str], None
+        Step names to skip (if any).
 
     Returns
     -------
@@ -868,66 +870,84 @@ def run_stage2(results, background_model, baseline_ints, smoothed_wlc=None,
     utils.verify_path(root_dir + 'pipeline_outputs_directory' + output_tag + '/Stage2')
     outdir = root_dir + 'pipeline_outputs_directory' + output_tag + '/Stage2/'
 
+    if skip_steps is None:
+        skip_steps = []
+
     # ===== Assign WCS Step =====
     # Default DMS step.
-    if 'AssignWCSStep' in kwargs.keys():
-        step_kwargs = kwargs['AssignWCSStep']
-    else:
-        step_kwargs = {}
-    step = AssignWCSStep(results, output_dir=outdir)
-    results = step.run(save_results=save_results, force_redo=force_redo,
-                       **step_kwargs)
+    if 'AssignWCSStep' not in skip_steps:
+        if 'AssignWCSStep' in kwargs.keys():
+            step_kwargs = kwargs['AssignWCSStep']
+        else:
+            step_kwargs = {}
+        step = AssignWCSStep(results, output_dir=outdir)
+        results = step.run(save_results=save_results, force_redo=force_redo,
+                           **step_kwargs)
 
     # ===== Source Type Determination Step =====
     # Default DMS step.
-    if 'SourceTypeStep' in kwargs.keys():
-        step_kwargs = kwargs['SourceTypeStep']
-    else:
-        step_kwargs = {}
-    step = SourceTypeStep(results, output_dir=outdir)
-    results = step.run(save_results=save_results, force_redo=force_redo,
-                       **step_kwargs)
+    if 'SourceTypeStep' not in skip_steps:
+        if 'SourceTypeStep' in kwargs.keys():
+            step_kwargs = kwargs['SourceTypeStep']
+        else:
+            step_kwargs = {}
+        step = SourceTypeStep(results, output_dir=outdir)
+        results = step.run(save_results=save_results, force_redo=force_redo,
+                           **step_kwargs)
 
     # ===== Background Subtraction Step =====
     # Custom DMS step.
-    step = BackgroundStep(results, background_model=background_model,
-                          output_dir=outdir)
-    results = step.run(save_results=save_results, force_redo=force_redo)[0]
+    if 'BackgroundStep' not in skip_steps:
+        step = BackgroundStep(results, background_model=background_model,
+                              output_dir=outdir)
+        results = step.run(save_results=save_results, force_redo=force_redo)[0]
 
     # ===== Flat Field Correction Step =====
     # Default DMS step.
-    if 'FlatFieldStep' in kwargs.keys():
-        step_kwargs = kwargs['FlatFieldStep']
-    else:
-        step_kwargs = {}
-    step = FlatFieldStep(results, output_dir=outdir)
-    results = step.run(save_results=save_results, force_redo=force_redo,
-                       **step_kwargs)
+    if 'FlatFieldStep' not in skip_steps:
+        if 'FlatFieldStep' in kwargs.keys():
+            step_kwargs = kwargs['FlatFieldStep']
+        else:
+            step_kwargs = {}
+        step = FlatFieldStep(results, output_dir=outdir)
+        results = step.run(save_results=save_results, force_redo=force_redo,
+                           **step_kwargs)
 
-    # ===== Bad Pixel Correction Step =====
+    # ===== Hot Pixel Correction Step =====
     # Custom DMS step.
-    step = BadPixStep(results, baseline_ints=baseline_ints,
-                      smoothed_wlc=smoothed_wlc, output_dir=outdir,
-                      occultation_type=occultation_type)
-    step_results = step.run(save_results=save_results, force_redo=force_redo)
-    results, deepframe = step_results
+    if 'BadPixStep' not in skip_steps:
+        step = BadPixStep(results, baseline_ints=baseline_ints,
+                          smoothed_wlc=smoothed_wlc, output_dir=outdir,
+                          occultation_type=occultation_type)
+        step_results = step.run(save_results=save_results,
+                                force_redo=force_redo)
+        results, deepframe = step_results
+    else:
+        deepframe = None
 
     # ===== Tracing Step =====
     # Custom DMS step.
-    step = TracingStep(results, deepframe=deepframe, output_dir=outdir)
-    step_results = step.run(mask_width=mask_width,
-                            calculate_stability=calculate_stability,
-                            stability_params=stability_params,
-                            nthreads=nthreads, save_results=save_results,
-                            force_redo=force_redo)
-    tracemask, centroids = step_results
+    if 'TracingStep' not in skip_steps:
+        step = TracingStep(results, deepframe=deepframe, output_dir=outdir)
+        step_results = step.run(mask_width=mask_width,
+                                calculate_stability=calculate_stability,
+                                stability_params=stability_params,
+                                nthreads=nthreads, save_results=save_results,
+                                force_redo=force_redo)
+        tracemask, centroids = step_results
+    else:
+        tracemask, centroids = None, None
 
     # ===== Light Curve Estimation Step =====
     # Custom DMS step.
-    step = LightCurveEstimateStep(results, baseline_ints=baseline_ints,
-                                  output_dir=outdir,
-                                  occultation_type=occultation_type)
-    smoothed_wlc = step.run(smoothing_scale=smoothing_scale,
-                            save_results=save_results, force_redo=force_redo)
+    if 'LightCurveEstimateStep' not in skip_steps:
+        step = LightCurveEstimateStep(results, baseline_ints=baseline_ints,
+                                      output_dir=outdir,
+                                      occultation_type=occultation_type)
+        smoothed_wlc = step.run(smoothing_scale=smoothing_scale,
+                                save_results=save_results,
+                                force_redo=force_redo)
+    else:
+        smoothed_wlc = None
 
     return results, deepframe, tracemask, centroids, smoothed_wlc

@@ -53,6 +53,7 @@ if 1 in config['run_stages']:
                                        output_tag=config['output_tag'],
                                        occultation_type=config['occultation_type'],
                                        rejection_threshold=config['rejection_threshold'],
+                                       skip_steps=config['stage1_skip'],
                                        **config['stage1_kwargs'])
 else:
     stage1_results = input_files
@@ -73,6 +74,7 @@ if 2 in config['run_stages']:
                                 stability_params=config['stability_params'],
                                 nthreads=config['nthreads'],
                                 smoothing_scale=config['smoothing_scale'],
+                                skip_steps=config['stage2_skip'],
                                 **config['stage2_kwargs'])
     stage2_results = results[0]
     deepframe = results[1]
