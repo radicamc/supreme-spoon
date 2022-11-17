@@ -75,6 +75,6 @@ save_results : True
 force_redo : False
 # Integrations of ingress and egress.
 baseline_ints : [50, -50]
-# Type of occultation: 'transit', 'eclipse', or 'phase curve'.
+# Type of occultation: 'transit', 'eclipse', or 'phase_curve'.
 occultation_type : 'transit'
 # ========================= END DMS CONFIG FILE =============================
