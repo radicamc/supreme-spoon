@@ -15,9 +15,6 @@ import sys
 from supreme_spoon import stage1, stage2, stage3
 from supreme_spoon import utils
 
-os.environ['CRDS_PATH'] = './crds_cache'
-os.environ['CRDS_SERVER_URL'] = 'https://jwst-crds.stsci.edu'
-
 # Read config file.
 try:
     config_file = sys.argv[1]
@@ -26,6 +23,8 @@ except IndexError:
     raise FileNotFoundError(msg)
 config = utils.parse_config(config_file)
 
+os.environ['CRDS_PATH'] = config['crds_cache_path']
+os.environ['CRDS_SERVER_URL'] = 'https://jwst-crds.stsci.edu'
 
 # Unpack all files in the input directory.
 input_files = utils.unpack_input_directory(config['input_dir'],

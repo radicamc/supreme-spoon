@@ -3,6 +3,8 @@
 # This is the configuration file for run_DMS.py.
 #
 # ===== Key Parameters =====
+# Path to CRDS cache.
+crds_cache_path : './crds_cache/'
 # Input data file directory.
 input_dir : 'DMS_uncal/'
 # Input file tag.
