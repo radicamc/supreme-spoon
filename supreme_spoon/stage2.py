@@ -111,7 +111,7 @@ class BackgroundStep:
         self.fileroots = utils.get_filename_root(self.datafiles)
         self.fileroot_noseg = utils.get_filename_root_noseg(self.fileroots)
 
-    def run(self, save_results=True, force_redo=False):
+    def run(self, save_results=True, force_redo=False, **kwargs):
         """Method to run the step.
         """
 
@@ -135,12 +135,18 @@ class BackgroundStep:
         else:
             with warnings.catch_warnings():
                 warnings.filterwarnings('ignore')
+                scale1, scale2 = None, None
+                if 'scale1' in kwargs.keys():
+                    scale1 = kwargs['scale1']
+                if 'scale2' in kwargs.keys():
+                    scale2 = kwargs['scale2']
                 step_results = backgroundstep(self.datafiles,
                                               self.background_model,
                                               output_dir=self.output_dir,
                                               save_results=save_results,
                                               fileroots=self.fileroots,
-                                              fileroot_noseg=self.fileroot_noseg)
+                                              fileroot_noseg=self.fileroot_noseg,
+                                              scale1=scale1, scale2=scale2)
                 results, background_models = step_results
 
         return results, background_models
@@ -324,7 +330,8 @@ class LightCurveEstimateStep:
 
 
 def backgroundstep(datafiles, background_model, output_dir='./',
-                   save_results=True, fileroots=None, fileroot_noseg=''):
+                   save_results=True, fileroots=None, fileroot_noseg='',
+                   scale1=None, scale2=None):
     """Background subtraction must be carefully treated with SOSS observations.
     Due to the extent of the PSF wings, there are very few, if any,
     non-illuminated pixels to serve as a sky region. Furthermore, the zodi
@@ -349,6 +356,15 @@ def backgroundstep(datafiles, background_model, output_dir='./',
         Root names for output files.
     fileroot_noseg : str
         Root name with no segment information.
+    scale1 : float, None
+        Scaling value to apply to background model to match data. Will take
+        precedence over calculated scaling value. If only scale1 is provided,
+        this will multiply the entire frame. If scale2 is also provided, this
+        will be the "pre-stp" scaling.
+    scale2 : float, None
+        "Post-step" scaling value. scale1 must also be passed if this
+        parameter is not None.
+
 
     Returns
     -------
@@ -390,29 +406,51 @@ def backgroundstep(datafiles, background_model, output_dir='./',
 
     print('Calculating background model scaling.')
     model_scaled = np.zeros_like(deepstack)
-    print(' Scale factor(s):')
+    if scale1 is None:
+        print(' Scale factor(s):')
+    else:
+        print(' Using user-defined background scaling(s):')
+        if scale2 is not None:
+            print('  Pre-step scale factor: {:.5f}'.format(scale1))
+            print('  Post-step scale factor: {:.5f}'.format(scale2))
+        else:
+            print('  Background scale factor: {:.5f}'.format(scale1))
     first_time = True
     for i in range(ngroup):
-        # Calculate the scaling of the model background to the median stack.
-        if dimy == 96:
-            # Use area in bottom left corner of detector for SUBSTRIP96.
-            xl, xu = 5, 21
-            yl, yu = 5, 401
+        if scale1 is None:
+            # Calculate the scaling of the model background to the median
+            # stack.
+            if dimy == 96:
+                # Use area in bottom left corner of detector for SUBSTRIP96.
+                xl, xu = 5, 21
+                yl, yu = 5, 401
+            else:
+                # Use area in the top left corner of detector for SUBSTRIP256
+                xl, xu = 210, 250
+                yl, yu = 250, 500
+            bkg_ratio = deepstack[i, xl:xu, yl:yu] / background_model[xl:xu, yl:yu]
+            # Instead of a straight median, use the median of the 2nd quartile
+            # to limit the effect of any remaining illuminated pixels.
+            q1 = np.nanpercentile(bkg_ratio, 25)
+            q2 = np.nanpercentile(bkg_ratio, 50)
+            ii = np.where((bkg_ratio > q1) & (bkg_ratio < q2))
+            scale_factor = np.nanmedian(bkg_ratio[ii])
+            if scale_factor < 0:
+                scale_factor = 0
+            print('  Background scale factor: {1:.5f}'.format(i + 1, scale_factor))
+            model_scaled[i] = background_model * scale_factor
+        elif scale1 is not None and scale2 is None:
+            # If using a user specified scaling for the whole frame.
+            model_scaled[i] = background_model * scale1
         else:
-            # Use area in the top left corner of detector for SUBSTRIP256
-            xl, xu = 210, 250
-            yl, yu = 250, 500
-        bkg_ratio = deepstack[i, xl:xu, yl:yu] / background_model[xl:xu, yl:yu]
-        # Instead of a straight median, use the median of the 2nd quartile to
-        # limit the effect of any remaining illuminated pixels.
-        q1 = np.nanpercentile(bkg_ratio, 25)
-        q2 = np.nanpercentile(bkg_ratio, 50)
-        ii = np.where((bkg_ratio > q1) & (bkg_ratio < q2))
-        scale_factor = np.nanmedian(bkg_ratio[ii])
-        if scale_factor < 0:
-            scale_factor = 0
-        model_scaled[i] = background_model * scale_factor
-        print('  Background scale factor: {1:.5f}'.format(i+1, scale_factor))
+            # If using seperate pre- and post- step scalings.
+            # Locate the step position using the gradient of the background.
+            grad_bkg = np.gradient(background_model, axis=1)
+            step_pos = np.argmax(grad_bkg[:, 10:-10], axis=1)
+            # Seperately scale both sides of the step.
+            for j in range(dimy):
+                model_scaled[i, j, :(step_pos[j]+8)] = background_model[j, :(step_pos[j]+8)] * scale1
+                model_scaled[i, j, (step_pos[j]+8):] = background_model[j, (step_pos[j]+8):] * scale2
 
     # Loop over all segments in the exposure and subtract the background from
     # each of them.
@@ -898,9 +936,14 @@ def run_stage2(results, background_model, baseline_ints, smoothed_wlc=None,
     # ===== Background Subtraction Step =====
     # Custom DMS step.
     if 'BackgroundStep' not in skip_steps:
+        if 'BackgroundStep' in kwargs.keys():
+            step_kwargs = kwargs['BackgroundStep']
+        else:
+            step_kwargs = {}
         step = BackgroundStep(results, background_model=background_model,
                               output_dir=outdir)
-        results = step.run(save_results=save_results, force_redo=force_redo)[0]
+        results = step.run(save_results=save_results, force_redo=force_redo,
+                           **step_kwargs)[0]
 
     # ===== Flat Field Correction Step =====
     # Default DMS step.

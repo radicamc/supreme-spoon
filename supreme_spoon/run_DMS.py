@@ -35,11 +35,13 @@ print('\nIdentified {0} {1} exposure segments'.format(len(input_files),
 for file in input_files:
     print(' ' + file)
 
+# Open background model and smoothed white light curve.
+if config['smoothed_wlc'] is not None:
+    config['smoothed_wlc'] = np.load(config['smoothed_wlc'])
+background_model = np.load(config['background_file'])
+
 # === Run Stage 1 ===
 if 1 in config['run_stages']:
-    background_model = np.load(config['background_file'])
-    if config['smoothed_wlc'] is not None:
-        config['smoothed_wlc'] = np.load(config['smoothed_wlc'])
     stage1_results = stage1.run_stage1(input_files,
                                        background_model=background_model,
                                        baseline_ints=config['baseline_ints'],
@@ -59,7 +61,6 @@ else:
 
 # === Run Stage 2 ===
 if 2 in config['run_stages']:
-    background_model = np.load(config['background_file'])
     results = stage2.run_stage2(stage1_results,
                                 smoothed_wlc=config['smoothed_wlc'],
                                 background_model=background_model,

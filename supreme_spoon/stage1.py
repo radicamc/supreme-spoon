@@ -351,8 +351,8 @@ class JumpStep:
                 # algorithm, which is applied after ramp fitting.
                 elif ngroups == 2 and ngroup_flag is False:
                     # If before the RampFitStep, just pass.
-                    print('Observation has ngroups=2.')
-                    print('Jump detection will be treated after ramp fitting.')
+                    print('\nObservation has ngroups=2.')
+                    print('Jump detection will be treated after ramp fit.\n')
                     ngroup_flag = True
                     results = self.datafiles
                     break
