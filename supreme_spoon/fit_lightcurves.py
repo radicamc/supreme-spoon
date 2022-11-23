@@ -16,6 +16,7 @@ import matplotlib.backends.backend_pdf
 import numpy as np
 import pandas as pd
 import sys
+from tqdm import tqdm
 
 from supreme_spoon import stage4
 from supreme_spoon import plotting, utils
@@ -197,7 +198,8 @@ for order in config['orders']:
     order_results = {'dppm': [], 'dppm_err': [], 'wave': wave,
                      'wave_err': np.mean([wave - wave_low, wave_up - wave],
                                          axis=0)}
-    for i, wavebin in enumerate(fit_results.keys()):
+    for i, wavebin in tqdm(enumerate(fit_results.keys()),
+                           total=len(fit_results.keys())):
         # Make note if something went wrong with this bin.
         skip = False
         if fit_results[wavebin] is None:
@@ -307,13 +309,9 @@ if len(config['lm_parameters']) != 0:
         else:
             fit_metadata += ', {}'.format(param)
     fit_metadata += '\n'
-if len(config['gp_parameters']) != 0:
+if config['gp_parameter'] != '':
     fit_metadata += '# Gaussian Process: '
-    for i, param in enumerate(config['gp_parameters']):
-        if i == 0:
-            fit_metadata += param
-        else:
-            fit_metadata += ', {}'.format(param)
+    fit_metadata += config['gp_parameter']
     fit_metadata += '\n'
 fit_metadata += '#\n'
 
