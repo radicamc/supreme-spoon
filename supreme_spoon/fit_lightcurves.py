@@ -198,8 +198,7 @@ for order in config['orders']:
     order_results = {'dppm': [], 'dppm_err': [], 'wave': wave,
                      'wave_err': np.mean([wave - wave_low, wave_up - wave],
                                          axis=0)}
-    for i, wavebin in tqdm(enumerate(fit_results.keys()),
-                           total=len(fit_results.keys())):
+    for i, wavebin in enumerate(fit_results.keys()):
         # Make note if something went wrong with this bin.
         skip = False
         if fit_results[wavebin] is None:
@@ -223,7 +222,20 @@ for order in config['orders']:
         if skip is False and doplot is True:
             try:
                 # Plot transit model and residuals.
-                transit_model = fit_results[wavebin].lc.evaluate('SOSS')
+                if config['gp_file'] is not None:
+                    # Hack to get around weird bug where ray fits with GPs end
+                    # up being read only.
+                    outdir_i = outdir + 'speclightcurve{2}/order{0}_{1}'.format(order, wavebin, fit_suffix)
+                    dataset = juliet.load(priors=prior_dict[wavebin],
+                                          t_lc={'SOSS': data_dict[wavebin]['times']},
+                                          y_lc={'SOSS': data_dict[wavebin]['flux']},
+                                          yerr_lc={'SOSS': data_dict[wavebin]['error']},
+                                          GP_regressors_lc={'SOSS': data_dict[wavebin]['GP_parameters']},
+                                          out_folder=outdir_i)
+                    results = dataset.fit(sampler='dynesty')
+                    transit_model = results.lc.evaluate('SOSS', GPregressors=t)
+                else:
+                    transit_model = fit_results[wavebin].lc.evaluate('SOSS')
                 scatter = np.median(fit_results[wavebin].posteriors['posterior_samples']['sigma_w_SOSS'])
                 nfit = len(np.where(config['dists'] != 'fixed')[0])
                 t0_loc = np.where(np.array(config['params']) == 't0_p1')[0][0]
