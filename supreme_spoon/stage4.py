@@ -196,7 +196,7 @@ def bin_at_resolution(inwave_low, inwave_up, flux, flux_err, res,
                 count += 1
             # Since wavelengths are in increasing order, once we exit the bin
             # completely we're done.
-            if inwave_low[i] >= wu:
+            if inwave_low[i] >= wu or i == len(waves)-1:
                 if count != 0:
                     # If something was put into this bin, bin it using the
                     # requested method.
