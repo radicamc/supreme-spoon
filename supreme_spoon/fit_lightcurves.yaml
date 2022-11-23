@@ -45,6 +45,6 @@ lm_file : None
 lm_parameters : ['x']
 # Path to file containing GP training parameters.
 gp_file : None
-# Key names for GP training parametrers.
-gp_parameters : []
+# Key name for GP training parametrer.
+gp_parameters : ''
 # ======================= END LIGHTCURVE FIT CONFIG FILE ===========================

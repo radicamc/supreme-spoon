@@ -29,7 +29,7 @@ except IndexError:
 config = utils.parse_config(config_file)
 
 if config['output_tag'] != '':
-    output_tag = '_' + config['output_tag']
+    config['output_tag'] = '_' + config['output_tag']
 # Create output directories and define output paths.
 utils.verify_path('pipeline_outputs_directory' + config['output_tag'])
 utils.verify_path('pipeline_outputs_directory' + config['output_tag'] + '/Stage4')
@@ -61,8 +61,8 @@ formatted_names = {'P_p1': r'$P$', 't0_p1': r'$T_0$', 'p_p1': r'$R_p/R_*$',
                    'a_p1': r'$a/R_*$', 'sigma_w_SOSS': r'$\sigma_w$',
                    'theta0_SOSS': r'$\theta_0$', 'theta1_SOSS': r'$\theta_1$',
                    'theta2_SOSS': r'$\theta_2$',
-                   'GP_sigma_SOSS': r'$GP_\sigma$', 'GP_rho_SOSS': r'$GP_rho$',
-                   'rho': r'$\rho$'}
+                   'GP_sigma_SOSS': r'$GP \sigma$',
+                   'GP_rho_SOSS': r'$GP \rho$', 'rho': r'$\rho$'}
 
 # === Get Detrending Quantities ===
 # Get time axis
@@ -75,14 +75,10 @@ if config['lm_file'] is not None:
     for i, key in enumerate(config['lm_parameters']):
         lm_param = lm_data[key]
         lm_quantities[:, i] = (lm_param - np.mean(lm_param)) / np.sqrt(np.var(lm_param))
-# Quantities on which to train GP.
+# Quantity on which to train GP.
 if config['gp_file'] is not None:
     gp_data = pd.read_csv(config['gp_file'], comment='#')
-    gp_quantities = np.zeros((len(t), len(config['gp_parameters'])+1))
-    gp_quantities[:, 0] = np.ones_like(t)
-    for i, key in enumerate(config['gp_parameters']):
-        gp_param = gp_data[key]
-        gp_quantities[:, i] = (gp_param - np.mean(gp_param)) / np.sqrt(np.var(gp_param))
+    gp_quantities = gp_data[config['gp_parameter']].values
 
 # Format the baseline frames - either out-of-transit or in-eclipse.
 baseline_ints = utils.format_out_frames(config['baseline_ints'],
@@ -179,10 +175,10 @@ for order in config['orders']:
         if config['ldcoef_file_o1'] is not None or config['ldcoef_file_o2'] is not None:
             if np.isfinite(q1m[wavebin]):
                 prior_dict[thisbin]['q1_SOSS']['distribution'] = 'truncatednormal'
-                prior_dict[thisbin]['q1_SOSS']['hyperparameters'] = [q1m[wavebin], q1w, 0.0, 1.0]
+                prior_dict[thisbin]['q1_SOSS']['hyperparameters'] = [q1m[wavebin], q1w[wavebin], 0.0, 1.0]
             if np.isfinite(q2m[wavebin]):
                 prior_dict[thisbin]['q2_SOSS']['distribution'] = 'truncatednormal'
-                prior_dict[thisbin]['q2_SOSS']['hyperparameters'] = [q2m[wavebin], q2w, 0.0, 1.0]
+                prior_dict[thisbin]['q2_SOSS']['hyperparameters'] = [q2m[wavebin], q2w[wavebin], 0.0, 1.0]
 
     # === Do the Fit ===
     # Fit each light curve
