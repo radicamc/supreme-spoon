@@ -45,7 +45,7 @@ def make_corner_plot(fit_params, results, posterior_names=None, outpdf=None,
 
 
 def make_lightcurve_plot(t, data, model, scatter, errors, outpdf=None,
-                         title=None, nfit=8):
+                         title=None, nfit=8, transit=None, systematics=None):
     """Plot results of lightcurve fit.
     """
 
@@ -62,6 +62,10 @@ def make_lightcurve_plot(t, data, model, scatter, errors, outpdf=None,
     ax1 = plt.subplot(gs[0])
     ax1.errorbar(t, data, yerr=scatter * 1e-6, fmt='o', capsize=0,
                  color='royalblue', ms=5, alpha=1)
+    if transit is not None:
+        ax1.plot(t, transit, color='blue', zorder=100, ls='--')
+    if systematics is not None:
+        ax1.plot(t, systematics, color='red', zorder=100, ls='--')
     ax1.plot(t, model, color='black', zorder=100)
     ax1.set_ylabel('Relative Flux', fontsize=18)
     ax1.set_xlim(np.min(t), np.max(t))

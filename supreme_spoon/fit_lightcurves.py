@@ -233,9 +233,10 @@ for order in config['orders']:
                                           GP_regressors_lc={'SOSS': data_dict[wavebin]['GP_parameters']},
                                           out_folder=outdir_i)
                     results = dataset.fit(sampler='dynesty')
-                    transit_model = results.lc.evaluate('SOSS', GPregressors=t)
+                    transit_model, comp = results.lc.evaluate('SOSS', GPregressors=t,
+                                                              return_components=True)
                 else:
-                    transit_model = fit_results[wavebin].lc.evaluate('SOSS')
+                    transit_model, comp = fit_results[wavebin].lc.evaluate('SOSS', return_components=True)
                 scatter = np.median(fit_results[wavebin].posteriors['posterior_samples']['sigma_w_SOSS'])
                 nfit = len(np.where(config['dists'] != 'fixed')[0])
                 t0_loc = np.where(np.array(config['params']) == 't0_p1')[0][0]
@@ -243,13 +244,24 @@ for order in config['orders']:
                     t0 = config['hyperps'][t0_loc]
                 else:
                     t0 = np.median(fit_results[wavebin].posteriors['posterior_samples']['t0_p1'])
+
+                # Get systematics and transit models.
+                systematics = None
+                if config['gp_file'] is not None or config['lm_file'] is not None:
+                    if config['gp_file'] is not None:
+                        gp_model = transit_model - comp['transit'] - comp['lm']
+                    else:
+                        gp_model = np.zeros_like(t)
+                    systematics = gp_model + comp['lm'] + 1
                 plotting.make_lightcurve_plot(t=(t - t0) * 24,
                                               data=norm_flux[:, i],
                                               model=transit_model,
                                               scatter=scatter,
                                               errors=norm_err[:, i],
-                                              outpdf=outpdf,
-                                              title='bin {0} | {1:.3f}µm'.format(i, wave[i]), nfit=nfit)
+                                              outpdf=outpdf, nfit=nfit,
+                                              title='bin {0} | {1:.3f}µm'.format(i, wave[i]),
+                                              transit=comp['transit'],
+                                              systematics=systematics)
                 # Corner plot for fit.
                 fit_params, posterior_names = [], []
                 for param, dist in zip(config['params'], config['dists']):
