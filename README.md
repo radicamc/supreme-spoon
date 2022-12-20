@@ -38,22 +38,22 @@ Alternatively, Stages 1 to 3 can be run at once via the ```run_DMS.py``` script.
 3. Once happy with the input parameters, enter ```python run_DMS.py run_DMS.yaml``` in the terminal.
 
 To use the light curve fitting capabilities, simply follow the same procedure with the fit_lightcurves.py and .yaml files. 
-Currently only transit light curve fits are supported, with eclipse fitting under development. 
+Currently only transit light curve fits are supported, with eclipse fitting in development. 
 
 ## Citations
-If you make use of this code in your work, please cite [Radica et al. (2023)]() and [Feinstein & Radica et al. (2022)](). 
+If you make use of this code in your work, please cite [Radica et al. (2023)]() and [Feinstein et al. (2022)](https://ui.adsabs.harvard.edu/abs/2022arXiv221110493F/abstract). 
 
 ### Additional Citations
 If you use the ATOCA extraction algorithm, please also cite [Radica et al. (2022)](https://ui.adsabs.harvard.edu/abs/2022PASP..134j4502R/abstract) 
 and [Darveau-Bernier et al. (2022)](https://ui.adsabs.harvard.edu/abs/2022PASP..134i4502D/abstract).
 
-If you make use of the lightcurve fitting routines, also include the following citations for 
+If you make use of the light curve fitting routines, also include the following citations for 
 [juliet](https://ui.adsabs.harvard.edu/abs/2019MNRAS.490.2262E/abstract), 
 [batman](https://ui.adsabs.harvard.edu/abs/2015PASP..127.1161K/abstract), 
 [dynesty](https://ui.adsabs.harvard.edu/abs/2020MNRAS.493.3132S/abstract), and 
 [Kipping et al. (2013)](https://ui.adsabs.harvard.edu/abs/2013MNRAS.435.2152K/abstract) for the limb-darkening sampling. 
-If you use Gaussian Processes, please cite [celerite](https://ui.adsabs.harvard.edu/abs/2017AJ....154..220F/abstract), 
-and if you use ExoTiC-LD for limb darkening priors, cite [Laginja & Wakeford (2020)](https://ui.adsabs.harvard.edu/abs/2020JOSS....5.2281L/abstract) 
+If you use Gaussian Processes please cite [celerite](https://ui.adsabs.harvard.edu/abs/2017AJ....154..220F/abstract), 
+and if you use ExoTiC-LD for limb darkening priors cite [Laginja & Wakeford (2020)](https://ui.adsabs.harvard.edu/abs/2020JOSS....5.2281L/abstract) 
 and [Magic et al. (2015)](https://ui.adsabs.harvard.edu/abs/2015A%26A...573A..90M/abstract).
 
 Lastly, you should cite the libraries upon which this code is built, namely:
