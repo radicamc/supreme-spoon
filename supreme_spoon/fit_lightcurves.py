@@ -148,11 +148,11 @@ for order in config['orders']:
         priors[param]['hyperparameters'] = hyperp
     # Interpolate LD coefficients from stellar models.
     if order == 1 and config['ldcoef_file_o1'] is not None:
-        q1m, q1w, q2m, q2w = utils.read_ld_coefs(config['ldcoef_file_o1'],
-                                                 wave_low, wave_up)
+        q1m, q1w, q2m, q2w = stage4.read_ld_coefs(config['ldcoef_file_o1'],
+                                                  wave_low, wave_up)
     if order == 2 and config['ldcoef_file_o2'] is not None:
-        q1m, q1w, q2m, q2w = utils.read_ld_coefs(config['ldcoef_file_o2'],
-                                                 wave_low, wave_up)
+        q1m, q1w, q2m, q2w = stage4.read_ld_coefs(config['ldcoef_file_o2'],
+                                                  wave_low, wave_up)
 
     # Pack fitting arrays and priors into dictionaries.
     data_dict, prior_dict = {}, {}

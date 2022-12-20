@@ -464,8 +464,8 @@ def oneoverfstep(datafiles, baseline_ints, even_odd_rows=True,
     median stack is constructed using all out-of-transit integrations and
     subtracted from each individual integration. The column-wise median of
     this difference image is then subtracted from the original frame to
-    correct 1/f noise. Outlier pixels, as well as the trace itself can be
-    masked to improve the noise level estimation.
+    correct 1/f noise. Outlier pixels, background contaminants, and the target
+    trace itself can (should) be masked to improve the estimation.
 
     Parameters
     ----------
