@@ -19,3 +19,10 @@ All notable changes to this project will be documented in this file.
 #### Removed
 - Redundant plotting routines.
 - Multiple depreciated utility functions.
+
+### [0.3.0] -- 2022-12-22
+#### Added
+- Add time-domain jump detection for ngroup=2 observations.
+- Allow for integration-level correction of 1/f noise.
+- Paralellization of stability parameter calculations.
+- Allow for piecewise subtraction of background.

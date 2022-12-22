@@ -15,9 +15,6 @@ import sys
 from supreme_spoon import stage1, stage2, stage3
 from supreme_spoon import utils
 
-os.environ['CRDS_PATH'] = './crds_cache'
-os.environ['CRDS_SERVER_URL'] = 'https://jwst-crds.stsci.edu'
-
 # Read config file.
 try:
     config_file = sys.argv[1]
@@ -26,6 +23,8 @@ except IndexError:
     raise FileNotFoundError(msg)
 config = utils.parse_config(config_file)
 
+os.environ['CRDS_PATH'] = config['crds_cache_path']
+os.environ['CRDS_SERVER_URL'] = 'https://jwst-crds.stsci.edu'
 
 # Unpack all files in the input directory.
 input_files = utils.unpack_input_directory(config['input_dir'],
@@ -36,11 +35,13 @@ print('\nIdentified {0} {1} exposure segments'.format(len(input_files),
 for file in input_files:
     print(' ' + file)
 
+# Open background model and smoothed white light curve.
+if config['smoothed_wlc'] is not None:
+    config['smoothed_wlc'] = np.load(config['smoothed_wlc'])
+background_model = np.load(config['background_file'])
+
 # === Run Stage 1 ===
 if 1 in config['run_stages']:
-    background_model = np.load(config['background_file'])
-    if config['smoothed_wlc'] is not None:
-        config['smoothed_wlc'] = np.load(config['smoothed_wlc'])
     stage1_results = stage1.run_stage1(input_files,
                                        background_model=background_model,
                                        baseline_ints=config['baseline_ints'],
@@ -51,13 +52,15 @@ if 1 in config['run_stages']:
                                        even_odd_rows=config['even_odd_rows'],
                                        force_redo=config['force_redo'],
                                        output_tag=config['output_tag'],
-                                       occultation_type=config['occultation_type'])
+                                       occultation_type=config['occultation_type'],
+                                       rejection_threshold=config['rejection_threshold'],
+                                       skip_steps=config['stage1_skip'],
+                                       **config['stage1_kwargs'])
 else:
     stage1_results = input_files
 
 # === Run Stage 2 ===
 if 2 in config['run_stages']:
-    background_model = np.load(config['background_file'])
     results = stage2.run_stage2(stage1_results,
                                 smoothed_wlc=config['smoothed_wlc'],
                                 background_model=background_model,
@@ -69,7 +72,10 @@ if 2 in config['run_stages']:
                                 mask_width=config['mask_width'],
                                 calculate_stability=config['calculate_stability'],
                                 stability_params=config['stability_params'],
-                                smoothing_scale=config['smoothing_scale'])
+                                nthreads=config['nthreads'],
+                                smoothing_scale=config['smoothing_scale'],
+                                skip_steps=config['stage2_skip'],
+                                **config['stage2_kwargs'])
     stage2_results = results[0]
     deepframe = results[1]
     centroids = results[3]

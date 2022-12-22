@@ -10,11 +10,13 @@ Custom JWST DMS pipeline steps for Stage 4 (lightcurve fitting).
 
 from datetime import datetime
 from exotic_ld import StellarLimbDarkening
+import itertools
 import juliet
 import numpy as np
 import os
 import pandas as pd
 import ray
+from tqdm import tqdm
 
 from jwst import datamodels
 from jwst.pipeline import calwebb_spec2
@@ -194,7 +196,7 @@ def bin_at_resolution(inwave_low, inwave_up, flux, flux_err, res,
                 count += 1
             # Since wavelengths are in increasing order, once we exit the bin
             # completely we're done.
-            if inwave_low[i] >= wu:
+            if inwave_low[i] >= wu or i == len(waves)-1:
                 if count != 0:
                     # If something was put into this bin, bin it using the
                     # requested method.
@@ -336,8 +338,9 @@ def fit_lightcurves(data_dict, prior_dict, order, output_dir, fit_suffix,
     return results
 
 
-def gen_ld_coefs(datafile, wavebin_low, wavebin_up, order, m_h, logg, teff,
-                 ld_data_path):
+def gen_ld_coefs(datafile, wavebin_low, wavebin_up, order, m_h, err_m_h, logg,
+                 err_logg, teff, err_teff, ld_data_path,
+                 grid_dimensions=(3, 3, 3)):
     """Generate estimates of quadratic limb-darkening coefficients using the
     ExoTiC-LD package.
 
@@ -353,23 +356,32 @@ def gen_ld_coefs(datafile, wavebin_low, wavebin_up, order, m_h, logg, teff,
         SOSS diffraction order.
     m_h : float
         Stellar metallicity as [M/H]
+    err_m_h : float
+        Uncertainty in metallicity.
     logg : float
         Stellar log gravity.
+    err_logg : float
+        Uncertainty in log gravity.
     teff : float
         Stellar effective temperature in K.
+    err_teff : float
+        Uncertainty in effective temperature.
     ld_data_path : str
         Path to ExoTiC-LD model data.
+    grid_dimensions : tuple
+        Dimensions of M_H, logg, Teff grid to sample.
 
     Returns
     -------
-    c1s : array-like[float]
-        c1 parameter for the quadratic limb-darkening law.
-    c2s : array-like[float]
-        c2 parameter for the quadratic limb-darkening law.
+    mean_c1 : array-like[float]
+        Grid mean c1 parameter for the quadratic limb-darkening law.
+    std_c1 : array-like[float]
+        Grid std dev for c1 parameter.
+    mean_c2 : array-like[float]
+        Grid mean c2 parameter for the quadratic limb-darkening law.
+    std_c2 : array-like[float]
+        Grid std dev for c2 parameter.
     """
-
-    # Set up the stellar model parameters - using 1D models for speed.
-    sld = StellarLimbDarkening(m_h, teff, logg, '1D', ld_data_path)
 
     # Load the most up to date throughput info for SOSS
     step = calwebb_spec2.extract_1d_step.Extract1dStep()
@@ -380,21 +392,134 @@ def gen_ld_coefs(datafile, wavebin_low, wavebin_up, order, m_h, logg, teff,
     # Note that custom throughputs are used.
     mode = 'custom'
 
-    # Compute the LD coefficients over the given wavelength bins.
-    c1s, c2s = [], []
-    for wl, wu in zip(wavebin_low * 10000, wavebin_up * 10000):
-        wr = [wl, wu]
-        try:
-            c1, c2 = sld.compute_quadratic_ld_coeffs(wr, mode, wavelengths,
-                                                     throughputs)
-        except ValueError:
-            c1, c2 = np.nan, np.nan
-        c1s.append(c1)
-        c2s.append(c2)
-    c1s = np.array(c1s)
-    c2s = np.array(c2s)
+    # Set up grid nodes.
+    if grid_dimensions[0] == 1:
+        mhs = np.array([m_h])
+    else:
+        mhs = np.linspace(m_h-err_m_h, m_h+err_m_h, grid_dimensions[0])
+    if grid_dimensions[1] == 1:
+        loggs = np.array([logg])
+    else:
+        loggs = np.linspace(logg-err_logg, logg+err_logg, grid_dimensions[1])
+    if grid_dimensions[2] == 1:
+        teffs = np.array([teff])
+    else:
+        teffs = np.linspace(teff-err_teff, teff+err_teff, grid_dimensions[2])
 
-    return c1s, c2s
+    # Derive LD coefs for each node in the grid.
+    num_nodes = grid_dimensions[0] * grid_dimensions[1] * grid_dimensions[2]
+    c1s = np.zeros((num_nodes, len(wavebin_low)))
+    c2s = np.zeros((num_nodes, len(wavebin_low)))
+    for i, node in tqdm(enumerate(itertools.product(mhs, loggs, teffs)),
+                        total=num_nodes):
+        # Set up the stellar model parameters - using 1D models for speed.
+        sld = StellarLimbDarkening(node[0], node[2], node[1], '1D',
+                                   ld_data_path)
+
+        # Compute the LD coefficients over the given wavelength bins.
+        c1s_n, c2s_n = [], []
+        for wl, wu in zip(wavebin_low*10000, wavebin_up*10000):
+            wr = [wl, wu]
+            try:
+                c1, c2 = sld.compute_quadratic_ld_coeffs(wr, mode, wavelengths,
+                                                         throughputs)
+            except ValueError:
+                c1, c2 = np.nan, np.nan
+            c1s_n.append(c1)
+            c2s_n.append(c2)
+        c1s[i, :], c2s[i, :] = c1s_n, c2s_n
+
+    # Get mean and std dev of grid results.
+    mean_c1, mean_c2 = np.nanmean(c1s, axis=0), np.nanmean(c2s, axis=0)
+    std_c1, std_c2 = np.nanstd(c1s, axis=0), np.nanstd(c2s, axis=0)
+
+    return mean_c1, std_c1, mean_c2, std_c2
+
+
+def read_ld_coefs(filename, wavebin_low, wavebin_up, ld_model='quadratic'):
+    """Unpack limb darkening coefficients and interpolate to the wavelength
+    grid of data being fit.
+
+    Parameters
+    ----------
+    filename : str
+        Path to file containing model limb darkening coefficients.
+    wavebin_low : array-like[float]
+        Lower edge of wavelength bins being fit.
+    wavebin_up : array-like[float]
+        Upper edge of wavelength bins being fit.
+    ld_model : str
+        Limb darkening model.
+
+    Returns
+    -------
+    mean_q1 : array-like[float]
+        Model estimates for q1 parameter.
+    width_q1 : array-like[float]
+        Model error in q1 parameter.
+    mean_q2 : array-like[float]
+        Model estimates for q2 parameter.
+    width_q2 : array-like[float]
+        Model error in q2 parameter.
+    """
+
+    # Open the LD model file and convert c1 and c2 parameters to q1 and q2 of
+    # the Kipping (2013) parameterization.
+    ld = pd.read_csv(filename, comment='#', sep=',')
+    c1_up = ld['c1'].values + ld['c1_err'].values
+    c1_low = ld['c1'].values - ld['c1_err'].values
+    c2_up = ld['c2'].values + ld['c2_err'].values
+    c2_low = ld['c2'].values - ld['c2_err'].values
+
+    q1_up, q2_up = juliet.reverse_q_coeffs(ld_model, c1_up, c2_up)
+    q1_low, q2_low = juliet.reverse_q_coeffs(ld_model, c1_low, c2_low)
+
+    # Get model wavelengths and sort in increasing order.
+    waves = ld['wave'].values
+    ii = np.argsort(waves)
+    waves = waves[ii]
+    q1_up, q2_up = q1_up[ii], q2_up[ii]
+    q1_low, q2_low = q1_low[ii], q2_low[ii]
+
+    mean_q1, mean_q2 = [], []
+    width_q1, width_q2 = [], []
+    # Loop over all fitting bins. Calculate mean of model LD coefs within that
+    # range.
+    for wl, wu in zip(wavebin_low, wavebin_up):
+        current_q1u, current_q2u = [], []
+        current_q1l, current_q2l = [], []
+        for w, q1u, q2u, q1l, q2l in zip(waves, q1_up, q2_up, q1_low, q2_low):
+            if wl < w <= wu:
+                current_q1u.append(q1u)
+                current_q2u.append(q2u)
+                current_q1l.append(q1l)
+                current_q2l.append(q2l)
+            elif w > wu:
+                # Calculate mean q1 and q2 in the bin.
+                q1_m = np.nanmean(np.stack([current_q1u, current_q1l]))
+                q2_m = np.nanmean(np.stack([current_q2u, current_q2l]))
+                mean_q1.append(q1_m)
+                mean_q2.append(q2_m)
+                # Calculate spread in each coefficient in the bin.
+                q1_d = np.abs(np.array(current_q1u) - np.array(current_q1l))
+                q2_d = np.abs(np.array(current_q2u) - np.array(current_q2l))
+                width_q1.append(np.nanmean(q1_d))
+                width_q2.append(np.nanmean(q2_d))
+                break
+
+    # Since the q1/q2 parameterization is only defined from 0 to 1, set any
+    # values out of these bounds to the extreme.
+    mean_q1, width_q1 = np.array(mean_q1), np.array(width_q1)
+    mean_q2, width_q2 = np.array(mean_q2), np.array(width_q2)
+    mean_q1 = np.where(mean_q1 < 0, 0, mean_q1)
+    mean_q1 = np.where(mean_q1 > 1, 1, mean_q1)
+    mean_q2 = np.where(mean_q2 < 0, 0, mean_q2)
+    mean_q2 = np.where(mean_q2 > 1, 1, mean_q2)
+    # Also set any spreads <0.05 to 0.05.
+    width_q1 = np.where(width_q1 < 0.05, 0.05, width_q1)
+    width_q2 = np.where(width_q2 < 0.05, 0.05, width_q2)
+
+    return mean_q1, width_q1, mean_q2, width_q2
 
 
 def run_juliet(priors, t_lc, y_lc, yerr_lc, out_folder,

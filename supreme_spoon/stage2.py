@@ -111,7 +111,7 @@ class BackgroundStep:
         self.fileroots = utils.get_filename_root(self.datafiles)
         self.fileroot_noseg = utils.get_filename_root_noseg(self.fileroots)
 
-    def run(self, save_results=True, force_redo=False):
+    def run(self, save_results=True, force_redo=False, **kwargs):
         """Method to run the step.
         """
 
@@ -135,12 +135,18 @@ class BackgroundStep:
         else:
             with warnings.catch_warnings():
                 warnings.filterwarnings('ignore')
+                scale1, scale2 = None, None
+                if 'scale1' in kwargs.keys():
+                    scale1 = kwargs['scale1']
+                if 'scale2' in kwargs.keys():
+                    scale2 = kwargs['scale2']
                 step_results = backgroundstep(self.datafiles,
                                               self.background_model,
                                               output_dir=self.output_dir,
                                               save_results=save_results,
                                               fileroots=self.fileroots,
-                                              fileroot_noseg=self.fileroot_noseg)
+                                              fileroot_noseg=self.fileroot_noseg,
+                                              scale1=scale1, scale2=scale2)
                 results, background_models = step_results
 
         return results, background_models
@@ -200,7 +206,7 @@ class BadPixStep:
         self.fileroots = utils.get_filename_root(self.datafiles)
         self.fileroot_noseg = utils.get_filename_root_noseg(self.fileroots)
 
-    def run(self, thresh=3, box_size=5, max_iter=3, save_results=True,
+    def run(self, thresh=10, box_size=5, max_iter=1, save_results=True,
             force_redo=False):
         """Method to run the step.
         """
@@ -253,7 +259,7 @@ class TracingStep:
         self.fileroot_noseg = utils.get_filename_root_noseg(self.fileroots)
 
     def run(self, mask_width, calculate_stability=True, stability_params='ALL',
-            save_results=True, force_redo=False):
+            nthreads=4, save_results=True, force_redo=False):
         """Method to run the step.
         """
 
@@ -272,6 +278,7 @@ class TracingStep:
             step_results = tracingstep(self.datafiles, self.deepframe,
                                        calculate_stability=calculate_stability,
                                        stability_params=stability_params,
+                                       nthreads=nthreads,
                                        output_dir=self.output_dir,
                                        mask_width=mask_width,
                                        save_results=save_results,
@@ -323,7 +330,8 @@ class LightCurveEstimateStep:
 
 
 def backgroundstep(datafiles, background_model, output_dir='./',
-                   save_results=True, fileroots=None, fileroot_noseg=''):
+                   save_results=True, fileroots=None, fileroot_noseg='',
+                   scale1=None, scale2=None):
     """Background subtraction must be carefully treated with SOSS observations.
     Due to the extent of the PSF wings, there are very few, if any,
     non-illuminated pixels to serve as a sky region. Furthermore, the zodi
@@ -348,6 +356,15 @@ def backgroundstep(datafiles, background_model, output_dir='./',
         Root names for output files.
     fileroot_noseg : str
         Root name with no segment information.
+    scale1 : float, None
+        Scaling value to apply to background model to match data. Will take
+        precedence over calculated scaling value. If only scale1 is provided,
+        this will multiply the entire frame. If scale2 is also provided, this
+        will be the "pre-stp" scaling.
+    scale2 : float, None
+        "Post-step" scaling value. scale1 must also be passed if this
+        parameter is not None.
+
 
     Returns
     -------
@@ -389,29 +406,51 @@ def backgroundstep(datafiles, background_model, output_dir='./',
 
     print('Calculating background model scaling.')
     model_scaled = np.zeros_like(deepstack)
-    print(' Scale factor(s):')
+    if scale1 is None:
+        print(' Scale factor(s):')
+    else:
+        print(' Using user-defined background scaling(s):')
+        if scale2 is not None:
+            print('  Pre-step scale factor: {:.5f}'.format(scale1))
+            print('  Post-step scale factor: {:.5f}'.format(scale2))
+        else:
+            print('  Background scale factor: {:.5f}'.format(scale1))
     first_time = True
     for i in range(ngroup):
-        # Calculate the scaling of the model background to the median stack.
-        if dimy == 96:
-            # Use area in bottom left corner of detector for SUBSTRIP96.
-            xl, xu = 5, 21
-            yl, yu = 5, 401
+        if scale1 is None:
+            # Calculate the scaling of the model background to the median
+            # stack.
+            if dimy == 96:
+                # Use area in bottom left corner of detector for SUBSTRIP96.
+                xl, xu = 5, 21
+                yl, yu = 5, 401
+            else:
+                # Use area in the top left corner of detector for SUBSTRIP256
+                xl, xu = 210, 250
+                yl, yu = 250, 500
+            bkg_ratio = deepstack[i, xl:xu, yl:yu] / background_model[xl:xu, yl:yu]
+            # Instead of a straight median, use the median of the 2nd quartile
+            # to limit the effect of any remaining illuminated pixels.
+            q1 = np.nanpercentile(bkg_ratio, 25)
+            q2 = np.nanpercentile(bkg_ratio, 50)
+            ii = np.where((bkg_ratio > q1) & (bkg_ratio < q2))
+            scale_factor = np.nanmedian(bkg_ratio[ii])
+            if scale_factor < 0:
+                scale_factor = 0
+            print('  Background scale factor: {1:.5f}'.format(i + 1, scale_factor))
+            model_scaled[i] = background_model * scale_factor
+        elif scale1 is not None and scale2 is None:
+            # If using a user specified scaling for the whole frame.
+            model_scaled[i] = background_model * scale1
         else:
-            # Use area in the top left corner of detector for SUBSTRIP256
-            xl, xu = 210, 250
-            yl, yu = 250, 500
-        bkg_ratio = deepstack[i, xl:xu, yl:yu] / background_model[xl:xu, yl:yu]
-        # Instead of a straight median, use the median of the 2nd quartile to
-        # limit the effect of any remaining illuminated pixels.
-        q1 = np.nanpercentile(bkg_ratio, 25)
-        q2 = np.nanpercentile(bkg_ratio, 50)
-        ii = np.where((bkg_ratio > q1) & (bkg_ratio < q2))
-        scale_factor = np.nanmedian(bkg_ratio[ii])
-        if scale_factor < 0:
-            scale_factor = 0
-        model_scaled[i] = background_model * scale_factor
-        print('  Background scale factor: {1:.5f}'.format(i+1, scale_factor))
+            # If using seperate pre- and post- step scalings.
+            # Locate the step position using the gradient of the background.
+            grad_bkg = np.gradient(background_model, axis=1)
+            step_pos = np.argmax(grad_bkg[:, 10:-10], axis=1)
+            # Seperately scale both sides of the step.
+            for j in range(dimy):
+                model_scaled[i, j, :(step_pos[j]+8)] = background_model[j, :(step_pos[j]+8)] * scale1
+                model_scaled[i, j, (step_pos[j]+8):] = background_model[j, (step_pos[j]+8):] * scale2
 
     # Loop over all segments in the exposure and subtract the background from
     # each of them.
@@ -437,12 +476,13 @@ def backgroundstep(datafiles, background_model, output_dir='./',
     return results, model_scaled
 
 
-def badpixstep(datafiles, baseline_ints, smoothed_wlc=None, thresh=3,
-               box_size=2, max_iter=3, output_dir='./', save_results=True,
+def badpixstep(datafiles, baseline_ints, smoothed_wlc=None, thresh=10,
+               box_size=5, max_iter=1, output_dir='./', save_results=True,
                fileroots=None, fileroot_noseg='', occultation_type='transit'):
     """Identify and correct hot pixels remaining in the dataset. Find outlier
     pixels in the median stack and correct them via the median of a box of
-    surrounding pixels in each integration.
+    surrounding pixels. Then replace these pixels in each integration via the
+    wlc scaled median.
 
     Parameters
     ----------
@@ -514,14 +554,14 @@ def badpixstep(datafiles, baseline_ints, smoothed_wlc=None, thresh=3,
         print('Starting iteration {0} of {1}.'.format(it + 1, max_iter))
 
         # Generate the deepstack.
-        print(' Generating a deep stack using all integrations...')
+        print(' Generating a deep stack...')
         deepframe = utils.make_deepstack(newdata[baseline_ints])
         badpix = np.zeros_like(deepframe)
         count = 0
         nint, dimy, dimx = np.shape(newdata)
 
         # Loop over whole deepstack and flag deviant pixels.
-        for i in tqdm(range(dimx)):
+        for i in tqdm(range(4, dimx-4)):
             for j in range(dimy):
                 box_size_i = box_size
                 box_prop = utils.get_interp_box(deepframe, box_size_i, i, j,
@@ -534,8 +574,8 @@ def badpixstep(datafiles, baseline_ints, smoothed_wlc=None, thresh=3,
                                                     j, dimx)
                 med, std = box_prop[0], box_prop[1]
 
-                # If central pixel is too deviant (or nan) flag it.
-                if np.abs(deepframe[j, i] - med) >= (thresh * std) or np.isnan(deepframe[j, i]):
+                # If central pixel is too deviant (or nan/negative) flag it.
+                if np.abs(deepframe[j, i] - med) >= (thresh * std) or np.isnan(deepframe[j, i]) or deepframe[j, i] < 0:
                     mini, maxi = np.max([0, i - 1]), np.min([dimx - 1, i + 1])
                     minj, maxj = np.max([0, j - 1]), np.min([dimy - 1, j + 1])
                     badpix[j, i] = 1
@@ -573,6 +613,7 @@ def badpixstep(datafiles, baseline_ints, smoothed_wlc=None, thresh=3,
         newdq[:, deepdq] = 0
 
         it += 1
+        thresh += 1
 
     # Generate a final corrected deep frame for the baseline integrations.
     deepframe = utils.make_deepstack(newdata[baseline_ints])
@@ -662,8 +703,8 @@ def lcestimatestep(datafiles, baseline_ints, save_results=True,
 
 
 def tracingstep(datafiles, deepframe, calculate_stability=True,
-                stability_params='ALL', output_dir='./', mask_width=30,
-                save_results=True, fileroot_noseg=''):
+                stability_params='ALL', nthreads=4, output_dir='./',
+                mask_width=30, save_results=True, fileroot_noseg=''):
     """Locate the centroids of all three SOSS orders via the edgetrigger
     algorithm. Then create a mask of a given width around the centroids.
 
@@ -680,6 +721,8 @@ def tracingstep(datafiles, deepframe, calculate_stability=True,
     stability_params : str, array-like[str]
         List of parameters for which to calculate the stability. Any of: 'x',
         'y', and/or 'FWHM', or 'ALL' for all three.
+    nthreads : int
+        Number of CPUs for stability parameter calculation multiprocessing.
     output_dir : str
         Directory to which to save outputs.
     mask_width : int
@@ -772,15 +815,15 @@ def tracingstep(datafiles, deepframe, calculate_stability=True,
         stability_results = {}
         if 'x' in stability_params:
             print('Getting trace X-positions...')
-            ccf_x = utils.soss_stability(cube, axis='x')
+            ccf_x = utils.soss_stability(cube, axis='x', nthreads=nthreads)
             stability_results['X'] = ccf_x
         if 'y' in stability_params:
             print('Getting trace Y-positions...')
-            ccf_y = utils.soss_stability(cube, axis='y')
+            ccf_y = utils.soss_stability(cube, axis='y', nthreads=nthreads)
             stability_results['Y'] = ccf_y
         if 'FWHM' in stability_params:
             print('Getting trace FWHM values...')
-            fwhm = utils.soss_stability_fwhm(cube, y1)
+            fwhm = utils.soss_stability_fwhm(cube, y1, nthreads=nthreads)
             stability_results['FWHM'] = fwhm
 
         # Save stability results.
@@ -794,10 +837,10 @@ def tracingstep(datafiles, deepframe, calculate_stability=True,
 
 
 def run_stage2(results, background_model, baseline_ints, smoothed_wlc=None,
-               save_results=True, force_redo=False, mask_width=30,
-               calculate_stability=True, stability_params='ALL',
+               save_results=True, force_redo=False, mask_width=40,
+               calculate_stability=True, stability_params='ALL', nthreads=4,
                root_dir='./', output_tag='', occultation_type='transit',
-               smoothing_scale=None):
+               smoothing_scale=None, skip_steps=None, **kwargs):
     """Run the supreme-SPOON Stage 2 pipeline: spectroscopic processing,
     using a combination of official STScI DMS and custom steps. Documentation
     for the official DMS steps can be found here:
@@ -825,6 +868,8 @@ def run_stage2(results, background_model, baseline_ints, smoothed_wlc=None,
     stability_params : str, array-like[str]
         List of parameters for which to calculate the stability. Any of: 'x',
         'y', and/or 'FWHM', or 'ALL' for all three.
+    nthreads : int
+        Number of CPUs for stability parameter calculation multiprocessing.
     root_dir : str
         Directory from which all relative paths are defined.
     output_tag : str
@@ -833,6 +878,8 @@ def run_stage2(results, background_model, baseline_ints, smoothed_wlc=None,
         Type of occultation: transit or eclipse.
     smoothing_scale : int, None
         Timescale on which to smooth the lightcurve.
+    skip_steps : array-like[str], None
+        Step names to skip (if any).
 
     Returns
     -------
@@ -861,51 +908,89 @@ def run_stage2(results, background_model, baseline_ints, smoothed_wlc=None,
     utils.verify_path(root_dir + 'pipeline_outputs_directory' + output_tag + '/Stage2')
     outdir = root_dir + 'pipeline_outputs_directory' + output_tag + '/Stage2/'
 
+    if skip_steps is None:
+        skip_steps = []
+
     # ===== Assign WCS Step =====
     # Default DMS step.
-    step = AssignWCSStep(results, output_dir=outdir)
-    results = step.run(save_results=save_results, force_redo=force_redo)
+    if 'AssignWCSStep' not in skip_steps:
+        if 'AssignWCSStep' in kwargs.keys():
+            step_kwargs = kwargs['AssignWCSStep']
+        else:
+            step_kwargs = {}
+        step = AssignWCSStep(results, output_dir=outdir)
+        results = step.run(save_results=save_results, force_redo=force_redo,
+                           **step_kwargs)
 
     # ===== Source Type Determination Step =====
     # Default DMS step.
-    step = SourceTypeStep(results, output_dir=outdir)
-    results = step.run(save_results=save_results, force_redo=force_redo)
+    if 'SourceTypeStep' not in skip_steps:
+        if 'SourceTypeStep' in kwargs.keys():
+            step_kwargs = kwargs['SourceTypeStep']
+        else:
+            step_kwargs = {}
+        step = SourceTypeStep(results, output_dir=outdir)
+        results = step.run(save_results=save_results, force_redo=force_redo,
+                           **step_kwargs)
 
     # ===== Background Subtraction Step =====
     # Custom DMS step.
-    step = BackgroundStep(results, background_model=background_model,
-                          output_dir=outdir)
-    results = step.run(save_results=save_results, force_redo=force_redo)[0]
+    if 'BackgroundStep' not in skip_steps:
+        if 'BackgroundStep' in kwargs.keys():
+            step_kwargs = kwargs['BackgroundStep']
+        else:
+            step_kwargs = {}
+        step = BackgroundStep(results, background_model=background_model,
+                              output_dir=outdir)
+        results = step.run(save_results=save_results, force_redo=force_redo,
+                           **step_kwargs)[0]
 
     # ===== Flat Field Correction Step =====
     # Default DMS step.
-    step = FlatFieldStep(results, output_dir=outdir)
-    results = step.run(save_results=save_results, force_redo=force_redo)
+    if 'FlatFieldStep' not in skip_steps:
+        if 'FlatFieldStep' in kwargs.keys():
+            step_kwargs = kwargs['FlatFieldStep']
+        else:
+            step_kwargs = {}
+        step = FlatFieldStep(results, output_dir=outdir)
+        results = step.run(save_results=save_results, force_redo=force_redo,
+                           **step_kwargs)
 
-    # ===== Bad Pixel Correction Step =====
+    # ===== Hot Pixel Correction Step =====
     # Custom DMS step.
-    step = BadPixStep(results, baseline_ints=baseline_ints,
-                      smoothed_wlc=smoothed_wlc, output_dir=outdir,
-                      occultation_type=occultation_type)
-    step_results = step.run(save_results=save_results, force_redo=force_redo)
-    results, deepframe = step_results
+    if 'BadPixStep' not in skip_steps:
+        step = BadPixStep(results, baseline_ints=baseline_ints,
+                          smoothed_wlc=smoothed_wlc, output_dir=outdir,
+                          occultation_type=occultation_type)
+        step_results = step.run(save_results=save_results,
+                                force_redo=force_redo)
+        results, deepframe = step_results
+    else:
+        deepframe = None
 
     # ===== Tracing Step =====
     # Custom DMS step.
-    step = TracingStep(results, deepframe=deepframe, output_dir=outdir)
-    step_results = step.run(mask_width=mask_width,
-                            calculate_stability=calculate_stability,
-                            stability_params=stability_params,
-                            save_results=save_results,
-                            force_redo=force_redo)
-    tracemask, centroids = step_results
+    if 'TracingStep' not in skip_steps:
+        step = TracingStep(results, deepframe=deepframe, output_dir=outdir)
+        step_results = step.run(mask_width=mask_width,
+                                calculate_stability=calculate_stability,
+                                stability_params=stability_params,
+                                nthreads=nthreads, save_results=save_results,
+                                force_redo=force_redo)
+        tracemask, centroids = step_results
+    else:
+        tracemask, centroids = None, None
 
     # ===== Light Curve Estimation Step =====
     # Custom DMS step.
-    step = LightCurveEstimateStep(results, baseline_ints=baseline_ints,
-                                  output_dir=outdir,
-                                  occultation_type=occultation_type)
-    smoothed_wlc = step.run(smoothing_scale=smoothing_scale,
-                            save_results=save_results, force_redo=force_redo)
+    if 'LightCurveEstimateStep' not in skip_steps:
+        step = LightCurveEstimateStep(results, baseline_ints=baseline_ints,
+                                      output_dir=outdir,
+                                      occultation_type=occultation_type)
+        smoothed_wlc = step.run(smoothing_scale=smoothing_scale,
+                                save_results=save_results,
+                                force_redo=force_redo)
+    else:
+        smoothed_wlc = None
 
     return results, deepframe, tracemask, centroids, smoothed_wlc

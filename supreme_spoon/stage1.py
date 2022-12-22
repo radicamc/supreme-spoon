@@ -318,7 +318,7 @@ class JumpStep:
         self.fileroots = utils.get_filename_root(self.datafiles)
 
     def run(self, save_results=True, force_redo=False, rejection_threshold=5,
-            **kwargs):
+            ngroup_flag=False, **kwargs):
         """Method to run the step.
         """
 
@@ -330,17 +330,43 @@ class JumpStep:
             if expected_file in all_files and force_redo is False:
                 print('Output file {} already exists.'.format(expected_file))
                 print('Skipping Jump Detection Step.\n')
-                res = datamodels.open(expected_file)
-            # If no output files are detected, run the step.
+                results.append(datamodels.open(expected_file))
+            # If no output files are detected, proceed.
             else:
-                step = calwebb_detector1.jump_step.JumpStep()
-                res = step.call(segment, output_dir=self.output_dir,
-                                save_results=save_results,
-                                rejection_threshold=rejection_threshold,
-                                maximum_cores='quarter', **kwargs)
-            results.append(res)
+                # Get number of groups in the observation - ngroup=2 must be
+                # treated in a special way as the default pipeline JumpStep
+                # will fail.
+                testfile = datamodels.open(self.datafiles[0])
+                ngroups = testfile.meta.exposure.ngroups
+                testfile.close()
+                # for ngroup > 2, use the default JumpStep.
+                if ngroups > 2:
+                    step = calwebb_detector1.jump_step.JumpStep()
+                    res = step.call(segment, output_dir=self.output_dir,
+                                    save_results=save_results,
+                                    rejection_threshold=rejection_threshold,
+                                    maximum_cores='quarter', **kwargs)
+                    results.append(res)
+                # If ngroup = 2, use a custom temporal domain jump flagging
+                # algorithm, which is applied after ramp fitting.
+                elif ngroups == 2 and ngroup_flag is False:
+                    # If before the RampFitStep, just pass.
+                    print('\nObservation has ngroups=2.')
+                    print('Jump detection will be treated after ramp fit.\n')
+                    ngroup_flag = True
+                    results = self.datafiles
+                    break
+                else:
+                    # If after the RampFitStep, run the two group jump
+                    # detection.
+                    results = two_group_jumpstep(self.datafiles,
+                                                 thresh=rejection_threshold,
+                                                 fileroots=self.fileroots,
+                                                 save_results=save_results,
+                                                 output_dir=self.output_dir)
+                    break
 
-        return results
+        return results, ngroup_flag
 
 
 class RampFitStep:
@@ -418,6 +444,13 @@ class GainScaleStep:
                 step = calwebb_detector1.gain_scale_step.GainScaleStep()
                 res = step.call(segment, output_dir=self.output_dir,
                                 save_results=save_results, **kwargs)
+                # Hack to remove jump tag from file name.
+                try:
+                    res = utils.fix_filenames(res, '_jump_',
+                                              self.output_dir)[0]
+                    res = datamodels.open(res)
+                except IndexError:
+                    pass
             results.append(res)
 
         return results
@@ -431,14 +464,14 @@ def oneoverfstep(datafiles, baseline_ints, even_odd_rows=True,
     median stack is constructed using all out-of-transit integrations and
     subtracted from each individual integration. The column-wise median of
     this difference image is then subtracted from the original frame to
-    correct 1/f noise. Outlier pixels, as well as the trace itself can be
-    masked to improve the noise level estimation.
+    correct 1/f noise. Outlier pixels, background contaminants, and the target
+    trace itself can (should) be masked to improve the estimation.
 
     Parameters
     ----------
-    datafiles : array-like[str], array-like[RampModel]
+    datafiles : array-like[str], array-like[RampModel], array-like[CubeModel]
         List of paths to data files, or RampModels themselves for each segment
-        of the TSO. Should be 4D ramps and not rate files.
+        of the TSO. Should be 4D ramps, but 3D rate files can also be accepted.
     baseline_ints : array-like[int]
         Integration numbers of ingress and egress.
     even_odd_rows : bool
@@ -530,10 +563,13 @@ def oneoverfstep(datafiles, baseline_ints, even_odd_rows=True,
     for n, datamodel in enumerate(data):
         print('Starting segment {} of {}.'.format(n + 1, len(data)))
 
-        # Define the readout setup.
-        nint, ngroup, dimy, dimx = np.shape(datamodel.data)
+        # Define the readout setup - can be 4D (recommended) or 3D.
+        if np.ndim(datamodel.data) == 4:
+            nint, ngroup, dimy, dimx = np.shape(datamodel.data)
+        else:
+            nint, dimy, dimx = np.shape(datamodel.data)
 
-        # Read in the outlier map -- a (nints, dimy, dimx) 3D cube
+        # Read in the outlier map - a (nints, dimy, dimx) 3D cube
         if outlier_maps is None:
             print(' No outlier maps passed, ignoring outliers.')
             outliers = np.zeros((nint, dimy, dimx))
@@ -603,12 +639,23 @@ def oneoverfstep(datafiles, baseline_ints, even_odd_rows=True,
                     # rows. This should be taken care of by the RefPixStep,
                     # but it doesn't hurt to do it again.
                     dc = np.zeros_like(sub)
-                    dc[:, ::2] = bn.nanmedian(sub[:, ::2], axis=1)[:, None, :]
-                    dc[:, 1::2] = bn.nanmedian(sub[:, 1::2], axis=1)[:, None, :]
+                    # For group-level corrections.
+                    if np.ndim(datamodel.data == 4):
+                        dc[:, ::2] = bn.nanmedian(sub[:, ::2], axis=1)[:, None, :]
+                        dc[:, 1::2] = bn.nanmedian(sub[:, 1::2], axis=1)[:, None, :]
+                    # For integration-level corrections.
+                    else:
+                        dc[::2] = bn.nanmedian(sub[::2], axis=0)[None, :]
+                        dc[1::2] = bn.nanmedian(sub[1::2], axis=0)[None, :]
                 else:
                     # Single 1/f scaling for all rows.
                     dc = np.zeros_like(sub)
-                    dc[:, :, :] = bn.nanmedian(sub, axis=1)
+                    # For group-level corrections.
+                    if np.ndim(datamodel.data == 4):
+                        dc[:, :, :] = bn.nanmedian(sub, axis=1)[:, None, :]
+                    # For integration-level corrections.
+                    else:
+                        dc[:, :] = bn.nanmedian(sub, axis=0)[None, :]
             # Make sure no NaNs are in the DC map
             dc = np.where(np.isfinite(dc), dc, 0)
             corr_data[i] -= dc
@@ -634,11 +681,99 @@ def oneoverfstep(datafiles, baseline_ints, even_odd_rows=True,
     return corrected_rampmodels
 
 
+def two_group_jumpstep(datafiles, window=5, thresh=10, fileroots=None,
+                       save_results=True, output_dir='./'):
+    """ Jump detection step for ngroup=2 observations. The standard JWST
+    pipeline JumpStep fails for these observations as deviations in a linear
+    ramp cannot be identified with only 2 groups. This algorithm is based off
+    of Nikolov+ (2014) and identifies cosmic ray hits in the temporal domain.
+    All jumps are replaced with the median of surrounding integrations.
+
+    Parameters
+    ----------
+    datafiles : array-like[str], array-like[CubeModel]
+        List of paths to data files, or RampModels themselves for each segment
+        of the TSO. Should be 3D rate files.
+    window : int
+        Number of integrations before and after to use for cosmic ray flagging.
+    thresh : int
+        Sigma threshold for a pixel to be flagged.
+    output_dir : str
+        Directory to which to save results.
+    save_results : bool
+        If True, save results to disk.
+    fileroots : array-like[str], None
+        Root names for output files.
+
+    Returns
+    -------
+    corrected_rampmodels : array-like[CubeModel]
+        Data files corrected for cosmic ray hits.
+    """
+
+    print('Starting two-group jump detection step.')
+
+    datafiles = np.atleast_1d(datafiles)
+    opened_datafiles = []
+    # Load in each of the datafiles.
+    for i, file in enumerate(datafiles):
+        currentfile = utils.open_filetype(file)
+        opened_datafiles.append(currentfile)
+        # Make cube of data and DQ flags.
+        if i == 0:
+            cube = currentfile.data
+            dqcube = currentfile.dq
+        else:
+            cube = np.concatenate([cube, currentfile.data], axis=0)
+            dqcube = np.concatenate([dqcube, currentfile.dq], axis=0)
+    corrected_rampmodels = opened_datafiles
+
+    nints, dimy, dimx = np.shape(cube)
+    # Jump detection algorithm based on Nikolov+ (2014). For each integration,
+    # create a difference image using the median of surrounding integrations.
+    # Flag all pixels with deviations more than X-sigma as comsic rays hits.
+    count = 0
+    for i in tqdm(range(nints)):
+        # Create a stack of the integrations before and after the current
+        # integration.
+        up = np.min([nints, i + window + 1])
+        low = np.max([0, i - window])
+        stack = np.concatenate([cube[low:i], cube[(i + 1):up]])
+        # Get median and standard deviation of the stack.
+        local_med = np.nanmedian(stack, axis=0)
+        local_std = np.nanstd(stack, axis=0)
+        # Find deviant pixels.
+        ii = np.where(np.abs(cube[i] - local_med) >= thresh * local_std)
+        # Replace flagged pixels with the stack median and remove the dq flag.
+        cube[i][ii] = local_med[ii]
+        dqcube[i][ii] = 0
+        count += len(ii[0])
+    print(' {} jumps flagged'.format(count))
+
+    current_int = 0
+    # Save interpolated data.
+    for n, file in enumerate(corrected_rampmodels):
+        currentdata = file.data
+        nints = np.shape(currentdata)[0]
+        file.data = cube[current_int:(current_int + nints)]
+        file.dq = dqcube[current_int:(current_int + nints)]
+        current_int += nints
+        if save_results is True:
+            with warnings.catch_warnings():
+                warnings.simplefilter('ignore')
+                file.write(output_dir + fileroots[n] + 'jump.fits')
+        file.close()
+
+    print('Done')
+
+    return corrected_rampmodels
+
+
 def run_stage1(results, background_model, baseline_ints=None,
                smoothed_wlc=None, save_results=True, outlier_maps=None,
                trace_mask=None,  even_odd_rows=True, force_redo=False,
                rejection_threshold=5, root_dir='./', output_tag='',
-               occultation_type='transit'):
+               occultation_type='transit', skip_steps=None, **kwargs):
     """Run the supreme-SPOON Stage 1 pipeline: detector level processing,
     using a combination of official STScI DMS and custom steps. Documentation
     for the official DMS steps can be found here:
@@ -677,6 +812,8 @@ def run_stage1(results, background_model, baseline_ints=None,
         Name tag to append to pipeline outputs directory.
     occultation_type : str
         Type of occultation: transit or eclipse.
+    skip_steps : array-like[str], None
+        Step names to skip (if any).
 
     Returns
     -------
@@ -696,67 +833,135 @@ def run_stage1(results, background_model, baseline_ints=None,
     utils.verify_path(root_dir + 'pipeline_outputs_directory' + output_tag + '/Stage1')
     outdir = root_dir + 'pipeline_outputs_directory' + output_tag + '/Stage1/'
 
+    if skip_steps is None:
+        skip_steps = []
+
     # ===== Group Scale Step =====
     # Default DMS step.
-    step = GroupScaleStep(results, output_dir=outdir)
-    results = step.run(save_results=save_results, force_redo=force_redo)
+    if 'GroupScaleStep' not in skip_steps:
+        if 'GroupScaleStep' in kwargs.keys():
+            step_kwargs = kwargs['GroupScaleStep']
+        else:
+            step_kwargs = {}
+        step = GroupScaleStep(results, output_dir=outdir)
+        results = step.run(save_results=save_results, force_redo=force_redo,
+                           **step_kwargs)
 
     # ===== Data Quality Initialization Step =====
     # Default DMS step.
-    step = DQInitStep(results, output_dir=outdir)
-    results = step.run(save_results=save_results, force_redo=force_redo)
+    if 'DQInitStep' not in skip_steps:
+        if 'DQInitStep' in kwargs.keys():
+            step_kwargs = kwargs['DQInitStep']
+        else:
+            step_kwargs = {}
+        step = DQInitStep(results, output_dir=outdir)
+        results = step.run(save_results=save_results, force_redo=force_redo,
+                           **step_kwargs)
 
     # ===== Saturation Detection Step =====
     # Default DMS step.
-    step = SaturationStep(results, output_dir=outdir)
-    results = step.run(save_results=save_results, force_redo=force_redo)
+    if 'SaturationStep' not in skip_steps:
+        if 'SaturationStep' in kwargs.keys():
+            step_kwargs = kwargs['SaturationStep']
+        else:
+            step_kwargs = {}
+        step = SaturationStep(results, output_dir=outdir)
+        results = step.run(save_results=save_results, force_redo=force_redo,
+                           **step_kwargs)
 
     # ===== Superbias Subtraction Step =====
     # Default DMS step.
-    step = SuperBiasStep(results, output_dir=outdir)
-    results = step.run(save_results=save_results, force_redo=force_redo)
+    if 'SuperBiasStep' not in skip_steps:
+        if 'SuperBiasStep' in kwargs.keys():
+            step_kwargs = kwargs['SuperBiasStep']
+        else:
+            step_kwargs = {}
+        step = SuperBiasStep(results, output_dir=outdir)
+        results = step.run(save_results=save_results, force_redo=force_redo,
+                           **step_kwargs)
 
     # ===== Reference Pixel Correction Step =====
     # Default DMS step.
-    step = RefPixStep(results, output_dir=outdir)
-    results = step.run(save_results=save_results, force_redo=force_redo)
+    if 'RefPixStep' not in skip_steps:
+        if 'RefPixStep' in kwargs.keys():
+            step_kwargs = kwargs['RefPixStep']
+        else:
+            step_kwargs = {}
+        step = RefPixStep(results, output_dir=outdir)
+        results = step.run(save_results=save_results, force_redo=force_redo,
+                           **step_kwargs)
 
-    # ===== Background Subtraction Step =====
-    # Custom DMS step - imported from Stage2.
-    step = BackgroundStep(results, background_model=background_model,
-                          output_dir=outdir)
-    results = step.run(save_results=save_results, force_redo=force_redo)
-    results, background_model = results
+    if 'OneOverFStep' not in skip_steps:
+        # ===== Background Subtraction Step =====
+        # Custom DMS step - imported from Stage2.
+        step = BackgroundStep(results, background_model=background_model,
+                              output_dir=outdir)
+        results = step.run(save_results=save_results, force_redo=force_redo)
+        results, background_model = results
 
-    # ===== 1/f Noise Correction Step =====
-    # Custom DMS step.
-    step = OneOverFStep(results, baseline_ints=baseline_ints,
-                        output_dir=outdir, outlier_maps=outlier_maps,
-                        trace_mask=trace_mask, smoothed_wlc=smoothed_wlc,
-                        background=background_model,
-                        occultation_type=occultation_type)
-    results = step.run(even_odd_rows=even_odd_rows, save_results=save_results,
-                       force_redo=force_redo)
+        # ===== 1/f Noise Correction Step =====
+        # Custom DMS step.
+        step = OneOverFStep(results, baseline_ints=baseline_ints,
+                            output_dir=outdir, outlier_maps=outlier_maps,
+                            trace_mask=trace_mask, smoothed_wlc=smoothed_wlc,
+                            background=background_model,
+                            occultation_type=occultation_type)
+        results = step.run(even_odd_rows=even_odd_rows,
+                           save_results=save_results, force_redo=force_redo)
 
     # ===== Linearity Correction Step =====
     # Default DMS step.
-    step = LinearityStep(results, output_dir=outdir)
-    results = step.run(save_results=save_results, force_redo=force_redo)
+    if 'LinearityStep' not in skip_steps:
+        if 'LinearityStep' in kwargs.keys():
+            step_kwargs = kwargs['LinearityStep']
+        else:
+            step_kwargs = {}
+        step = LinearityStep(results, output_dir=outdir)
+        results = step.run(save_results=save_results, force_redo=force_redo,
+                           **step_kwargs)
 
     # ===== Jump Detection Step =====
     # Default DMS step.
-    step = JumpStep(results, output_dir=outdir)
-    results = step.run(save_results=save_results, force_redo=force_redo,
-                       rejection_threshold=rejection_threshold)
+    if 'JumpStep' not in skip_steps:
+        if 'JumpStep' in kwargs.keys():
+            step_kwargs = kwargs['JumpStep']
+        else:
+            step_kwargs = {}
+        step = JumpStep(results, output_dir=outdir)
+        step_results = step.run(save_results=save_results, force_redo=force_redo,
+                                rejection_threshold=rejection_threshold,
+                                **step_kwargs)
+        results, ngroup_flag = step_results
 
     # ===== Ramp Fit Step =====
     # Default DMS step.
-    step = RampFitStep(results, output_dir=outdir)
-    results = step.run(save_results=save_results, force_redo=force_redo)
+    if 'RampFitStep' not in skip_steps:
+        if 'RampFitStep' in kwargs.keys():
+            step_kwargs = kwargs['RampFitStep']
+        else:
+            step_kwargs = {}
+        step = RampFitStep(results, output_dir=outdir)
+        results = step.run(save_results=save_results, force_redo=force_redo,
+                           **step_kwargs)
+
+    # ===== Jump Detection Step =====
+    # Custom DMS step - specifically for ngroup=2.
+    if 'JumpStep' not in skip_steps:
+        if ngroup_flag is True:
+            step = JumpStep(results, output_dir=outdir)
+            results = step.run(save_results=save_results, force_redo=force_redo,
+                               rejection_threshold=rejection_threshold,
+                               ngroup_flag=True)[0]
 
     # ===== Gain Scale Correcton Step =====
     # Default DMS step.
-    step = GainScaleStep(results, output_dir=outdir)
-    results = step.run(save_results=save_results, force_redo=force_redo)
+    if 'GainScaleStep' not in skip_steps:
+        if 'GainScaleStep' in kwargs.keys():
+            step_kwargs = kwargs['GainScaleStep']
+        else:
+            step_kwargs = {}
+        step = GainScaleStep(results, output_dir=outdir)
+        results = step.run(save_results=save_results, force_redo=force_redo,
+                           **step_kwargs)
 
     return results

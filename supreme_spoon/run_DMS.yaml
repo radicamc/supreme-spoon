@@ -3,6 +3,8 @@
 # This is the configuration file for run_DMS.py.
 #
 # ===== Key Parameters =====
+# Path to CRDS cache.
+crds_cache_path : './crds_cache/'
 # Input data file directory.
 input_dir : 'DMS_uncal/'
 # Input file tag.
@@ -15,11 +17,16 @@ outlier_maps : None
 trace_mask : None
 # For 1/f correction; estimate of white light curve (optional).
 smoothed_wlc : None
-# Background model. Using STScI background model from here:
-# https://jwst-docs.stsci.edu/jwst-calibration-pipeline-caveats/jwst-time-series-observations-pipeline-caveats/niriss-time-series-observation-pipeline-caveats#NIRISSTimeSeriesObservationPipelineCaveats-SOSSskybackground
+# Background model.
 background_file : 'model_background256.npy'
 # For 1/f correction; treat even and odd numbered rows seperately.
 even_odd_rows : True
+# For jump detection; sigma threshold for a pixel to be flagged as an outlier.
+rejection_threshold : 5
+# List of Stage 1 steps to skip, if any.
+stage1_skip : None
+# DMS Stage 1 kwargs.
+stage1_kwargs : {}
 
 # ===== Stage 2 Input Parameters =====
 # Timescale on which to smooth lightcurve estimate  (optional).
@@ -31,6 +38,12 @@ mask_width : 45
 calculate_stability : True
 # Parameters for which to calcuate the stability: 'x', 'y', 'FWHM, or 'ALL'.
 stability_params : 'ALL'
+# Number of CPUs for stability parameter calculation multiprocessing.
+nthreads : 4
+# List of Stage 2 steps to skip, if any.
+stage2_skip : None
+# DMS Stage 2 kwargs.
+stage2_kwargs : {}
 
 # ===== Stage 3 Input Files & Parameters =====
 # Specprofile reference file for ATOCA (optional).
@@ -64,6 +77,6 @@ save_results : True
 force_redo : False
 # Integrations of ingress and egress.
 baseline_ints : [50, -50]
-# Type of occultation: 'transit' or 'eclipse'.
+# Type of occultation: 'transit', 'eclipse', or 'phase_curve'.
 occultation_type : 'transit'
 # ========================= END DMS CONFIG FILE =============================

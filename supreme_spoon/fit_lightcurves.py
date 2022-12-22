@@ -16,6 +16,7 @@ import matplotlib.backends.backend_pdf
 import numpy as np
 import pandas as pd
 import sys
+from tqdm import tqdm
 
 from supreme_spoon import stage4
 from supreme_spoon import plotting, utils
@@ -29,7 +30,7 @@ except IndexError:
 config = utils.parse_config(config_file)
 
 if config['output_tag'] != '':
-    output_tag = '_' + config['output_tag']
+    config['output_tag'] = '_' + config['output_tag']
 # Create output directories and define output paths.
 utils.verify_path('pipeline_outputs_directory' + config['output_tag'])
 utils.verify_path('pipeline_outputs_directory' + config['output_tag'] + '/Stage4')
@@ -61,8 +62,8 @@ formatted_names = {'P_p1': r'$P$', 't0_p1': r'$T_0$', 'p_p1': r'$R_p/R_*$',
                    'a_p1': r'$a/R_*$', 'sigma_w_SOSS': r'$\sigma_w$',
                    'theta0_SOSS': r'$\theta_0$', 'theta1_SOSS': r'$\theta_1$',
                    'theta2_SOSS': r'$\theta_2$',
-                   'GP_sigma_SOSS': r'$GP_\sigma$', 'GP_rho_SOSS': r'$GP_rho$',
-                   'rho': r'$\rho$'}
+                   'GP_sigma_SOSS': r'$GP \sigma$',
+                   'GP_rho_SOSS': r'$GP \rho$', 'rho': r'$\rho$'}
 
 # === Get Detrending Quantities ===
 # Get time axis
@@ -75,14 +76,10 @@ if config['lm_file'] is not None:
     for i, key in enumerate(config['lm_parameters']):
         lm_param = lm_data[key]
         lm_quantities[:, i] = (lm_param - np.mean(lm_param)) / np.sqrt(np.var(lm_param))
-# Quantities on which to train GP.
+# Quantity on which to train GP.
 if config['gp_file'] is not None:
     gp_data = pd.read_csv(config['gp_file'], comment='#')
-    gp_quantities = np.zeros((len(t), len(config['gp_parameters'])+1))
-    gp_quantities[:, 0] = np.ones_like(t)
-    for i, key in enumerate(config['gp_parameters']):
-        gp_param = gp_data[key]
-        gp_quantities[:, i] = (gp_param - np.mean(gp_param)) / np.sqrt(np.var(gp_param))
+    gp_quantities = gp_data[config['gp_parameter']].values
 
 # Format the baseline frames - either out-of-transit or in-eclipse.
 baseline_ints = utils.format_out_frames(config['baseline_ints'],
@@ -151,11 +148,11 @@ for order in config['orders']:
         priors[param]['hyperparameters'] = hyperp
     # Interpolate LD coefficients from stellar models.
     if order == 1 and config['ldcoef_file_o1'] is not None:
-        prior_q1, prior_q2 = utils.read_ld_coefs(config['ldcoef_file_o1'],
-                                                 wave_low, wave_up)
+        q1m, q1w, q2m, q2w = stage4.read_ld_coefs(config['ldcoef_file_o1'],
+                                                  wave_low, wave_up)
     if order == 2 and config['ldcoef_file_o2'] is not None:
-        prior_q1, prior_q2 = utils.read_ld_coefs(config['ldcoef_file_o2'],
-                                                 wave_low, wave_up)
+        q1m, q1w, q2m, q2w = stage4.read_ld_coefs(config['ldcoef_file_o2'],
+                                                  wave_low, wave_up)
 
     # Pack fitting arrays and priors into dictionaries.
     data_dict, prior_dict = {}, {}
@@ -177,12 +174,12 @@ for order in config['orders']:
         prior_dict[thisbin] = copy.deepcopy(priors)
         # Update the LD prior for this bin if available.
         if config['ldcoef_file_o1'] is not None or config['ldcoef_file_o2'] is not None:
-            if np.isfinite(prior_q1[wavebin]):
+            if np.isfinite(q1m[wavebin]):
                 prior_dict[thisbin]['q1_SOSS']['distribution'] = 'truncatednormal'
-                prior_dict[thisbin]['q1_SOSS']['hyperparameters'] = [prior_q1[wavebin], 0.1, 0.0, 1.0]
-            if np.isfinite(prior_q2[wavebin]):
+                prior_dict[thisbin]['q1_SOSS']['hyperparameters'] = [q1m[wavebin], q1w[wavebin], 0.0, 1.0]
+            if np.isfinite(q2m[wavebin]):
                 prior_dict[thisbin]['q2_SOSS']['distribution'] = 'truncatednormal'
-                prior_dict[thisbin]['q2_SOSS']['hyperparameters'] = [prior_q2[wavebin], 0.1, 0.0, 1.0]
+                prior_dict[thisbin]['q2_SOSS']['hyperparameters'] = [q2m[wavebin], q2w[wavebin], 0.0, 1.0]
 
     # === Do the Fit ===
     # Fit each light curve
@@ -225,7 +222,21 @@ for order in config['orders']:
         if skip is False and doplot is True:
             try:
                 # Plot transit model and residuals.
-                transit_model = fit_results[wavebin].lc.evaluate('SOSS')
+                if config['gp_file'] is not None:
+                    # Hack to get around weird bug where ray fits with GPs end
+                    # up being read only.
+                    outdir_i = outdir + 'speclightcurve{2}/order{0}_{1}'.format(order, wavebin, fit_suffix)
+                    dataset = juliet.load(priors=prior_dict[wavebin],
+                                          t_lc={'SOSS': data_dict[wavebin]['times']},
+                                          y_lc={'SOSS': data_dict[wavebin]['flux']},
+                                          yerr_lc={'SOSS': data_dict[wavebin]['error']},
+                                          GP_regressors_lc={'SOSS': data_dict[wavebin]['GP_parameters']},
+                                          out_folder=outdir_i)
+                    results = dataset.fit(sampler='dynesty')
+                    transit_model, comp = results.lc.evaluate('SOSS', GPregressors=t,
+                                                              return_components=True)
+                else:
+                    transit_model, comp = fit_results[wavebin].lc.evaluate('SOSS', return_components=True)
                 scatter = np.median(fit_results[wavebin].posteriors['posterior_samples']['sigma_w_SOSS'])
                 nfit = len(np.where(config['dists'] != 'fixed')[0])
                 t0_loc = np.where(np.array(config['params']) == 't0_p1')[0][0]
@@ -233,14 +244,24 @@ for order in config['orders']:
                     t0 = config['hyperps'][t0_loc]
                 else:
                     t0 = np.median(fit_results[wavebin].posteriors['posterior_samples']['t0_p1'])
+
+                # Get systematics and transit models.
+                systematics = None
+                if config['gp_file'] is not None or config['lm_file'] is not None:
+                    if config['gp_file'] is not None:
+                        gp_model = transit_model - comp['transit'] - comp['lm']
+                    else:
+                        gp_model = np.zeros_like(t)
+                    systematics = gp_model + comp['lm'] + 1
                 plotting.make_lightcurve_plot(t=(t - t0) * 24,
                                               data=norm_flux[:, i],
                                               model=transit_model,
                                               scatter=scatter,
                                               errors=norm_err[:, i],
-                                              outpdf=outpdf,
-                                              title='bin {0} | {1:.3f}µm'.format(
-                                                  i, wave[i]), nfit=nfit)
+                                              outpdf=outpdf, nfit=nfit,
+                                              title='bin {0} | {1:.3f}µm'.format(i, wave[i]),
+                                              transit=comp['transit'],
+                                              systematics=systematics)
                 # Corner plot for fit.
                 fit_params, posterior_names = [], []
                 for param, dist in zip(config['params'], config['dists']):
@@ -312,13 +333,9 @@ if len(config['lm_parameters']) != 0:
         else:
             fit_metadata += ', {}'.format(param)
     fit_metadata += '\n'
-if len(config['gp_parameters']) != 0:
+if config['gp_parameter'] != '':
     fit_metadata += '# Gaussian Process: '
-    for i, param in enumerate(config['gp_parameters']):
-        if i == 0:
-            fit_metadata += param
-        else:
-            fit_metadata += ', {}'.format(param)
+    fit_metadata += config['gp_parameter']
     fit_metadata += '\n'
 fit_metadata += '#\n'
 
