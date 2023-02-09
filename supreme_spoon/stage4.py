@@ -515,9 +515,9 @@ def read_ld_coefs(filename, wavebin_low, wavebin_up, ld_model='quadratic'):
     mean_q1 = np.where(mean_q1 > 1, 1, mean_q1)
     mean_q2 = np.where(mean_q2 < 0, 0, mean_q2)
     mean_q2 = np.where(mean_q2 > 1, 1, mean_q2)
-    # Also set any spreads <0.05 to 0.05.
-    width_q1 = np.where(width_q1 < 0.05, 0.05, width_q1)
-    width_q2 = np.where(width_q2 < 0.05, 0.05, width_q2)
+    # Also set any spreads <0.1 to 0.1.
+    width_q1 = np.where(width_q1 < 0.1, 0.1, width_q1)
+    width_q2 = np.where(width_q2 < 0.1, 0.1, width_q2)
 
     return mean_q1, width_q1, mean_q2, width_q2
 
