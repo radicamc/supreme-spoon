@@ -612,7 +612,11 @@ def open_stage2_secondary_outputs(deep_file, centroid_file, smoothed_wlc_file,
             raise FileNotFoundError(msg)
         else:
             smoothed_wlc_file = smoothed_wlc_file[0]
-    smoothed_wlc = np.load(smoothed_wlc_file)
+        smoothed_wlc = np.load(smoothed_wlc_file)
+    elif isinstance(smoothed_wlc_file, str):
+        smoothed_wlc = np.load(smoothed_wlc_file)
+    else:
+        pass
 
     return deepframe, centroids, smoothed_wlc
 
