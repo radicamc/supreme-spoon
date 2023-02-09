@@ -12,7 +12,6 @@ from astropy.io import fits
 import bottleneck as bn
 from datetime import datetime
 import glob
-import juliet
 import numpy as np
 import os
 import pandas as pd
@@ -448,7 +447,7 @@ def get_trace_centroids(deepframe, tracetable, subarray, save_results=True,
         if save_filename[-1] != '_':
             save_filename += '_'
         outfile_name = save_filename + 'centroids.csv'
-        outfile = open(outfile_name, 'a')
+        outfile = open(outfile_name, 'w')
         outfile.write('# File Contents: Edgetrigger trace centroids\n')
         outfile.write('# File Creation Date: {}\n'.format(
             datetime.utcnow().replace(microsecond=0).isoformat()))
