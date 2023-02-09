@@ -37,7 +37,8 @@ for file in input_files:
 
 # Open background model and smoothed white light curve.
 if config['smoothed_wlc'] is not None:
-    config['smoothed_wlc'] = np.load(config['smoothed_wlc'])
+    if 1 in config['run_stages'] or 2 in config['run_stages']:
+        config['smoothed_wlc'] = np.load(config['smoothed_wlc'])
 background_model = np.load(config['background_file'])
 
 # === Run Stage 1 ===
