@@ -387,8 +387,8 @@ def gen_ld_coefs(datafile, wavebin_low, wavebin_up, order, m_h, err_m_h, logg,
     step = calwebb_spec2.extract_1d_step.Extract1dStep()
     spectrace_ref = step.get_reference_file(datafile, 'spectrace')
     spec_trace = datamodels.SpecTraceModel(spectrace_ref)
-    wavelengths = spec_trace.trace[order].data['WAVELENGTH']*10000
-    throughputs = spec_trace.trace[order].data['THROUGHPUT']
+    wavelengths = spec_trace.trace[order-1].data['WAVELENGTH']*10000
+    throughputs = spec_trace.trace[order-1].data['THROUGHPUT']
     # Note that custom throughputs are used.
     mode = 'custom'
 
