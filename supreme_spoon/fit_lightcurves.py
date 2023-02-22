@@ -16,7 +16,6 @@ import matplotlib.backends.backend_pdf
 import numpy as np
 import pandas as pd
 import sys
-from tqdm import tqdm
 
 from supreme_spoon import stage4
 from supreme_spoon import plotting, utils
@@ -148,11 +147,11 @@ for order in config['orders']:
         priors[param]['hyperparameters'] = hyperp
     # Interpolate LD coefficients from stellar models.
     if order == 1 and config['ldcoef_file_o1'] is not None:
-        q1m, q1w, q2m, q2w = stage4.read_ld_coefs(config['ldcoef_file_o1'],
-                                                  wave_low, wave_up)
+        q1, q2 = stage4.read_ld_coefs(config['ldcoef_file_o1'], wave_low,
+                                      wave_up)
     if order == 2 and config['ldcoef_file_o2'] is not None:
-        q1m, q1w, q2m, q2w = stage4.read_ld_coefs(config['ldcoef_file_o2'],
-                                                  wave_low, wave_up)
+        q1, q2 = stage4.read_ld_coefs(config['ldcoef_file_o2'], wave_low,
+                                      wave_up)
 
     # Pack fitting arrays and priors into dictionaries.
     data_dict, prior_dict = {}, {}
@@ -173,13 +172,15 @@ for order in config['orders']:
         # Prior dictionaries.
         prior_dict[thisbin] = copy.deepcopy(priors)
         # Update the LD prior for this bin if available.
+        # Set prior width to 0.2 around the model value - based on findings of
+        # Patel & Espinoza 2022.
         if config['ldcoef_file_o1'] is not None or config['ldcoef_file_o2'] is not None:
-            if np.isfinite(q1m[wavebin]):
+            if np.isfinite(q1[wavebin]):
                 prior_dict[thisbin]['q1_SOSS']['distribution'] = 'truncatednormal'
-                prior_dict[thisbin]['q1_SOSS']['hyperparameters'] = [q1m[wavebin], q1w[wavebin], 0.0, 1.0]
-            if np.isfinite(q2m[wavebin]):
+                prior_dict[thisbin]['q1_SOSS']['hyperparameters'] = [q1[wavebin], 0.2, 0.0, 1.0]
+            if np.isfinite(q2[wavebin]):
                 prior_dict[thisbin]['q2_SOSS']['distribution'] = 'truncatednormal'
-                prior_dict[thisbin]['q2_SOSS']['hyperparameters'] = [q2m[wavebin], q2w[wavebin], 0.0, 1.0]
+                prior_dict[thisbin]['q2_SOSS']['hyperparameters'] = [q2[wavebin], 0.2, 0.0, 1.0]
 
     # === Do the Fit ===
     # Fit each light curve
