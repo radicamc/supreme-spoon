@@ -10,7 +10,6 @@ Custom JWST DMS pipeline steps for Stage 4 (lightcurve fitting).
 
 from datetime import datetime
 from exotic_ld import StellarLimbDarkening
-import itertools
 import juliet
 import numpy as np
 import os
@@ -339,7 +338,7 @@ def fit_lightcurves(data_dict, prior_dict, order, output_dir, fit_suffix,
 
 
 def gen_ld_coefs(datafile, wavebin_low, wavebin_up, order, m_h, logg, teff,
-                 ld_data_path):
+                 ld_data_path, model_type='stagger'):
     """Generate estimates of quadratic limb-darkening coefficients using the
     ExoTiC-LD package.
 
@@ -361,6 +360,10 @@ def gen_ld_coefs(datafile, wavebin_low, wavebin_up, order, m_h, logg, teff,
         Stellar effective temperature in K.
     ld_data_path : str
         Path to ExoTiC-LD model data.
+    model_type : str
+        Identifier for type of stellar model to use. See
+        https://exotic-ld.readthedocs.io/en/latest/views/supported_stellar_grids.html
+        for supported grids.
 
     Returns
     -------
@@ -370,8 +373,8 @@ def gen_ld_coefs(datafile, wavebin_low, wavebin_up, order, m_h, logg, teff,
         c2 parameter for the quadratic limb-darkening law.
     """
 
-    # Set up the stellar model parameters - using 1D models for speed.
-    sld = StellarLimbDarkening(m_h, teff, logg, '1D', ld_data_path)
+    # Set up the stellar model parameters - with specified model type.
+    sld = StellarLimbDarkening(m_h, teff, logg, model_type, ld_data_path)
 
     # Load the most up to date throughput info for SOSS
     step = calwebb_spec2.extract_1d_step.Extract1dStep()
@@ -384,7 +387,8 @@ def gen_ld_coefs(datafile, wavebin_low, wavebin_up, order, m_h, logg, teff,
 
     # Compute the LD coefficients over the given wavelength bins.
     c1s, c2s = [], []
-    for wl, wu in zip(wavebin_low * 10000, wavebin_up * 10000):
+    for wl, wu in tqdm(zip(wavebin_low * 10000, wavebin_up * 10000),
+                       total=len(wavebin_low)):
         wr = [wl, wu]
         try:
             c1, c2 = sld.compute_quadratic_ld_coeffs(wr, mode, wavelengths,
