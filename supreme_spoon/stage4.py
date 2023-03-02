@@ -353,7 +353,7 @@ def gen_ld_coefs(datafile, wavebin_low, wavebin_up, order, m_h, logg, teff,
     order : int
         SOSS diffraction order.
     m_h : float
-        Stellar metallicity as [M/H]
+        Stellar metallicity as [M/H].
     logg : float
         Stellar log gravity.
     teff : float

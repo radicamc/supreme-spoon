@@ -625,8 +625,7 @@ def outlier_resistant_variance(data):
     return var
 
 
-def pack_ld_priors(wave, c1_mean, c1_dev, c2_mean, c2_dev, order, target, m_h,
-                   teff, logg, outdir):
+def pack_ld_priors(wave, c1, c2, order, target, m_h, teff, logg, outdir):
     """Write model limb darkening parameters to a file to be used as priors
     for light curve fitting.
 
@@ -634,14 +633,10 @@ def pack_ld_priors(wave, c1_mean, c1_dev, c2_mean, c2_dev, order, target, m_h,
     ----------
     wave : array-like[float]
         Wavelength axis.
-    c1_mean : array-like[float]
-        c1 parameter for 2-parameter limb darkening law.
-    c1_dev : array-like[float]
-        Spread in c1 parameter.
-    c2_mean : array-like[float]
-        c2 parameter for 2-parameter limb darkening law.
-    c2_dev : array-like[float]
-        Spread in c2 parameter.
+    c1 : array-like[float]
+        c1 parameter for two-parameter limb darkening law.
+    c2 : array-like[float]
+        c2 parameter for two-parameter limb darkening law.
     order : int
         SOSS order.
     target : str
@@ -657,8 +652,7 @@ def pack_ld_priors(wave, c1_mean, c1_dev, c2_mean, c2_dev, order, target, m_h,
     """
 
     # Create dictionary with model LD info.
-    dd = {'wave': wave, 'c1': c1_mean, 'c1_err': c1_dev, 'c2': c2_mean,
-          'c2_err': c2_dev}
+    dd = {'wave': wave, 'c1': c1, 'c2': c2}
     df = pd.DataFrame(data=dd)
     # Remove old LD file if one exists.
     filename = target+'_order' + str(order) + '_exotic-ld_quadratic.csv'
@@ -678,9 +672,7 @@ def pack_ld_priors(wave, c1_mean, c1_dev, c2_mean, c2_dev, order, target, m_h,
     f.write('# Limb Darkening Model: quadratic\n')
     f.write('# Column wave: Central wavelength of bin (micron)\n')
     f.write('# Column c1: Quadratic Coefficient 1\n')
-    f.write('# Column c1_err: Error in c1\n')
     f.write('# Column c2: Quadratic Coefficient 2\n')
-    f.write('# Column c2_err: Error in c2\n')
     f.write('#\n')
     df.to_csv(f, index=False)
     f.close()
