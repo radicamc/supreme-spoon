@@ -53,8 +53,8 @@ If you make use of the light curve fitting routines, also include the following 
 [dynesty](https://ui.adsabs.harvard.edu/abs/2020MNRAS.493.3132S/abstract), and 
 [Kipping et al. (2013)](https://ui.adsabs.harvard.edu/abs/2013MNRAS.435.2152K/abstract) for the limb-darkening sampling. 
 If you use Gaussian Processes please cite [celerite](https://ui.adsabs.harvard.edu/abs/2017AJ....154..220F/abstract), 
-and if you use ExoTiC-LD for limb darkening priors cite [Laginja & Wakeford (2020)](https://ui.adsabs.harvard.edu/abs/2020JOSS....5.2281L/abstract) 
-and [Magic et al. (2015)](https://ui.adsabs.harvard.edu/abs/2015A%26A...573A..90M/abstract).
+and if you use ExoTiC-LD for limb darkening priors cite [Laginja & Wakeford (2020)](https://ui.adsabs.harvard.edu/abs/2020JOSS....5.2281L/abstract). 
+Please also see the ExoTiC-LD documentation for information on the types of stellar grids available and ensure to correctly download and cite the desired models.
 
 Lastly, you should cite the libraries upon which this code is built, namely:
 [numpy](https://ui.adsabs.harvard.edu/abs/2020Natur.585..357H/abstract), 

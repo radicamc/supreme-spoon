@@ -1,9 +1,22 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
-### [0.1.0] -- 2022-08-29
+### [0.4.0] -- 2023-03-02
 #### Added
-- Base prerelease code for Stages 1 - 3.
+- Correction of bug pointing to throuhgputs for wrong order when calculating LD coefficients.
+- Switch default stellar models to 3D grid for LD calculation.
+- Simplify LD coefficient calculation.
+- Misc. bug fixes. 
+
+#### Removed
+- Unnecessary functionality to calculate LD coefficients on grid of stellar models to derive errors.  
+
+### [0.3.0] -- 2022-12-22
+#### Added
+- Add time-domain jump detection for ngroup=2 observations.
+- Allow for integration-level correction of 1/f noise.
+- Paralellization of stability parameter calculations.
+- Allow for piecewise subtraction of background.
 
 ### [0.2.0] -- 2022-10-28
 #### Added
@@ -20,9 +33,6 @@ All notable changes to this project will be documented in this file.
 - Redundant plotting routines.
 - Multiple depreciated utility functions.
 
-### [0.3.0] -- 2022-12-22
+### [0.1.0] -- 2022-08-29
 #### Added
-- Add time-domain jump detection for ngroup=2 observations.
-- Allow for integration-level correction of 1/f noise.
-- Paralellization of stability parameter calculations.
-- Allow for piecewise subtraction of background.
+- Base prerelease code for Stages 1 - 3.
