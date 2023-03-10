@@ -19,6 +19,7 @@ import sys
 
 from supreme_spoon import stage4
 from supreme_spoon import plotting, utils
+from supreme_spoon.utils import fancyprint
 
 # Read config file.
 try:
@@ -98,7 +99,7 @@ for order in config['orders']:
         outpdf = None
 
     # === Set Up Priors and Fit Parameters ===
-    print('\nFitting order {} at {}\n'.format(order, res_str))
+    fancyprint('\nFitting order {} at {}\n'.format(order, res_str))
     # Unpack wave, flux and error, cutting reference pixel columns.
     wave_low = fits.getdata(config['infile'],  1 + 4*(order - 1))[:, 5:-5]
     wave_up = fits.getdata(config['infile'], 2 + 4*(order - 1))[:, 5:-5]
@@ -192,7 +193,7 @@ for order in config['orders']:
     # === Summarize Fit Results ===
     # Loop over results for each wavebin, extract best-fitting parameters and
     # make summary plots if necessary.
-    print('Summarizing fit results.')
+    fancyprint('Summarizing fit results.')
     data = np.ones((nints, nbins)) * np.nan
     models = np.ones((nints, nbins)) * np.nan
     residuals = np.ones((nints, nbins)) * np.nan
@@ -296,7 +297,7 @@ for order in config['orders']:
 
 # === Transmission Spectrum ===
 # Save the transmission spectrum.
-print('Writing transmission spectrum.')
+fancyprint('Writing transmission spectrum.')
 for order in ['1', '2']:
     if 'order '+order not in results_dict.keys():
         order_results = {'dppm': [], 'dppm_err': [], 'wave': [],
@@ -348,6 +349,6 @@ stage4.save_transmission_spectrum(waves, wave_errors, depths, errors, orders,
                                   extraction_type=extract_type,
                                   resolution=config['res'],
                                   fit_meta=fit_metadata)
-print('Transmission spectrum saved to {}'.format(outdir+filename))
+fancyprint('Transmission spectrum saved to {}'.format(outdir+filename))
 
-print('Done')
+fancyprint('Done')

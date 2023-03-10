@@ -71,6 +71,20 @@ def do_replacement(frame, badpix_map, dq=None, box_size=5):
     return frame_out, dq_out
 
 
+def fancyprint(message, type='INFO'):
+    """Fancy printing statement mimicking logging. Basically a hack to get
+    around complications with the STScI pipeline logging.
+
+    Parameters
+    ----------
+    message : str
+        Message to print.
+    """
+
+    time = datetime.utcnow().isoformat(sep=' ', timespec='milliseconds')
+    print('{} - supreme-SPOON - {} - {}'.format(time, type, message))
+
+
 def fix_filenames(old_files, to_remove, outdir, to_add=''):
     """Hacky function to remove file extensions that get added when running a
     default JWST DMS step after a custom one.
@@ -454,7 +468,7 @@ def get_trace_centroids(deepframe, tracetable, subarray, save_results=True,
         outfile.write('# File Author: MCR\n')
         df.to_csv(outfile, index=False)
         outfile.close()
-        print('Centroids saved to {}'.format(outfile_name))
+        fancyprint('Centroids saved to {}'.format(outfile_name))
 
     cen_o1 = np.array([xx1, yy1])
     cen_o2 = np.array([xx2, yy2])
@@ -864,7 +878,7 @@ def sigma_clip_lightcurves(flux, ferr, thresh=3, window=10):
         flux_clipped[:, wave][ii] = med[ii]
         clipsum += len(ii)
 
-    print('{0} pixels clipped ({1:.3f}%)'.format(clipsum, clipsum / nints / nwaves * 100))
+    fancyprint('{0} pixels clipped ({1:.3f}%)'.format(clipsum, clipsum / nints / nwaves * 100))
 
     return flux_clipped
 
@@ -1022,7 +1036,7 @@ def soss_stability_run(cube_sub, med, seg_no, nsteps=501, axis='x'):
     for i in range(nints):
         # Progress print.
         if i >= int(locs[loc]):
-            print('Slice {}: {}% complete.'.format(seg_no, marks[loc]))
+            fancyprint('Slice {}: {}% complete.'.format(seg_no, marks[loc]))
             loc += 1
         for j, jj in enumerate(np.linspace(-0.01, 0.01, nsteps)):
             if axis == 'x':
@@ -1068,7 +1082,7 @@ def soss_stability_fwhm_run(cube, ycens_o1, seg_no):
     for j in range(nints):
         # Progress print.
         if j >= int(locs[loc]):
-            print('Slice {}: {}% complete.'.format(seg_no, marks[loc]))
+            fancyprint('Slice {}: {}% complete.'.format(seg_no, marks[loc]))
             loc += 1
         # Cut out first 250 columns as there is order 2 contmination.
         for i in range(250, dimx-4):

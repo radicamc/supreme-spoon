@@ -20,6 +20,7 @@ from jwst.extract_1d.soss_extract import soss_solver
 from jwst.pipeline import calwebb_spec2
 
 from supreme_spoon import utils
+from supreme_spoon.utils import fancyprint
 
 
 class SpecProfileStep:
@@ -48,8 +49,8 @@ class SpecProfileStep:
         # If an output file for this segment already exists, skip the step.
         expected_file = self.output_dir + 'APPLESOSS_ref_2D_profile_{}_os1_pad0.fits'.format(self.subarray)
         if expected_file in all_files and force_redo is False:
-            print('Output file {} already exists.'.format(expected_file))
-            print('Skipping SpecProfile Reference Construction Step.\n')
+            fancyprint('Output file {} already exists.'.format(expected_file))
+            fancyprint('Skipping SpecProfile Reference Construction Step.\n')
             specprofile = datamodels.open(expected_file)
             filename = expected_file
         # If no output files are detected, run the step.
@@ -107,7 +108,7 @@ class Extract1DStep:
         """Method to run the step.
         """
 
-        print('\nStarting 1D extraction using the {} method.\n'.format(self.extract_method))
+        fancyprint('\nStarting 1D extraction using the {} method.\n'.format(self.extract_method))
 
         # Initialize loop and storange variables.
         i = 0
@@ -139,8 +140,8 @@ class Extract1DStep:
             # If an output file for this segment already exists, skip the step.
             expected_file = self.output_dir + self.fileroots[i] + self.tag
             if expected_file in all_files and force_redo is False:
-                print('Output file {} already exists.'.format(expected_file))
-                print('Skipping 1D Extraction Step.\n')
+                fancyprint('Output file {} already exists.'.format(expected_file))
+                fancyprint('Skipping 1D Extraction Step.\n')
                 res = datamodels.open(expected_file)
 
                 if self.extract_method == 'atoca' and soss_estimate is None:
@@ -207,19 +208,21 @@ class Extract1DStep:
                         # and move to the next one. We will come back and deal
                         # with it later.
                         if soss_estimate is None:
-                            print('Initial flux estimate failed, and no soss '
-                                  'estimate provided. Moving to next segment.')
+                            fancyprint('Initial flux estimate failed, and no '
+                                       'soss estimate provided. Moving to '
+                                       'next segment.', type='WARNING')
                             redo_segments.append(i)
                             i += 1
                             # If all segments fail without a soss estimate,
                             # just fail.
                             if len(redo_segments) == len(self.datafiles):
-                                print('No segment can be correctly processed.')
+                                fancyprint('No segment can be correctly '
+                                           'processed.', type='ERROR')
                                 raise err
                             continue
                         # Retry extraction with soss estimate.
-                        print('\nInitial flux estimate failed, retrying with '
-                              'soss_estimate.\n')
+                        fancyprint('\nInitial flux estimate failed, retrying '
+                                   'with soss_estimate.\n')
                         res = step.call(segment, output_dir=self.output_dir,
                                         save_results=save_results,
                                         soss_transform=[soss_transform[0],
@@ -319,7 +322,7 @@ def lightcurvestep(datafiles, times, baseline_ints, extract_params,
         1D stellar spectra at the native detector resolution.
     """
 
-    print('Constructing stellar spectra.')
+    fancyprint('Constructing stellar spectra.')
     datafiles = np.atleast_1d(datafiles)
     # Format the baseline frames - either out-of-transit or in-eclipse.
     baseline_ints = utils.format_out_frames(baseline_ints,
@@ -420,7 +423,7 @@ def sosssolverstep(datafile, deepframe):
         dx, dy, and dtheta transformation.
     """
 
-    print('Solving the SOSS transform.')
+    fancyprint('Solving the SOSS transform.')
     # Get the spectrace reference file to extract the reference centroids.
     step = calwebb_spec2.extract_1d_step.Extract1dStep()
     spectrace_ref = step.get_reference_file(datafile, 'spectrace')
@@ -445,7 +448,7 @@ def sosssolverstep(datafile, deepframe):
                                                 soss_filter=subarray,
                                                 is_fitted=(True, True, True),
                                                 guess_transform=(0, 0, 0))
-    print('Determined a transform of:\nx = {}\ny = {}\ntheta = {}'.format(*transform))
+    fancyprint('Determined a transform of:\nx = {}\ny = {}\ntheta = {}'.format(*transform))
 
     return transform
 
@@ -476,7 +479,7 @@ def specprofilestep(datafiles, save_results=True, empirical=True,
         Name of the output file.
     """
 
-    print('Starting SpecProfile Construction Step.')
+    fancyprint('Starting SpecProfile Construction Step.')
     datafiles = np.atleast_1d(datafiles)
 
     # Get the most up to date trace table file.
@@ -574,8 +577,8 @@ def run_stage3(results, deepframe, baseline_ints, smoothed_wlc,
 
     # ============== DMS Stage 3 ==============
     # 1D spectral extraction.
-    print('\n\n**Starting supreme-SPOON Stage 3**')
-    print('1D spectral extraction\n\n')
+    fancyprint('\n\n**Starting supreme-SPOON Stage 3**')
+    fancyprint('1D spectral extraction\n\n')
 
     if output_tag != '':
         output_tag = '_' + output_tag
@@ -596,7 +599,7 @@ def run_stage3(results, deepframe, baseline_ints, smoothed_wlc,
                       ' for extraction.\n' \
                       'For optimal results, consider using a tailored' \
                       ' specprofile reference'
-                print(msg)
+                fancyprint(msg)
 
     # ===== SOSS Solver Step =====
     # Custom DMS step.

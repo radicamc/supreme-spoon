@@ -14,6 +14,7 @@ import sys
 
 from supreme_spoon import stage1, stage2, stage3
 from supreme_spoon import utils
+from supreme_spoon.utils import fancyprint
 
 # Read config file.
 try:
@@ -30,10 +31,10 @@ os.environ['CRDS_SERVER_URL'] = 'https://jwst-crds.stsci.edu'
 input_files = utils.unpack_input_directory(config['input_dir'],
                                            filetag=config['input_filetag'],
                                            exposure_type=config['exposure_type'])
-print('\nIdentified {0} {1} exposure segments'.format(len(input_files),
+fancyprint('\nIdentified {0} {1} exposure segments'.format(len(input_files),
                                                       config['exposure_type']))
 for file in input_files:
-    print(' ' + file)
+    fancyprint(' ' + file)
 
 # Open background model and smoothed white light curve.
 if config['smoothed_wlc'] is not None:
@@ -108,4 +109,4 @@ if 3 in config['run_stages']:
                                        soss_tikfac=config['soss_tikfac'])
     stellar_spectra = stage3_results
 
-print('Done')
+fancyprint('Done')

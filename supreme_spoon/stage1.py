@@ -21,6 +21,7 @@ from jwst.pipeline import calwebb_detector1
 
 from supreme_spoon.stage2 import BackgroundStep
 from supreme_spoon import utils
+from supreme_spoon.utils import fancyprint
 
 
 class GroupScaleStep:
@@ -46,8 +47,8 @@ class GroupScaleStep:
             # If an output file for this segment already exists, skip the step.
             expected_file = self.output_dir + self.fileroots[i] + self.tag
             if expected_file in all_files and force_redo is False:
-                print('Output file {} already exists.'.format(expected_file))
-                print('Skipping Group Scale Step.\n')
+                fancyprint('Output file {} already exists.'.format(expected_file))
+                fancyprint('Skipping Group Scale Step.\n')
                 res = datamodels.open(expected_file)
             # If no output files are detected, run the step.
             else:
@@ -83,8 +84,8 @@ class DQInitStep:
             # If an output file for this segment already exists, skip the step.
             expected_file = self.output_dir + self.fileroots[i] + self.tag
             if expected_file in all_files and force_redo is False:
-                print('Output file {} already exists.'.format(expected_file))
-                print('Skipping Data Quality Initialization Step.\n')
+                fancyprint('Output file {} already exists.'.format(expected_file))
+                fancyprint('Skipping Data Quality Initialization Step.\n')
                 res = datamodels.open(expected_file)
             # If no output files are detected, run the step.
             else:
@@ -119,8 +120,8 @@ class SaturationStep:
             # If an output file for this segment already exists, skip the step.
             expected_file = self.output_dir + self.fileroots[i] + self.tag
             if expected_file in all_files and force_redo is False:
-                print('Output file {} already exists.'.format(expected_file))
-                print('Skipping Saturation Detection Step.\n')
+                fancyprint('Output file {} already exists.'.format(expected_file))
+                fancyprint('Skipping Saturation Detection Step.\n')
                 res = datamodels.open(expected_file)
             # If no output files are detected, run the step.
             else:
@@ -155,8 +156,8 @@ class SuperBiasStep:
             # If an output file for this segment already exists, skip the step.
             expected_file = self.output_dir + self.fileroots[i] + self.tag
             if expected_file in all_files and force_redo is False:
-                print('Output file {} already exists.'.format(expected_file))
-                print('Skipping Superbias Subtraction Step.\n')
+                fancyprint('Output file {} already exists.'.format(expected_file))
+                fancyprint('Skipping Superbias Subtraction Step.\n')
                 res = datamodels.open(expected_file)
             # If no output files are detected, run the step.
             else:
@@ -192,8 +193,8 @@ class RefPixStep:
             # If an output file for this segment already exists, skip the step.
             expected_file = self.output_dir + self.fileroots[i] + self.tag
             if expected_file in all_files and force_redo is False:
-                print('Output file {} already exists.'.format(expected_file))
-                print('Skipping Reference Pixel Correction Step.\n')
+                fancyprint('Output file {} already exists.'.format(expected_file))
+                fancyprint('Skipping Reference Pixel Correction Step.\n')
                 res = datamodels.open(expected_file)
             # If no output files are detected, run the step.
             else:
@@ -242,8 +243,8 @@ class OneOverFStep:
             else:
                 results.append(datamodels.open(expected_file))
         if do_step == 1 and force_redo is False:
-            print('Output files already exist.')
-            print('Skipping 1/f Correction Step.\n')
+            fancyprint('Output files already exist.')
+            fancyprint('Skipping 1/f Correction Step.\n')
         # If no output files are detected, run the step.
         else:
             results = oneoverfstep(self.datafiles,
@@ -284,8 +285,8 @@ class LinearityStep:
             # If an output file for this segment already exists, skip the step.
             expected_file = self.output_dir + self.fileroots[i] + self.tag
             if expected_file in all_files and force_redo is False:
-                print('Output file {} already exists.'.format(expected_file))
-                print('Skipping Linearity Correction Step.\n')
+                fancyprint('Output file {} already exists.'.format(expected_file))
+                fancyprint('Skipping Linearity Correction Step.\n')
                 res = datamodels.open(expected_file)
             # If no output files are detected, run the step.
             else:
@@ -328,8 +329,8 @@ class JumpStep:
             # If an output file for this segment already exists, skip the step.
             expected_file = self.output_dir + self.fileroots[i] + self.tag
             if expected_file in all_files and force_redo is False:
-                print('Output file {} already exists.'.format(expected_file))
-                print('Skipping Jump Detection Step.\n')
+                fancyprint('Output file {} already exists.'.format(expected_file))
+                fancyprint('Skipping Jump Detection Step.\n')
                 results.append(datamodels.open(expected_file))
             # If no output files are detected, proceed.
             else:
@@ -351,8 +352,8 @@ class JumpStep:
                 # algorithm, which is applied after ramp fitting.
                 elif ngroups == 2 and ngroup_flag is False:
                     # If before the RampFitStep, just pass.
-                    print('\nObservation has ngroups=2.')
-                    print('Jump detection will be treated after ramp fit.\n')
+                    fancyprint('\nObservation has ngroups=2.')
+                    fancyprint('Jump detection will be treated after ramp fit.\n')
                     ngroup_flag = True
                     results = self.datafiles
                     break
@@ -392,8 +393,8 @@ class RampFitStep:
             # If an output file for this segment already exists, skip the step.
             expected_file = self.output_dir + self.fileroots[i] + self.tag
             if expected_file in all_files and force_redo is False:
-                print('Output file {} already exists.'.format(expected_file))
-                print('Skipping Ramp Fit Step.\n')
+                fancyprint('Output file {} already exists.'.format(expected_file))
+                fancyprint('Skipping Ramp Fit Step.\n')
                 res = datamodels.open(expected_file)
             # If no output files are detected, run the step.
             else:
@@ -436,8 +437,8 @@ class GainScaleStep:
             # If an output file for this segment already exists, skip the step.
             expected_file = self.output_dir + self.fileroots[i] + self.tag
             if expected_file in all_files and force_redo is False:
-                print('Output file {} already exists.'.format(expected_file))
-                print('Skipping Gain Scale Correction Step.\n')
+                fancyprint('Output file {} already exists.'.format(expected_file))
+                fancyprint('Skipping Gain Scale Correction Step.\n')
                 res = datamodels.open(expected_file)
             # If no output files are detected, run the step.
             else:
@@ -501,7 +502,7 @@ def oneoverfstep(datafiles, baseline_ints, even_odd_rows=True,
         RampModels for each segment, corrected for 1/f noise.
     """
 
-    print('Starting 1/f correction step.')
+    fancyprint('Starting 1/f correction step.')
 
     # Output directory formatting.
     if output_dir is not None:
@@ -534,7 +535,7 @@ def oneoverfstep(datafiles, baseline_ints, even_odd_rows=True,
     # baseline integrations.
     msg = 'Generating a deep stack for each frame using baseline' \
           ' integrations...'
-    print(msg)
+    fancyprint(msg)
     deepstack = utils.make_deepstack(cube[baseline_ints])
 
     # In order to subtract off the trace as completely as possible, the median
@@ -561,7 +562,7 @@ def oneoverfstep(datafiles, baseline_ints, even_odd_rows=True,
     corrected_rampmodels = []
     current_int = 0
     for n, datamodel in enumerate(data):
-        print('Starting segment {} of {}.'.format(n + 1, len(data)))
+        fancyprint('Starting segment {} of {}.'.format(n + 1, len(data)))
 
         # Define the readout setup - can be 4D (recommended) or 3D.
         if np.ndim(datamodel.data) == 4:
@@ -571,10 +572,10 @@ def oneoverfstep(datafiles, baseline_ints, even_odd_rows=True,
 
         # Read in the outlier map - a (nints, dimy, dimx) 3D cube
         if outlier_maps is None:
-            print(' No outlier maps passed, ignoring outliers.')
+            fancyprint(' No outlier maps passed, ignoring outliers.')
             outliers = np.zeros((nint, dimy, dimx))
         else:
-            print(' Using outlier map {}'.format(outlier_maps[n]))
+            fancyprint(' Using outlier map {}'.format(outlier_maps[n]))
             outliers = fits.getdata(outlier_maps[n])
             # If the outlier map is 2D (dimy, dimx) extend to int dimension.
             if np.ndim(outliers) == 2:
@@ -588,10 +589,10 @@ def oneoverfstep(datafiles, baseline_ints, even_odd_rows=True,
         # Read in the main trace mask - a (dimy, dimx) or (3, dimy, dimx)
         # data frame.
         if trace_mask is None:
-            print(' No trace mask passed, ignoring the trace.')
+            fancyprint(' No trace mask passed, ignoring the trace.')
             tracemask = np.zeros((3, dimy, dimx))
         else:
-            print(' Using trace mask {}.'.format(trace_mask))
+            fancyprint(' Using trace mask {}.'.format(trace_mask))
             if isinstance(trace_mask, str):
                 tracemask = fits.getdata(trace_mask)
             else:
@@ -711,7 +712,7 @@ def two_group_jumpstep(datafiles, window=5, thresh=10, fileroots=None,
         Data files corrected for cosmic ray hits.
     """
 
-    print('Starting two-group jump detection step.')
+    fancyprint('Starting two-group jump detection step.')
 
     datafiles = np.atleast_1d(datafiles)
     opened_datafiles = []
@@ -748,7 +749,7 @@ def two_group_jumpstep(datafiles, window=5, thresh=10, fileroots=None,
         cube[i][ii] = local_med[ii]
         dqcube[i][ii] = 0
         count += len(ii[0])
-    print(' {} jumps flagged'.format(count))
+    fancyprint(' {} jumps flagged'.format(count))
 
     current_int = 0
     # Save interpolated data.
@@ -764,7 +765,7 @@ def two_group_jumpstep(datafiles, window=5, thresh=10, fileroots=None,
                 file.write(output_dir + fileroots[n] + 'jump.fits')
         file.close()
 
-    print('Done')
+    fancyprint('Done')
 
     return corrected_rampmodels
 
@@ -823,8 +824,8 @@ def run_stage1(results, background_model, baseline_ints=None,
 
     # ============== DMS Stage 1 ==============
     # Detector level processing.
-    print('\n\n**Starting supreme-SPOON Stage 1**')
-    print('Detector level processing\n\n')
+    fancyprint('\n\n**Starting supreme-SPOON Stage 1**')
+    fancyprint('Detector level processing\n\n')
 
     if output_tag != '':
         output_tag = '_' + output_tag
