@@ -40,7 +40,7 @@ class SpecProfileStep:
             self.subarray = 'SUBSTRIP256'
         temp_data.close()
 
-    def run(self, save_results=True, force_redo=False):
+    def run(self, save_results=True, force_redo=False, empirical=True):
         """Method to run the step.
         """
 
@@ -56,7 +56,8 @@ class SpecProfileStep:
         else:
             step_results = specprofilestep(self.datafiles,
                                            save_results=save_results,
-                                           output_dir=self.output_dir)
+                                           output_dir=self.output_dir,
+                                           empirical=empirical)
             specprofile, filename = step_results
             filename = self.output_dir + filename
 
@@ -449,7 +450,8 @@ def sosssolverstep(datafile, deepframe):
     return transform
 
 
-def specprofilestep(datafiles, save_results=True, output_dir='./'):
+def specprofilestep(datafiles, save_results=True, empirical=True,
+                    output_dir='./'):
     """Wrapper around the APPLESOSS module to construct a specprofile
     reference file tailored to the particular TSO being analyzed.
 
@@ -459,6 +461,10 @@ def specprofilestep(datafiles, save_results=True, output_dir='./'):
         Input datamodels or paths to datamodels for each segment.
     save_results : bool
         If True, save results to file.
+    empirical : bool
+        If True, construct profiles using only the data. If False, fall back
+        on WebbPSF for the trace wings. Note: The current WebbPSF wings are
+        known to not accurately match the. This mode is therefore not advised.
     output_dir : str
         Directory to which to save outputs.
 
@@ -487,12 +493,21 @@ def specprofilestep(datafiles, save_results=True, output_dir='./'):
             cube = data.data
         else:
             cube = np.concatenate([cube, data.data])
+        data.close()
     deepstack = utils.make_deepstack(cube)
 
     # Initialize and run the APPLESOSS module with the median stack.
     spat_prof = applesoss.EmpiricalProfile(deepstack, tracetable=tracetable,
                                            wavemap=wavemap)
-    spat_prof.build_empirical_profile(verbose=1, wave_increment=0.1)
+    if empirical is False:
+        # Get the date of the observations to use the calculated WFE models
+        # from that time.
+        obs_date = fits.getheader(datafiles[0])['DATE-OBS']
+        spat_prof.build_empirical_profile(verbose=1, empirical=False,
+                                          wave_increment=0.1,
+                                          obs_date=obs_date)
+    else:
+        spat_prof.build_empirical_profile(verbose=1)
 
     # Save results to file if requested.
     if save_results is True:
