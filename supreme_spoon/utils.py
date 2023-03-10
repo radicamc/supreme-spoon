@@ -489,9 +489,9 @@ def get_wavebin_limits(wave):
     # Take the mean in the vertical direction to get the midpoint between the
     # two wavelengths. Use this as the bin limits.
     bin_low = (np.mean(low, axis=1))[:-1]
-    bin_low = np.insert(bin_low, -1, bin_low[-1])
+    bin_low = np.append(bin_low, 2*bin_low[-1] - bin_low[-2])
     bin_up = (np.mean(up, axis=1))[1:]
-    bin_up = np.insert(bin_up, 0, bin_up[0])
+    bin_up = np.insert(bin_up, 0, 2*bin_up[0] - bin_up[1])
 
     return bin_low, bin_up
 

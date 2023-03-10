@@ -447,6 +447,8 @@ def read_ld_coefs(filename, wavebin_low, wavebin_up, ld_model='quadratic'):
             if wl < w <= wu:
                 current_q1.append(q1)
                 current_q2.append(q2)
+            # Since LD model wavelengths are sorted in increasing order, once
+            # we are above the upper edge of the bin, we can stop.
             elif w > wu:
                 prior_q1.append(np.nanmean(current_q1))
                 prior_q2.append(np.nanmean(current_q2))
