@@ -17,6 +17,8 @@ baseline_ints : [50, -50]
 occultation_type : 'transit'
 # If True, make summary plots.
 do_plots : True
+# If True, also make corner plot for each bin.
+include_corner : False
 # Number of cores for multiprocessing.
 ncores : 4
 # Spectral resolution at which to fit lightcurves.

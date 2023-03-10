@@ -234,7 +234,8 @@ for order in config['orders']:
                                           GP_regressors_lc={'SOSS': data_dict[wavebin]['GP_parameters']},
                                           out_folder=outdir_i)
                     results = dataset.fit(sampler='dynesty')
-                    transit_model, comp = results.lc.evaluate('SOSS', GPregressors=t,
+                    transit_model, comp = results.lc.evaluate('SOSS',
+                                                              GPregressors=t,
                                                               return_components=True)
                 else:
                     transit_model, comp = fit_results[wavebin].lc.evaluate('SOSS', return_components=True)
@@ -253,28 +254,29 @@ for order in config['orders']:
                         gp_model = transit_model - comp['transit'] - comp['lm']
                     else:
                         gp_model = np.zeros_like(t)
-                    systematics = gp_model + comp['lm'] + 1
-                plotting.make_lightcurve_plot(t=(t - t0) * 24,
+                    systematics = gp_model + comp['lm']
+                plotting.make_lightcurve_plot(t=(t - t0)*24,
                                               data=norm_flux[:, i],
                                               model=transit_model,
                                               scatter=scatter,
                                               errors=norm_err[:, i],
                                               outpdf=outpdf, nfit=nfit,
                                               title='bin {0} | {1:.3f}µm'.format(i, wave[i]),
-                                              transit=comp['transit'],
-                                              systematics=systematics)
+                                              systematics=systematics,
+                                              rasterized=True)
                 # Corner plot for fit.
-                fit_params, posterior_names = [], []
-                for param, dist in zip(config['params'], config['dists']):
-                    if dist != 'fixed':
-                        fit_params.append(param)
-                        if param in formatted_names.keys():
-                            posterior_names.append(formatted_names[param])
-                        else:
-                            posterior_names.append(param)
-                plotting.make_corner_plot(fit_params, fit_results[wavebin],
-                                          posterior_names=posterior_names,
-                                          outpdf=outpdf)
+                if config['include_corner'] is True:
+                    fit_params, posterior_names = [], []
+                    for param, dist in zip(config['params'], config['dists']):
+                        if dist != 'fixed':
+                            fit_params.append(param)
+                            if param in formatted_names.keys():
+                                posterior_names.append(formatted_names[param])
+                            else:
+                                posterior_names.append(param)
+                    plotting.make_corner_plot(fit_params, fit_results[wavebin],
+                                              posterior_names=posterior_names,
+                                              outpdf=outpdf)
 
                 data[:, i] = norm_flux[:, i]
                 models[:, i] = transit_model
