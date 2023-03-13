@@ -1,6 +1,12 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+### [1.0.0] -- 2023-03-13
+#### Added
+- Preparation for first release.
+- New fancy printing.
+- Misc. bug fixes.
+
 ### [0.4.0] -- 2023-03-02
 #### Added
 - Correction of bug pointing to throuhgputs for wrong order when calculating LD coefficients.

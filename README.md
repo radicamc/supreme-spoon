@@ -21,7 +21,7 @@ or the latest development version can be grabbed from GitHub:
 
     git clone https://github.com/radicamc/supreme-spoon
     cd supreme_spoon
-    pip install .
+    python setup.py install
 
 If you plan on using the ATOCA extraction, it would be beneficial to have the atoca development version of the official jwst pipeline. Multiple critical functionalities have not yet been merged into the master pipeline, but will be soon. 
 This can be installed via:

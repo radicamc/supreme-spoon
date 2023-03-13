@@ -19,6 +19,7 @@ import sys
 
 from supreme_spoon import stage4
 from supreme_spoon import plotting, utils
+from supreme_spoon.utils import fancyprint
 
 # Read config file.
 try:
@@ -98,7 +99,7 @@ for order in config['orders']:
         outpdf = None
 
     # === Set Up Priors and Fit Parameters ===
-    print('\nFitting order {} at {}\n'.format(order, res_str))
+    fancyprint('\nFitting order {} at {}\n'.format(order, res_str))
     # Unpack wave, flux and error, cutting reference pixel columns.
     wave_low = fits.getdata(config['infile'],  1 + 4*(order - 1))[:, 5:-5]
     wave_up = fits.getdata(config['infile'], 2 + 4*(order - 1))[:, 5:-5]
@@ -192,7 +193,7 @@ for order in config['orders']:
     # === Summarize Fit Results ===
     # Loop over results for each wavebin, extract best-fitting parameters and
     # make summary plots if necessary.
-    print('Summarizing fit results.')
+    fancyprint('Summarizing fit results.')
     data = np.ones((nints, nbins)) * np.nan
     models = np.ones((nints, nbins)) * np.nan
     residuals = np.ones((nints, nbins)) * np.nan
@@ -234,7 +235,8 @@ for order in config['orders']:
                                           GP_regressors_lc={'SOSS': data_dict[wavebin]['GP_parameters']},
                                           out_folder=outdir_i)
                     results = dataset.fit(sampler='dynesty')
-                    transit_model, comp = results.lc.evaluate('SOSS', GPregressors=t,
+                    transit_model, comp = results.lc.evaluate('SOSS',
+                                                              GPregressors=t,
                                                               return_components=True)
                 else:
                     transit_model, comp = fit_results[wavebin].lc.evaluate('SOSS', return_components=True)
@@ -253,28 +255,29 @@ for order in config['orders']:
                         gp_model = transit_model - comp['transit'] - comp['lm']
                     else:
                         gp_model = np.zeros_like(t)
-                    systematics = gp_model + comp['lm'] + 1
-                plotting.make_lightcurve_plot(t=(t - t0) * 24,
+                    systematics = gp_model + comp['lm']
+                plotting.make_lightcurve_plot(t=(t - t0)*24,
                                               data=norm_flux[:, i],
                                               model=transit_model,
                                               scatter=scatter,
                                               errors=norm_err[:, i],
                                               outpdf=outpdf, nfit=nfit,
                                               title='bin {0} | {1:.3f}µm'.format(i, wave[i]),
-                                              transit=comp['transit'],
-                                              systematics=systematics)
+                                              systematics=systematics,
+                                              rasterized=True)
                 # Corner plot for fit.
-                fit_params, posterior_names = [], []
-                for param, dist in zip(config['params'], config['dists']):
-                    if dist != 'fixed':
-                        fit_params.append(param)
-                        if param in formatted_names.keys():
-                            posterior_names.append(formatted_names[param])
-                        else:
-                            posterior_names.append(param)
-                plotting.make_corner_plot(fit_params, fit_results[wavebin],
-                                          posterior_names=posterior_names,
-                                          outpdf=outpdf)
+                if config['include_corner'] is True:
+                    fit_params, posterior_names = [], []
+                    for param, dist in zip(config['params'], config['dists']):
+                        if dist != 'fixed':
+                            fit_params.append(param)
+                            if param in formatted_names.keys():
+                                posterior_names.append(formatted_names[param])
+                            else:
+                                posterior_names.append(param)
+                    plotting.make_corner_plot(fit_params, fit_results[wavebin],
+                                              posterior_names=posterior_names,
+                                              outpdf=outpdf)
 
                 data[:, i] = norm_flux[:, i]
                 models[:, i] = transit_model
@@ -294,7 +297,7 @@ for order in config['orders']:
 
 # === Transmission Spectrum ===
 # Save the transmission spectrum.
-print('Writing transmission spectrum.')
+fancyprint('Writing transmission spectrum.')
 for order in ['1', '2']:
     if 'order '+order not in results_dict.keys():
         order_results = {'dppm': [], 'dppm_err': [], 'wave': [],
@@ -346,6 +349,6 @@ stage4.save_transmission_spectrum(waves, wave_errors, depths, errors, orders,
                                   extraction_type=extract_type,
                                   resolution=config['res'],
                                   fit_meta=fit_metadata)
-print('Transmission spectrum saved to {}'.format(outdir+filename))
+fancyprint('Transmission spectrum saved to {}'.format(outdir+filename))
 
-print('Done')
+fancyprint('Done')

@@ -22,6 +22,7 @@ from jwst.extract_1d.soss_extract import soss_boxextract
 from jwst.pipeline import calwebb_spec2
 
 from supreme_spoon import utils
+from supreme_spoon.utils import fancyprint
 
 
 class AssignWCSStep:
@@ -47,8 +48,8 @@ class AssignWCSStep:
             # If an output file for this segment already exists, skip the step.
             expected_file = self.output_dir + self.fileroots[i] + self.tag
             if expected_file in all_files and force_redo is False:
-                print('Output file {} already exists.'.format(expected_file))
-                print('Skipping Assign WCS Step.\n')
+                fancyprint('Output file {} already exists.'.format(expected_file))
+                fancyprint('Skipping Assign WCS Step.\n')
                 res = datamodels.open(expected_file)
             # If no output files are detected, run the step.
             else:
@@ -83,8 +84,8 @@ class SourceTypeStep:
             # If an output file for this segment already exists, skip the step.
             expected_file = self.output_dir + self.fileroots[i] + self.tag
             if expected_file in all_files and force_redo is False:
-                print('Output file {} already exists.'.format(expected_file))
-                print('Skipping Source Type Determination Step.\n')
+                fancyprint('Output file {} already exists.'.format(expected_file))
+                fancyprint('Skipping Source Type Determination Step.\n')
                 res = datamodels.open(expected_file)
             # If no output files are detected, run the step.
             else:
@@ -129,8 +130,8 @@ class BackgroundStep:
                 results.append(datamodels.open(expected_file))
                 background_models.append(np.load(expected_bkg))
         if do_step == 1 and force_redo is False:
-            print('Output files already exist.')
-            print('Skipping Background Subtraction Step.')
+            fancyprint('Output files already exist.')
+            fancyprint('Skipping Background Subtraction Step.')
         # If no output files are detected, run the step.
         else:
             with warnings.catch_warnings():
@@ -175,8 +176,8 @@ class FlatFieldStep:
             # If an output file for this segment already exists, skip the step.
             expected_file = self.output_dir + self.fileroots[i] + self.tag
             if expected_file in all_files and force_redo is False:
-                print('Output file {} already exists.'.format(expected_file))
-                print('Skipping Flat Field Correction Step.\n')
+                fancyprint('Output file {} already exists.'.format(expected_file))
+                fancyprint('Skipping Flat Field Correction Step.\n')
                 res = datamodels.open(expected_file)
             # If no output files are detected, run the step.
             else:
@@ -225,8 +226,8 @@ class BadPixStep:
                 results.append(datamodels.open(expected_file))
                 deepframe = fits.getdata(expected_deep)
         if do_step == 1 and force_redo is False:
-            print('Output files already exist.')
-            print('Skipping Bad Pixel Correction Step.\n')
+            fancyprint('Output files already exist.')
+            fancyprint('Skipping Bad Pixel Correction Step.\n')
         # If no output files are detected, run the step.
         else:
             step_results = badpixstep(self.datafiles,
@@ -269,8 +270,8 @@ class TracingStep:
         expected_file = self.output_dir + self.fileroot_noseg + suffix
         expected_cen = self.output_dir + self.fileroot_noseg + 'centroids.csv'
         if expected_file in all_files and expected_cen in all_files and force_redo is False:
-            print('Output files already exist.')
-            print('Skipping Bad Pixel Correction Step.\n')
+            fancyprint('Output files already exist.')
+            fancyprint('Skipping Bad Pixel Correction Step.\n')
             tracemask = fits.getdata(expected_file)
             centroids = pd.read_csv(expected_cen, comment='#')
         # If no output files are detected, run the step.
@@ -313,8 +314,8 @@ class LightCurveEstimateStep:
         suffix = 'lcestimate.npy'
         expected_file = self.output_dir + self.fileroot_noseg + suffix
         if expected_file in all_files and force_redo is False:
-            print('Output file {} already exists.'.format(expected_file))
-            print('Skipping Light Curve Estimation Step.\n')
+            fancyprint('Output file {} already exists.'.format(expected_file))
+            fancyprint('Skipping Light Curve Estimation Step.\n')
             smoothed_lc = np.load(expected_file)
         # If no output files are detected, run the step.
         else:
@@ -374,7 +375,7 @@ def backgroundstep(datafiles, background_model, output_dir='./',
         Background model, scaled to the flux level of each group median.
     """
 
-    print('Starting background subtraction step.')
+    fancyprint('Starting background subtraction step.')
     # Output directory formatting.
     if output_dir is not None:
         if output_dir[-1] != '/':
@@ -396,7 +397,7 @@ def backgroundstep(datafiles, background_model, output_dir='./',
     # Make median stack of all integrations to use for background scaling.
     # This is to limit the influence of cosmic rays, which can greatly effect
     # the background scaling factor calculated for an individual inegration.
-    print('Generating a deep stack using all integrations.')
+    fancyprint('Generating a deep stack using all integrations.')
     deepstack = utils.make_deepstack(cube)
     # If applied at the integration level, reshape deepstack to 3D.
     if np.ndim(deepstack) != 3:
@@ -404,17 +405,17 @@ def backgroundstep(datafiles, background_model, output_dir='./',
         deepstack = deepstack.reshape(1, dimy, dimx)
     ngroup, dimy, dimx = np.shape(deepstack)
 
-    print('Calculating background model scaling.')
+    fancyprint('Calculating background model scaling.')
     model_scaled = np.zeros_like(deepstack)
     if scale1 is None:
-        print(' Scale factor(s):')
+        fancyprint(' Scale factor(s):')
     else:
-        print(' Using user-defined background scaling(s):')
+        fancyprint(' Using user-defined background scaling(s):')
         if scale2 is not None:
-            print('  Pre-step scale factor: {:.5f}'.format(scale1))
-            print('  Post-step scale factor: {:.5f}'.format(scale2))
+            fancyprint('  Pre-step scale factor: {:.5f}'.format(scale1))
+            fancyprint('  Post-step scale factor: {:.5f}'.format(scale2))
         else:
-            print('  Background scale factor: {:.5f}'.format(scale1))
+            fancyprint('  Background scale factor: {:.5f}'.format(scale1))
     first_time = True
     for i in range(ngroup):
         if scale1 is None:
@@ -437,7 +438,7 @@ def backgroundstep(datafiles, background_model, output_dir='./',
             scale_factor = np.nanmedian(bkg_ratio[ii])
             if scale_factor < 0:
                 scale_factor = 0
-            print('  Background scale factor: {1:.5f}'.format(i + 1, scale_factor))
+            fancyprint('  Background scale factor: {1:.5f}'.format(i + 1, scale_factor))
             model_scaled[i] = background_model * scale_factor
         elif scale1 is not None and scale2 is None:
             # If using a user specified scaling for the whole frame.
@@ -518,7 +519,7 @@ def badpixstep(datafiles, baseline_ints, smoothed_wlc=None, thresh=10,
         Final median stack of all outlier corrected integrations.
     """
 
-    print('Starting custom hot pixel interpolation step.')
+    fancyprint('Starting custom hot pixel interpolation step.')
 
     # Output directory formatting.
     if output_dir is not None:
@@ -551,10 +552,10 @@ def badpixstep(datafiles, baseline_ints, smoothed_wlc=None, thresh=10,
     it = 0
 
     while it < max_iter:
-        print('Starting iteration {0} of {1}.'.format(it + 1, max_iter))
+        fancyprint('Starting iteration {0} of {1}.'.format(it + 1, max_iter))
 
         # Generate the deepstack.
-        print(' Generating a deep stack...')
+        fancyprint(' Generating a deep stack...')
         deepframe = utils.make_deepstack(newdata[baseline_ints])
         badpix = np.zeros_like(deepframe)
         count = 0
@@ -586,7 +587,7 @@ def badpixstep(datafiles, baseline_ints, smoothed_wlc=None, thresh=10,
                     badpix[j, mini] = 1
                     count += 1
 
-        print(' {} bad pixels identified this iteration.'.format(count))
+        fancyprint(' {} bad pixels identified this iteration.'.format(count))
         # End if no bad pixels are found.
         if count == 0:
             break
@@ -740,7 +741,7 @@ def tracingstep(datafiles, deepframe, calculate_stability=True,
         Trace centroids for all three orders.
     """
 
-    print('Starting Tracing Step.')
+    fancyprint('Starting Tracing Step.')
 
     # Get centroids for orders one to three.
     if isinstance(deepframe, str):
@@ -799,7 +800,7 @@ def tracingstep(datafiles, deepframe, calculate_stability=True,
     # its FWHM over the course of the TSO. These quantities may be useful for
     # lightcurve detrending.
     if calculate_stability is True:
-        print('Calculating trace stability... This might take a while.')
+        fancyprint('Calculating trace stability... This might take a while.')
         if stability_params == 'ALL':
             stability_params = ['x', 'y', 'FWHM']
 
@@ -814,15 +815,15 @@ def tracingstep(datafiles, deepframe, calculate_stability=True,
         # Calculate the stability of the requested parameters.
         stability_results = {}
         if 'x' in stability_params:
-            print('Getting trace X-positions...')
+            fancyprint('Getting trace X-positions...')
             ccf_x = utils.soss_stability(cube, axis='x', nthreads=nthreads)
             stability_results['X'] = ccf_x
         if 'y' in stability_params:
-            print('Getting trace Y-positions...')
+            fancyprint('Getting trace Y-positions...')
             ccf_y = utils.soss_stability(cube, axis='y', nthreads=nthreads)
             stability_results['Y'] = ccf_y
         if 'FWHM' in stability_params:
-            print('Getting trace FWHM values...')
+            fancyprint('Getting trace FWHM values...')
             fwhm = utils.soss_stability_fwhm(cube, y1, nthreads=nthreads)
             stability_results['FWHM'] = fwhm
 
@@ -898,8 +899,8 @@ def run_stage2(results, background_model, baseline_ints, smoothed_wlc=None,
 
     # ============== DMS Stage 2 ==============
     # Spectroscopic processing.
-    print('\n\n**Starting supreme-SPOON Stage 2**')
-    print('Spectroscopic processing\n\n')
+    fancyprint('\n\n**Starting supreme-SPOON Stage 2**')
+    fancyprint('Spectroscopic processing\n\n')
 
     if output_tag != '':
         output_tag = '_' + output_tag

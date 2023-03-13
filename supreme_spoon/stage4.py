@@ -19,6 +19,7 @@ from tqdm import tqdm
 
 from jwst import datamodels
 from jwst.pipeline import calwebb_spec2
+from supreme_spoon.utils import fancyprint
 
 
 def bin_at_pixel(flux, error, wave, npix):
@@ -131,7 +132,7 @@ def bin_at_resolution(inwave_low, inwave_up, flux, flux_err, res,
         msg = 'You are trying to bin at a higher resolution than the input.'
         raise ValueError(msg)
     else:
-        print('Binning from an average resolution of '
+        fancyprint('Binning from an average resolution of '
               'R={:.0f} to R={}'.format(average_input_res, res))
 
     # Make the binned wavelength grid.
@@ -254,7 +255,7 @@ def fit_data(data_dictionary, priors, output_dir, bin_no, num_bins):
     multiprocessing with ray.
     """
 
-    print('Fitting bin {} / {}'.format(bin_no, num_bins))
+    fancyprint('Fitting bin {} / {}'.format(bin_no, num_bins))
 
     # Get key names.
     all_keys = list(data_dictionary.keys())
@@ -447,6 +448,8 @@ def read_ld_coefs(filename, wavebin_low, wavebin_up, ld_model='quadratic'):
             if wl < w <= wu:
                 current_q1.append(q1)
                 current_q2.append(q2)
+            # Since LD model wavelengths are sorted in increasing order, once
+            # we are above the upper edge of the bin, we can stop.
             elif w > wu:
                 prior_q1.append(np.nanmean(current_q1))
                 prior_q2.append(np.nanmean(current_q2))
@@ -497,12 +500,12 @@ def run_juliet(priors, t_lc, y_lc, yerr_lc, out_folder,
         except KeyboardInterrupt as err:
             raise err
         except:
-            print('Exception encountered.')
-            print('Skipping bin.')
+            fancyprint('Exception encountered.', type='WARNING')
+            fancyprint('Skipping bin.', type='WARNING')
             res = None
     else:
-        print('NaN bin encountered.')
-        print('Skipping bin.')
+        fancyprint('NaN bin encountered.', type='WARNING')
+        fancyprint('Skipping bin.', type='WARNING')
         res = None
 
     return res
