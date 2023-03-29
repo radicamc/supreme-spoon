@@ -261,10 +261,9 @@ def get_filename_root(datafiles):
     fileroots = []
     # Open the datamodel.
     if isinstance(datafiles[0], str):
-        data = datamodels.open(datafiles[0])
-        filename = data.meta.filename  # Get file name.
-        seg_start = data.meta.exposure.segment_number  # Get starting segment
-        data.close()
+        with fits.open(datafiles[0]) as hdulist:
+            filename = hdulist[0].header['FILENAME']  # Get file name.
+            seg_start = hdulist[0].header['EXSEGNUM']  # Get starting segment
     else:
         filename = datafiles[0].meta.filename
         seg_start = datafiles[0].meta.exposure.segment_number

@@ -47,9 +47,9 @@ class GroupScaleStep:
             # If an output file for this segment already exists, skip the step.
             expected_file = self.output_dir + self.fileroots[i] + self.tag
             if expected_file in all_files and force_redo is False:
-                fancyprint('Output file {} already exists.'.format(expected_file))
+                fancyprint('File {} already exists.'.format(expected_file))
                 fancyprint('Skipping Group Scale Step.\n')
-                res = datamodels.open(expected_file)
+                res = expected_file
             # If no output files are detected, run the step.
             else:
                 step = calwebb_detector1.group_scale_step.GroupScaleStep()
@@ -84,9 +84,9 @@ class DQInitStep:
             # If an output file for this segment already exists, skip the step.
             expected_file = self.output_dir + self.fileroots[i] + self.tag
             if expected_file in all_files and force_redo is False:
-                fancyprint('Output file {} already exists.'.format(expected_file))
+                fancyprint('File {} already exists.'.format(expected_file))
                 fancyprint('Skipping Data Quality Initialization Step.\n')
-                res = datamodels.open(expected_file)
+                res = expected_file
             # If no output files are detected, run the step.
             else:
                 step = calwebb_detector1.dq_init_step.DQInitStep()
@@ -120,9 +120,9 @@ class SaturationStep:
             # If an output file for this segment already exists, skip the step.
             expected_file = self.output_dir + self.fileroots[i] + self.tag
             if expected_file in all_files and force_redo is False:
-                fancyprint('Output file {} already exists.'.format(expected_file))
+                fancyprint('File {} already exists.'.format(expected_file))
                 fancyprint('Skipping Saturation Detection Step.\n')
-                res = datamodels.open(expected_file)
+                res = expected_file
             # If no output files are detected, run the step.
             else:
                 step = calwebb_detector1.saturation_step.SaturationStep()
@@ -156,9 +156,9 @@ class SuperBiasStep:
             # If an output file for this segment already exists, skip the step.
             expected_file = self.output_dir + self.fileroots[i] + self.tag
             if expected_file in all_files and force_redo is False:
-                fancyprint('Output file {} already exists.'.format(expected_file))
+                fancyprint('File {} already exists.'.format(expected_file))
                 fancyprint('Skipping Superbias Subtraction Step.\n')
-                res = datamodels.open(expected_file)
+                res = expected_file
             # If no output files are detected, run the step.
             else:
                 step = calwebb_detector1.superbias_step.SuperBiasStep()
@@ -193,9 +193,9 @@ class RefPixStep:
             # If an output file for this segment already exists, skip the step.
             expected_file = self.output_dir + self.fileroots[i] + self.tag
             if expected_file in all_files and force_redo is False:
-                fancyprint('Output file {} already exists.'.format(expected_file))
+                fancyprint('File {} already exists.'.format(expected_file))
                 fancyprint('Skipping Reference Pixel Correction Step.\n')
-                res = datamodels.open(expected_file)
+                res = expected_file
             # If no output files are detected, run the step.
             else:
                 step = calwebb_detector1.refpix_step.RefPixStep()
@@ -285,9 +285,9 @@ class LinearityStep:
             # If an output file for this segment already exists, skip the step.
             expected_file = self.output_dir + self.fileroots[i] + self.tag
             if expected_file in all_files and force_redo is False:
-                fancyprint('Output file {} already exists.'.format(expected_file))
+                fancyprint('File {} already exists.'.format(expected_file))
                 fancyprint('Skipping Linearity Correction Step.\n')
-                res = datamodels.open(expected_file)
+                res = expected_file
             # If no output files are detected, run the step.
             else:
                 step = calwebb_detector1.linearity_step.LinearityStep()
@@ -329,7 +329,7 @@ class JumpStep:
             # If an output file for this segment already exists, skip the step.
             expected_file = self.output_dir + self.fileroots[i] + self.tag
             if expected_file in all_files and force_redo is False:
-                fancyprint('Output file {} already exists.'.format(expected_file))
+                fancyprint('File {} already exists.'.format(expected_file))
                 fancyprint('Skipping Jump Detection Step.\n')
                 results.append(datamodels.open(expected_file))
             # If no output files are detected, proceed.
@@ -353,7 +353,8 @@ class JumpStep:
                 elif ngroups == 2 and ngroup_flag is False:
                     # If before the RampFitStep, just pass.
                     fancyprint('\nObservation has ngroups=2.')
-                    fancyprint('Jump detection will be treated after ramp fit.\n')
+                    fancyprint('Jump detection will be treated after ramp '
+                               'fit.\n')
                     ngroup_flag = True
                     results = self.datafiles
                     break
@@ -393,22 +394,22 @@ class RampFitStep:
             # If an output file for this segment already exists, skip the step.
             expected_file = self.output_dir + self.fileroots[i] + self.tag
             if expected_file in all_files and force_redo is False:
-                fancyprint('Output file {} already exists.'.format(expected_file))
+                fancyprint('File {} already exists.'.format(expected_file))
                 fancyprint('Skipping Ramp Fit Step.\n')
-                res = datamodels.open(expected_file)
+                res = expected_file
             # If no output files are detected, run the step.
             else:
                 step = calwebb_detector1.ramp_fit_step.RampFitStep()
                 res = step.call(segment, output_dir=self.output_dir,
                                 save_results=save_results,
                                 maximum_cores='quarter', **kwargs)[1]
-                # Store pixel flags in seperate files for potential use in 1/f
-                # noise correction.
-                hdu = fits.PrimaryHDU(res.dq)
-                outfile = self.output_dir + self.fileroots[i] + 'dqpixelflags.fits'
-                hdu.writeto(outfile, overwrite=True)
-                # Hack to remove _1_ tag from file name.
-                res = utils.fix_filenames(res, '_1_', self.output_dir)[0]
+                if save_results is True:
+                    # Store flags for use in 1/f correction.
+                    hdu = fits.PrimaryHDU(res.dq)
+                    outfile = self.output_dir + self.fileroots[i] + 'dqpixelflags.fits'
+                    hdu.writeto(outfile, overwrite=True)
+                    # Hack to remove _1_ tag from file name.
+                    res = utils.fix_filenames(res, '_1_', self.output_dir)[0]
             results.append(res)
 
         return results
@@ -437,9 +438,9 @@ class GainScaleStep:
             # If an output file for this segment already exists, skip the step.
             expected_file = self.output_dir + self.fileroots[i] + self.tag
             if expected_file in all_files and force_redo is False:
-                fancyprint('Output file {} already exists.'.format(expected_file))
+                fancyprint('File {} already exists.'.format(expected_file))
                 fancyprint('Skipping Gain Scale Correction Step.\n')
-                res = datamodels.open(expected_file)
+                res = expected_file
             # If no output files are detected, run the step.
             else:
                 step = calwebb_detector1.gain_scale_step.GainScaleStep()
@@ -831,8 +832,8 @@ def run_stage1(results, background_model, baseline_ints=None,
         output_tag = '_' + output_tag
     # Create output directories and define output paths.
     utils.verify_path(root_dir + 'pipeline_outputs_directory' + output_tag)
-    utils.verify_path(root_dir + 'pipeline_outputs_directory' + output_tag + '/Stage1')
     outdir = root_dir + 'pipeline_outputs_directory' + output_tag + '/Stage1/'
+    utils.verify_path(outdir)
 
     if skip_steps is None:
         skip_steps = []
@@ -929,7 +930,8 @@ def run_stage1(results, background_model, baseline_ints=None,
         else:
             step_kwargs = {}
         step = JumpStep(results, output_dir=outdir)
-        step_results = step.run(save_results=save_results, force_redo=force_redo,
+        step_results = step.run(save_results=save_results,
+                                force_redo=force_redo,
                                 rejection_threshold=rejection_threshold,
                                 **step_kwargs)
         results, ngroup_flag = step_results
@@ -950,7 +952,8 @@ def run_stage1(results, background_model, baseline_ints=None,
     if 'JumpStep' not in skip_steps:
         if ngroup_flag is True:
             step = JumpStep(results, output_dir=outdir)
-            results = step.run(save_results=save_results, force_redo=force_redo,
+            results = step.run(save_results=save_results,
+                               force_redo=force_redo,
                                rejection_threshold=rejection_threshold,
                                ngroup_flag=True)[0]
 

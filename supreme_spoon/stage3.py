@@ -49,7 +49,7 @@ class SpecProfileStep:
         # If an output file for this segment already exists, skip the step.
         expected_file = self.output_dir + 'APPLESOSS_ref_2D_profile_{}_os1_pad0.fits'.format(self.subarray)
         if expected_file in all_files and force_redo is False:
-            fancyprint('Output file {} already exists.'.format(expected_file))
+            fancyprint('File {} already exists.'.format(expected_file))
             fancyprint('Skipping SpecProfile Reference Construction Step.\n')
             specprofile = datamodels.open(expected_file)
             filename = expected_file
@@ -140,9 +140,9 @@ class Extract1DStep:
             # If an output file for this segment already exists, skip the step.
             expected_file = self.output_dir + self.fileroots[i] + self.tag
             if expected_file in all_files and force_redo is False:
-                fancyprint('Output file {} already exists.'.format(expected_file))
+                fancyprint('File {} already exists.'.format(expected_file))
                 fancyprint('Skipping 1D Extraction Step.\n')
-                res = datamodels.open(expected_file)
+                res = expected_file
 
                 if self.extract_method == 'atoca' and soss_estimate is None:
                     atoca_spectra = self.output_dir + self.fileroots[i] + 'AtocaSpectra.fits'

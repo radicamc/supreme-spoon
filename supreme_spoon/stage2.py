@@ -48,9 +48,9 @@ class AssignWCSStep:
             # If an output file for this segment already exists, skip the step.
             expected_file = self.output_dir + self.fileroots[i] + self.tag
             if expected_file in all_files and force_redo is False:
-                fancyprint('Output file {} already exists.'.format(expected_file))
+                fancyprint('File {} already exists.'.format(expected_file))
                 fancyprint('Skipping Assign WCS Step.\n')
-                res = datamodels.open(expected_file)
+                res = expected_file
             # If no output files are detected, run the step.
             else:
                 step = calwebb_spec2.assign_wcs_step.AssignWcsStep()
@@ -84,9 +84,9 @@ class SourceTypeStep:
             # If an output file for this segment already exists, skip the step.
             expected_file = self.output_dir + self.fileroots[i] + self.tag
             if expected_file in all_files and force_redo is False:
-                fancyprint('Output file {} already exists.'.format(expected_file))
+                fancyprint('File {} already exists.'.format(expected_file))
                 fancyprint('Skipping Source Type Determination Step.\n')
-                res = datamodels.open(expected_file)
+                res = expected_file
             # If no output files are detected, run the step.
             else:
                 step = calwebb_spec2.srctype_step.SourceTypeStep()
@@ -176,9 +176,9 @@ class FlatFieldStep:
             # If an output file for this segment already exists, skip the step.
             expected_file = self.output_dir + self.fileroots[i] + self.tag
             if expected_file in all_files and force_redo is False:
-                fancyprint('Output file {} already exists.'.format(expected_file))
+                fancyprint('File {} already exists.'.format(expected_file))
                 fancyprint('Skipping Flat Field Correction Step.\n')
-                res = datamodels.open(expected_file)
+                res = expected_file
             # If no output files are detected, run the step.
             else:
                 step = calwebb_spec2.flat_field_step.FlatFieldStep()
@@ -314,7 +314,7 @@ class LightCurveEstimateStep:
         suffix = 'lcestimate.npy'
         expected_file = self.output_dir + self.fileroot_noseg + suffix
         if expected_file in all_files and force_redo is False:
-            fancyprint('Output file {} already exists.'.format(expected_file))
+            fancyprint('File {} already exists.'.format(expected_file))
             fancyprint('Skipping Light Curve Estimation Step.\n')
             smoothed_lc = np.load(expected_file)
         # If no output files are detected, run the step.
