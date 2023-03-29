@@ -243,7 +243,9 @@ def get_default_header():
 
 
 def get_filename_root(datafiles):
-    """Get the file name roots for each segment.
+    """Get the file name roots for each segment. Assumes that file names
+    follow the default jwst pipeline structure and are in correct segment
+    order.
 
     Parameters
     ----------
@@ -257,21 +259,35 @@ def get_filename_root(datafiles):
     """
 
     fileroots = []
-    for file in datafiles:
-        # Open the datamodel.
-        if isinstance(file, str):
-            data = datamodels.open(file)
-            filename = data.meta.filename
-            data.close()
+    # Open the datamodel.
+    if isinstance(datafiles[0], str):
+        data = datamodels.open(datafiles[0])
+        filename = data.meta.filename  # Get file name.
+        seg_start = data.meta.exposure.segment_number  # Get starting segment
+        data.close()
+    else:
+        filename = datafiles[0].meta.filename
+        seg_start = datafiles[0].meta.exposure.segment_number
+    # Get the last part of the path, and split file name into chunks.
+    filename_split = filename.split('/')[-1].split('_')
+    fileroot = ''
+    # Get the filename before the step info and save.
+    for chunk in filename_split[:-1]:
+        fileroot += chunk + '_'
+    fileroots.append(fileroot)
+
+    # Now assuming everything is in chronological order, just increment the
+    # segment number.
+    split = fileroot.split('seg')
+    for segment in range(seg_start+1, len(datafiles)+1):
+        if segment < 10:
+            seg_no = 'seg00{}'.format(segment)
+        elif 10 <= segment < 99:
+            seg_no = 'seg0{}'.format(segment)
         else:
-            filename = file.meta.filename
-        # Get the last part of the path, and split file name into chunks.
-        filename_split = filename.split('/')[-1].split('_')
-        fileroot = ''
-        # Get the filename before the step info and save.
-        for chunk in filename_split[:-1]:
-            fileroot += chunk + '_'
-        fileroots.append(fileroot)
+            seg_no = 'seg{}'.format(segment)
+        thisroot = split[0] + seg_no + split[1][3:]
+        fileroots.append(thisroot)
 
     return fileroots
 
@@ -881,6 +897,37 @@ def sigma_clip_lightcurves(flux, ferr, thresh=3, window=10):
     fancyprint('{0} pixels clipped ({1:.3f}%)'.format(clipsum, clipsum / nints / nwaves * 100))
 
     return flux_clipped
+
+
+def sort_datamodels(datafiles):
+    """Sort a list of jwst datamodels or filenames in chronological order by
+    segment.
+
+    Parameters
+    ----------
+    datafiles : array-like(str), array-like(datamodel)
+        List of jwst datamodels or filenames.
+
+    Returns
+    -------
+    files_sorted : np.array
+        Inputs sorted in chronological order.
+    """
+
+    datafiles = np.atleast_1d(datafiles)
+
+    if isinstance(datafiles[0], str):
+        # If filenames are passed, just sort.
+        files_sorted = np.sort(datafiles)
+    else:
+        # If jwst datamodels are passed, first get the filenames, then sort.
+        files_unsorted = []
+        for file in datafiles:
+            files_unsorted.append(file.meta.filename)
+        sort_inds = np.argsort(files_unsorted)
+        files_sorted = datafiles[sort_inds]
+
+    return files_sorted
 
 
 def soss_stability(cube, nsteps=501, axis='x', nthreads=4,

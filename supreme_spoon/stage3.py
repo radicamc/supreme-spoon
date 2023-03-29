@@ -97,7 +97,7 @@ class Extract1DStep:
 
         self.tag = 'extract1dstep_{}.fits'.format(extract_method)
         self.output_dir = output_dir
-        self.datafiles = np.atleast_1d(input_data)
+        self.datafiles = utils.sort_datamodels(input_data)
         self.fileroots = utils.get_filename_root(self.datafiles)
         self.extract_method = extract_method
         self.scaled_deep = deepframe[None, :, :] * smoothed_wlc[:, None, None]

@@ -108,7 +108,7 @@ class BackgroundStep:
         self.tag = 'backgroundstep.fits'
         self.background_model = background_model
         self.output_dir = output_dir
-        self.datafiles = np.atleast_1d(input_data)
+        self.datafiles = utils.sort_datamodels(input_data)
         self.fileroots = utils.get_filename_root(self.datafiles)
         self.fileroot_noseg = utils.get_filename_root_noseg(self.fileroots)
 
@@ -203,7 +203,7 @@ class BadPixStep:
         self.smoothed_wlc = smoothed_wlc
         self.baseline_ints = baseline_ints
         self.occultation_type = occultation_type
-        self.datafiles = np.atleast_1d(input_data)
+        self.datafiles = utils.sort_datamodels(input_data)
         self.fileroots = utils.get_filename_root(self.datafiles)
         self.fileroot_noseg = utils.get_filename_root_noseg(self.fileroots)
 
@@ -255,7 +255,7 @@ class TracingStep:
 
         self.output_dir = output_dir
         self.deepframe = deepframe
-        self.datafiles = np.atleast_1d(input_data)
+        self.datafiles = utils.sort_datamodels(input_data)
         self.fileroots = utils.get_filename_root(self.datafiles)
         self.fileroot_noseg = utils.get_filename_root_noseg(self.fileroots)
 
@@ -301,7 +301,7 @@ class LightCurveEstimateStep:
         self.output_dir = output_dir
         self.baseline_ints = baseline_ints
         self.occultation_type = occultation_type
-        self.datafiles = np.atleast_1d(input_data)
+        self.datafiles = utils.sort_datamodels(input_data)
         self.fileroots = utils.get_filename_root(self.datafiles)
         self.fileroot_noseg = utils.get_filename_root_noseg(self.fileroots)
 

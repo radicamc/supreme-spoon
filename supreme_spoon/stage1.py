@@ -34,7 +34,7 @@ class GroupScaleStep:
 
         self.tag = 'groupscalestep.fits'
         self.output_dir = output_dir
-        self.datafiles = np.atleast_1d(input_data)
+        self.datafiles = utils.sort_datamodels(input_data)
         self.fileroots = utils.get_filename_root(self.datafiles)
 
     def run(self, save_results=True, force_redo=False, **kwargs):
@@ -71,7 +71,7 @@ class DQInitStep:
 
         self.tag = 'dqinitstep.fits'
         self.output_dir = output_dir
-        self.datafiles = np.atleast_1d(input_data)
+        self.datafiles = utils.sort_datamodels(input_data)
         self.fileroots = utils.get_filename_root(self.datafiles)
 
     def run(self, save_results=True, force_redo=False, **kwargs):
@@ -107,7 +107,7 @@ class SaturationStep:
 
         self.tag = 'saturationstep.fits'
         self.output_dir = output_dir
-        self.datafiles = np.atleast_1d(input_data)
+        self.datafiles = utils.sort_datamodels(input_data)
         self.fileroots = utils.get_filename_root(self.datafiles)
 
     def run(self, save_results=True, force_redo=False, **kwargs):
@@ -143,7 +143,7 @@ class SuperBiasStep:
 
         self.tag = 'superbiasstep.fits'
         self.output_dir = output_dir
-        self.datafiles = np.atleast_1d(input_data)
+        self.datafiles = utils.sort_datamodels(input_data)
         self.fileroots = utils.get_filename_root(self.datafiles)
 
     def run(self, save_results=True, force_redo=False, **kwargs):
@@ -180,7 +180,7 @@ class RefPixStep:
 
         self.tag = 'refpixstep.fits'
         self.output_dir = output_dir
-        self.datafiles = np.atleast_1d(input_data)
+        self.datafiles = utils.sort_datamodels(input_data)
         self.fileroots = utils.get_filename_root(self.datafiles)
 
     def run(self, save_results=True, force_redo=False, **kwargs):
@@ -224,7 +224,7 @@ class OneOverFStep:
         self.outlier_maps = outlier_maps
         self.background = background
         self.occultation_type = occultation_type
-        self.datafiles = np.atleast_1d(input_data)
+        self.datafiles = utils.sort_datamodels(input_data)
         self.fileroots = utils.get_filename_root(self.datafiles)
 
     def run(self, even_odd_rows=True, save_results=True, force_redo=False):
@@ -272,7 +272,7 @@ class LinearityStep:
 
         self.tag = 'linearitystep.fits'
         self.output_dir = output_dir
-        self.datafiles = np.atleast_1d(input_data)
+        self.datafiles = utils.sort_datamodels(input_data)
         self.fileroots = utils.get_filename_root(self.datafiles)
 
     def run(self, save_results=True, force_redo=False, **kwargs):
@@ -315,7 +315,7 @@ class JumpStep:
 
         self.tag = 'jump.fits'
         self.output_dir = output_dir
-        self.datafiles = np.atleast_1d(input_data)
+        self.datafiles = utils.sort_datamodels(input_data)
         self.fileroots = utils.get_filename_root(self.datafiles)
 
     def run(self, save_results=True, force_redo=False, rejection_threshold=5,
@@ -380,7 +380,7 @@ class RampFitStep:
 
         self.tag = 'rampfitstep.fits'
         self.output_dir = output_dir
-        self.datafiles = np.atleast_1d(input_data)
+        self.datafiles = utils.sort_datamodels(input_data)
         self.fileroots = utils.get_filename_root(self.datafiles)
 
     def run(self, save_results=True, force_redo=False, **kwargs):
@@ -424,7 +424,7 @@ class GainScaleStep:
 
         self.tag = 'gainscalestep.fits'
         self.output_dir = output_dir
-        self.datafiles = np.atleast_1d(input_data)
+        self.datafiles = utils.sort_datamodels(input_data)
         self.fileroots = utils.get_filename_root(self.datafiles)
 
     def run(self, save_results=True, force_redo=False, **kwargs):
