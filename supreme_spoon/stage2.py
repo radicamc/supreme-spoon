@@ -366,7 +366,6 @@ def backgroundstep(datafiles, background_model, output_dir='./',
         "Post-step" scaling value. scale1 must also be passed if this
         parameter is not None.
 
-
     Returns
     -------
     results : array-like[CubeModel]

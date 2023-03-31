@@ -12,6 +12,7 @@ from astropy.io import fits
 import bottleneck as bn
 import glob
 import numpy as np
+import os
 from scipy.ndimage import median_filter
 from tqdm import tqdm
 import warnings
@@ -28,7 +29,7 @@ class GroupScaleStep:
     """Wrapper around default calwebb_detector1 Group Scale Correction step.
     """
 
-    def __init__(self, input_data, output_dir='./'):
+    def __init__(self, input_data, output_dir):
         """Step initializer.
         """
 
@@ -65,7 +66,7 @@ class DQInitStep:
     step.
     """
 
-    def __init__(self, input_data, output_dir='./'):
+    def __init__(self, input_data, output_dir):
         """Step initializer.
         """
 
@@ -101,7 +102,7 @@ class SaturationStep:
     """Wrapper around default calwebb_detector1 Saturation Detection step.
     """
 
-    def __init__(self, input_data, output_dir='./'):
+    def __init__(self, input_data, output_dir):
         """Step initializer.
         """
 
@@ -137,7 +138,7 @@ class SuperBiasStep:
     """Wrapper around default calwebb_detector1 Super Bias Subtraction step.
     """
 
-    def __init__(self, input_data, output_dir='./'):
+    def __init__(self, input_data, output_dir):
         """Step initializer.
         """
 
@@ -174,7 +175,7 @@ class RefPixStep:
     step.
     """
 
-    def __init__(self, input_data, output_dir='./'):
+    def __init__(self, input_data, output_dir):
         """Step initializer.
         """
 
@@ -210,7 +211,7 @@ class OneOverFStep:
     """Wrapper around custom 1/f Correction Step.
     """
 
-    def __init__(self, input_data, baseline_ints, output_dir='./',
+    def __init__(self, input_data, baseline_ints, output_dir,
                  smoothed_wlc=None, outlier_maps=None, trace_mask=None,
                  background=None, occultation_type='transit'):
         """Step initializer.
@@ -266,7 +267,7 @@ class LinearityStep:
     """Wrapper around default calwebb_detector1 Linearity Correction step.
     """
 
-    def __init__(self, input_data, output_dir='./'):
+    def __init__(self, input_data, output_dir):
         """Step initializer.
         """
 
@@ -294,6 +295,7 @@ class LinearityStep:
                 res = step.call(segment, output_dir=self.output_dir,
                                 save_results=save_results, **kwargs)
                 # Hack to remove oneoverfstep tag from file name.
+                # TODO: Need to find a better way to handle this.
                 try:
                     res = utils.fix_filenames(res, '_oneoverfstep_',
                                               self.output_dir)[0]
@@ -309,7 +311,7 @@ class JumpStep:
     """Wrapper around default calwebb_detector1 Jump Detection step.
     """
 
-    def __init__(self, input_data, output_dir='./'):
+    def __init__(self, input_data, output_dir):
         """Step initializer.
         """
 
@@ -375,7 +377,7 @@ class RampFitStep:
     """Wrapper around default calwebb_detector1 Ramp Fit step.
     """
 
-    def __init__(self, input_data, output_dir='./'):
+    def __init__(self, input_data, output_dir):
         """Step initializer.
         """
 
@@ -405,9 +407,15 @@ class RampFitStep:
                                 maximum_cores='quarter', **kwargs)[1]
                 if save_results is True:
                     # Store flags for use in 1/f correction.
-                    hdu = fits.PrimaryHDU(res.dq)
-                    outfile = self.output_dir + self.fileroots[i] + 'dqpixelflags.fits'
+                    flags = res.dq
+                    flags[flags != 0] = 1  # Convert to binary mask.
+                    hdu = fits.PrimaryHDU(flags)
+                    outfile = self.output_dir + self.fileroots[i] + 'pixelflags.fits'
                     hdu.writeto(outfile, overwrite=True)
+                    # Remove rate file because we don't need it and I don't
+                    # like having extra files.
+                    rate = res.meta.filename.replace('_1_ramp', '_0_ramp')
+                    os.remove(self.output_dir + rate)
                     # Hack to remove _1_ tag from file name.
                     res = utils.fix_filenames(res, '_1_', self.output_dir)[0]
             results.append(res)
@@ -419,7 +427,7 @@ class GainScaleStep:
     """Wrapper around default calwebb_detector1 Gain Scale Correction step.
     """
 
-    def __init__(self, input_data, output_dir='./'):
+    def __init__(self, input_data, output_dir):
         """Step initializer.
         """
 
@@ -459,7 +467,7 @@ class GainScaleStep:
 
 
 def oneoverfstep(datafiles, baseline_ints, even_odd_rows=True,
-                 background=None, smoothed_wlc=None, output_dir='./',
+                 background=None, smoothed_wlc=None, output_dir=None,
                  save_results=True, outlier_maps=None, trace_mask=None,
                  fileroots=None, occultation_type='transit'):
     """Custom 1/f correction routine to be applied at the group level. A
@@ -472,7 +480,7 @@ def oneoverfstep(datafiles, baseline_ints, even_odd_rows=True,
     Parameters
     ----------
     datafiles : array-like[str], array-like[RampModel], array-like[CubeModel]
-        List of paths to data files, or RampModels themselves for each segment
+        List of paths to data files, or datamodels themselves for each segment
         of the TSO. Should be 4D ramps, but 3D rate files can also be accepted.
     baseline_ints : array-like[int]
         Integration numbers of ingress and egress.
@@ -482,8 +490,8 @@ def oneoverfstep(datafiles, baseline_ints, even_odd_rows=True,
         Model of background flux.
     smoothed_wlc : array-like[float], None
         Estimate of the normalized light curve.
-    output_dir : str
-        Directory to which to save results.
+    output_dir : str, None
+        Directory to which to save results. Only necessary if saving results.
     save_results : bool
         If True, save results to disk.
     outlier_maps : array-like[str], None
@@ -493,20 +501,23 @@ def oneoverfstep(datafiles, baseline_ints, even_odd_rows=True,
         Path to file containing a trace mask. Should be 3D (norder, dimy,
         dimx), or 2D (dimy, dimx).
     fileroots : array-like[str], None
-        Root names for output files.
+        Root names for output files. Only necessary if saving results.
     occultation_type : str
         Type of occultation, either 'transit' or 'eclipse'.
 
     Returns
     -------
-    corrected_rampmodels : array-like
+    corrected_rampmodels : array-like[CubeModel]
         RampModels for each segment, corrected for 1/f noise.
     """
 
     fancyprint('Starting 1/f correction step.')
 
-    # Output directory formatting.
-    if output_dir is not None:
+    # If saving results, ensure output directory and fileroots are provided.
+    if save_results is True:
+        assert output_dir is not None
+        assert fileroots is not None
+        # Output directory formatting.
         if output_dir[-1] != '/':
             output_dir += '/'
 
@@ -525,6 +536,10 @@ def oneoverfstep(datafiles, baseline_ints, even_odd_rows=True,
     # Load in datamodels from all segments.
     for i, file in enumerate(datafiles):
         currentfile = utils.open_filetype(file)
+        # FULL frame uses multiple amplifiers and probably has to be
+        # treated differently. Break if we encounted a FULL frame exposure.
+        if currentfile.meta.subarray.name == 'FULL':
+            raise NotImplementedError
         data.append(currentfile)
         # To create the deepstack, join all segments together.
         if i == 0:
@@ -554,7 +569,7 @@ def oneoverfstep(datafiles, baseline_ints, even_odd_rows=True,
     # Background must be subtracted to accurately subtract off the target
     # trace and isolate 1/f noise. However, the background flux must also be
     # corrected for non-linearity. Therefore, it should be added back after
-    # the 1/f is subtracted to be re-subtracted later.
+    # the 1/f is subtracted, in order to be re-subtracted later.
     if background is not None:
         if isinstance(background, str):
             background = np.load(background)
@@ -601,7 +616,7 @@ def oneoverfstep(datafiles, baseline_ints, even_odd_rows=True,
                       'Ignoring the trace mask.'.format(type(trace_mask))
                 warnings.warn(msg)
                 tracemask = np.zeros((3, dimy, dimx))
-        # Trace mask may be order specific, or all order combined. Collapse
+        # Trace mask may be order specific, or all orders combined. Collapse
         # into a combined mask.
         if np.ndim(tracemask) == 3:
             tracemask = tracemask[0].astype(bool) | tracemask[1].astype(bool)\
@@ -626,20 +641,14 @@ def oneoverfstep(datafiles, baseline_ints, even_odd_rows=True,
             ii = current_int + i
             # Create the difference image.
             sub = datamodel.data[i] - deepstack * smoothed_wlc[ii]
-            # Since the variable upon which 1/f noise depends is time, treat
-            # each group individually.
             # Apply the outlier mask.
             sub *= outliers[i, :, :]
-            # FULL frame uses multiple amplifiers and probably has to be
-            # treated differently.
-            if datamodel.meta.subarray.name == 'FULL':
-                raise NotImplementedError
             with warnings.catch_warnings():
                 warnings.simplefilter('ignore', category=RuntimeWarning)
                 if even_odd_rows is True:
-                    # Calculate 1/f scaling seperately for even and odd
-                    # rows. This should be taken care of by the RefPixStep,
-                    # but it doesn't hurt to do it again.
+                    # Calculate 1/f scaling seperately for even and odd rows.
+                    # This *should* be taken care of by the RefPixStep, but it
+                    # doesn't hurt to do it again.
                     dc = np.zeros_like(sub)
                     # For group-level corrections.
                     if np.ndim(datamodel.data == 4):
@@ -661,7 +670,7 @@ def oneoverfstep(datafiles, baseline_ints, even_odd_rows=True,
             # Make sure no NaNs are in the DC map
             dc = np.where(np.isfinite(dc), dc, 0)
             corr_data[i] -= dc
-        current_int += nint
+        current_int += nint  # Increment the total integration counter.
 
         # Add back the zodi background.
         if background is not None:
@@ -684,7 +693,7 @@ def oneoverfstep(datafiles, baseline_ints, even_odd_rows=True,
 
 
 def two_group_jumpstep(datafiles, window=5, thresh=10, fileroots=None,
-                       save_results=True, output_dir='./'):
+                       save_results=True, output_dir=None):
     """ Jump detection step for ngroup=2 observations. The standard JWST
     pipeline JumpStep fails for these observations as deviations in a linear
     ramp cannot be identified with only 2 groups. This algorithm is based off
@@ -714,6 +723,14 @@ def two_group_jumpstep(datafiles, window=5, thresh=10, fileroots=None,
     """
 
     fancyprint('Starting two-group jump detection step.')
+
+    # If saving results, ensure output directory and fileroots are provided.
+    if save_results is True:
+        assert output_dir is not None
+        assert fileroots is not None
+        # Output directory formatting.
+        if output_dir[-1] != '/':
+            output_dir += '/'
 
     datafiles = np.atleast_1d(datafiles)
     opened_datafiles = []

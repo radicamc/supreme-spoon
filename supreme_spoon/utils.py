@@ -292,7 +292,7 @@ def get_filename_root(datafiles):
 
 
 def get_filename_root_noseg(fileroots):
-    """Get the file name root for a SOSS TSO woth noo segment information.
+    """Get the file name root for a SOSS TSO with no segment information.
 
     Parameters
     ----------
