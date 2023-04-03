@@ -29,9 +29,10 @@ stage1_skip : None
 stage1_kwargs : {}
 
 # ===== Stage 2 Input Parameters =====
-# Timescale on which to smooth lightcurve estimate  (optional).
-smoothing_scale : None
+# If True, create a mask of the target trace orders.
+generate_tracemask : True
 # Size of box to mask for 1/f correction. Should be wider than extraction box.
+# Only necessary if generate_tracemask is True.
 mask_width : 45
 # If True, calculate the stability of the SOSS trace over the course of the
 # TSO. These parameters can be useful for lightcurve detrending.
@@ -40,6 +41,10 @@ calculate_stability : True
 stability_params : 'ALL'
 # Number of CPUs for stability parameter calculation multiprocessing.
 nthreads : 4
+# If True, generate a smoothed estimate of the order 1 white light curve.
+generate_lc : True
+# Timescale on which to smooth lightcurve estimate (optional).
+smoothing_scale : None
 # List of Stage 2 steps to skip, if any.
 stage2_skip : None
 # DMS Stage 2 kwargs.

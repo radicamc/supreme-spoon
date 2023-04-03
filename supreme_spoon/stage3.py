@@ -526,7 +526,7 @@ def specprofilestep(datafiles, save_results=True, empirical=True,
     return spat_prof, filename
 
 
-def run_stage3(results, deepframe, baseline_ints, smoothed_wlc,
+def run_stage3(results, baseline_ints, deepframe, smoothed_wlc=None,
                save_results=True, root_dir='./', force_redo=False,
                extract_method='box', specprofile=None, soss_estimate=None,
                soss_width=25, output_tag='', use_applesoss=True,
@@ -542,8 +542,9 @@ def run_stage3(results, deepframe, baseline_ints, smoothed_wlc,
         Median out-of-transit stack.
     baseline_ints : array-like[int]
         Integration number of ingress and egress.
-    smoothed_wlc : array-like[float]
-        Estimate of the normalized light curve.
+    smoothed_wlc : array-like[float], None
+        Estimate of the normalized light curve. If None is passed, one will be
+        generated.
     save_results : bool
         If True, save the results of each step to file.
     root_dir : str

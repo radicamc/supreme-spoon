@@ -71,7 +71,7 @@ def do_replacement(frame, badpix_map, dq=None, box_size=5):
     return frame_out, dq_out
 
 
-def fancyprint(message, type='INFO'):
+def fancyprint(message, msg_type='INFO'):
     """Fancy printing statement mimicking logging. Basically a hack to get
     around complications with the STScI pipeline logging.
 
@@ -79,10 +79,12 @@ def fancyprint(message, type='INFO'):
     ----------
     message : str
         Message to print.
+    msg_type : str
+        Type of message. Mirrors the jwst pipeline logging.
     """
 
     time = datetime.utcnow().isoformat(sep=' ', timespec='milliseconds')
-    print('{} - supreme-SPOON - {} - {}'.format(time, type, message))
+    print('{} - supreme-SPOON - {} - {}'.format(time, msg_type, message))
 
 
 def fix_filenames(old_files, to_remove, outdir, to_add=''):
@@ -573,76 +575,6 @@ def open_filetype(datafile):
         raise ValueError('Invalid filetype: {}'.format(type(datafile)))
 
     return data
-
-
-def open_stage2_secondary_outputs(deep_file, centroid_file, smoothed_wlc_file,
-                                  output_tag='', root_dir='./'):
-    """Utlity to locate and read in secondary outputs from stage 2.
-
-    Parameters
-    ----------
-    deep_file : str, None
-        Path to deep frame file.
-    centroid_file : str, None
-        Path to centroids file.
-    smoothed_wlc_file : str, None
-        Path to smoothed wlc scaling file.
-    root_dir : str
-        Root directory.
-    output_tag : str
-        Tag given to pipeline_outputs_directory.
-
-    Returns
-    -------
-    deepframe : array-like[float]
-        Deep frame.
-    centroids : array-like[float]
-        Centroids foor all orders.
-    smoothed_wlc : array-like[float]
-        Smoothed wlc scaling.
-    """
-
-    input_dir = root_dir + 'pipeline_outputs_directory{}/Stage2/'.format(output_tag)
-    # Locate and read in the deepframe.
-    if deep_file is None:
-        deep_file = glob.glob(input_dir + '*deepframe*')
-        if len(deep_file) > 1:
-            msg = 'Multiple deep frame files detected.'
-            raise ValueError(msg)
-        elif len(deep_file) == 0:
-            msg = 'No deep frame file found.'
-            raise FileNotFoundError(msg)
-        else:
-            deep_file = deep_file[0]
-    deepframe = fits.getdata(deep_file)
-
-    # Locate and read in the centroids.
-    if centroid_file is None:
-        centroid_file = glob.glob(input_dir + '*centroids*')
-        if len(centroid_file) > 1:
-            msg = 'Multiple centroid files detected.'
-            raise ValueError(msg)
-        elif len(centroid_file) == 0:
-            msg = 'No centroid file found.'
-            raise FileNotFoundError(msg)
-        else:
-            centroid_file = centroid_file[0]
-    centroids = pd.read_csv(centroid_file, comment='#')
-
-    # Locate and read in the smoothed wlc.
-    if smoothed_wlc_file is None:
-        smoothed_wlc_file = glob.glob(input_dir + '*lcestimate*')
-        if len(smoothed_wlc_file) > 1:
-            msg = 'Multiple WLC scaling files detected.'
-            raise ValueError(msg)
-        elif len(smoothed_wlc_file) == 0:
-            msg = 'No WLC scaling file found.'
-            raise FileNotFoundError(msg)
-        else:
-            smoothed_wlc_file = smoothed_wlc_file[0]
-    smoothed_wlc = np.load(smoothed_wlc_file)
-
-    return deepframe, centroids, smoothed_wlc
 
 
 def outlier_resistant_variance(data):
@@ -1152,7 +1084,7 @@ def soss_stability_fwhm_run(cube, ycens_o1, seg_no):
     return fwhm
 
 
-def unpack_input_directory(indir, filetag='', exposure_type='CLEAR'):
+def unpack_input_dir(indir, filetag='', exposure_type='CLEAR'):
     """Get all segment files of a specified exposure type from an input data
      directory.
 
