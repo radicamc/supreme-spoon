@@ -280,6 +280,19 @@ class TracingStep:
             tracemask, smoothed_lc = None, None
         # If no output files are detected, run the step.
         else:
+            # Attempt to find pixel mask files if none were passed.
+            if pixel_flags is None and generate_tracemask is True:
+                new_pixel_flags = []
+                s1_dir = self.output_dir.replace('Stage2', 'Stage1')
+                stage1_files = glob.glob(s1_dir + '*')
+                for root in self.fileroots:
+                    expected_file = s1_dir + root + 'pixelflags.fits'
+                    if expected_file in stage1_files:
+                        new_pixel_flags.append(expected_file)
+                # If some files were found, pass them to the function call.
+                if len(new_pixel_flags) > 0:
+                    pixel_flags = new_pixel_flags
+
             step_results = tracingstep(self.datafiles, self.deepframe,
                                        calculate_stability=calculate_stability,
                                        stability_params=stability_params,
@@ -752,6 +765,9 @@ def tracingstep(datafiles, deepframe=None, calculate_stability=True,
                 # Ensure there is one pixel flag file per data file
                 assert len(pixel_flags) == len(datafiles)
                 # Combine tracemask with existing flags and overwrite old file.
+                parts = pixel_flags[0].split('seg')
+                outfile = parts[0] + 'seg' + 'XXX' + parts[1][3:]
+                fancyprint('Trace mask added to {}'.format(outfile))
                 for flag_file in pixel_flags:
                     old_flags = fits.getdata(flag_file)
                     new_flags = old_flags.astype(bool) | tracemask
