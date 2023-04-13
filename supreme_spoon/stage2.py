@@ -56,6 +56,13 @@ class AssignWCSStep:
                 step = calwebb_spec2.assign_wcs_step.AssignWcsStep()
                 res = step.call(segment, output_dir=self.output_dir,
                                 save_results=save_results, **kwargs)
+                # Verify that filename is correct.
+                if save_results is True:
+                    current_name = self.output_dir + res.meta.filename
+                    if expected_file != current_name:
+                        res.close()
+                        os.rename(current_name, expected_file)
+                        res = datamodels.open(expected_file)
             results.append(res)
 
         return results
@@ -92,6 +99,13 @@ class SourceTypeStep:
                 step = calwebb_spec2.srctype_step.SourceTypeStep()
                 res = step.call(segment, output_dir=self.output_dir,
                                 save_results=save_results, **kwargs)
+                # Verify that filename is correct.
+                if save_results is True:
+                    current_name = self.output_dir + res.meta.filename
+                    if expected_file != current_name:
+                        res.close()
+                        os.rename(current_name, expected_file)
+                        res = datamodels.open(expected_file)
             results.append(res)
 
         return results
@@ -184,6 +198,13 @@ class FlatFieldStep:
                 step = calwebb_spec2.flat_field_step.FlatFieldStep()
                 res = step.call(segment, output_dir=self.output_dir,
                                 save_results=save_results, **kwargs)
+                # Verify that filename is correct.
+                if save_results is True:
+                    current_name = self.output_dir + res.meta.filename
+                    if expected_file != current_name:
+                        res.close()
+                        os.rename(current_name, expected_file)
+                        res = datamodels.open(expected_file)
             results.append(res)
 
         return results

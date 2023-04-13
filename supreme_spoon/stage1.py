@@ -56,6 +56,13 @@ class GroupScaleStep:
                 step = calwebb_detector1.group_scale_step.GroupScaleStep()
                 res = step.call(segment, output_dir=self.output_dir,
                                 save_results=save_results, **kwargs)
+                # Verify that filename is correct.
+                if save_results is True:
+                    current_name = self.output_dir + res.meta.filename
+                    if expected_file != current_name:
+                        res.close()
+                        os.rename(current_name, expected_file)
+                        res = datamodels.open(expected_file)
             results.append(res)
 
         return results
@@ -93,6 +100,13 @@ class DQInitStep:
                 step = calwebb_detector1.dq_init_step.DQInitStep()
                 res = step.call(segment, output_dir=self.output_dir,
                                 save_results=save_results, **kwargs)
+                # Verify that filename is correct.
+                if save_results is True:
+                    current_name = self.output_dir + res.meta.filename
+                    if expected_file != current_name:
+                        res.close()
+                        os.rename(current_name, expected_file)
+                        res = datamodels.open(expected_file)
             results.append(res)
 
         return results
@@ -129,6 +143,13 @@ class SaturationStep:
                 step = calwebb_detector1.saturation_step.SaturationStep()
                 res = step.call(segment, output_dir=self.output_dir,
                                 save_results=save_results, **kwargs)
+                # Verify that filename is correct.
+                if save_results is True:
+                    current_name = self.output_dir + res.meta.filename
+                    if expected_file != current_name:
+                        res.close()
+                        os.rename(current_name, expected_file)
+                        res = datamodels.open(expected_file)
             results.append(res)
 
         return results
@@ -165,6 +186,13 @@ class SuperBiasStep:
                 step = calwebb_detector1.superbias_step.SuperBiasStep()
                 res = step.call(segment, output_dir=self.output_dir,
                                 save_results=save_results, **kwargs)
+                # Verify that filename is correct.
+                if save_results is True:
+                    current_name = self.output_dir + res.meta.filename
+                    if expected_file != current_name:
+                        res.close()
+                        os.rename(current_name, expected_file)
+                        res = datamodels.open(expected_file)
             results.append(res)
 
         return results
@@ -202,6 +230,13 @@ class RefPixStep:
                 step = calwebb_detector1.refpix_step.RefPixStep()
                 res = step.call(segment, output_dir=self.output_dir,
                                 save_results=save_results, **kwargs)
+                # Verify that filename is correct.
+                if save_results is True:
+                    current_name = self.output_dir + res.meta.filename
+                    if expected_file != current_name:
+                        res.close()
+                        os.rename(current_name, expected_file)
+                        res = datamodels.open(expected_file)
             results.append(res)
 
         return results
@@ -292,14 +327,13 @@ class LinearityStep:
                 step = calwebb_detector1.linearity_step.LinearityStep()
                 res = step.call(segment, output_dir=self.output_dir,
                                 save_results=save_results, **kwargs)
-                # Hack to remove oneoverfstep tag from file name.
-                # TODO: Need to find a better way to handle this.
-                try:
-                    res = utils.fix_filenames(res, '_oneoverfstep_',
-                                              self.output_dir)[0]
-                    res = datamodels.open(res)
-                except IndexError:
-                    pass
+                # Verify that filename is correct.
+                if save_results is True:
+                    current_name = self.output_dir + res.meta.filename
+                    if expected_file != current_name:
+                        res.close()
+                        os.rename(current_name, expected_file)
+                        res = datamodels.open(expected_file)
             results.append(res)
 
         return results
@@ -347,6 +381,13 @@ class JumpStep:
                                     save_results=save_results,
                                     rejection_threshold=rejection_threshold,
                                     maximum_cores='quarter', **kwargs)
+                    # Verify that filename is correct.
+                    if save_results is True:
+                        current_name = self.output_dir + res.meta.filename
+                        if expected_file != current_name:
+                            res.close()
+                            os.rename(current_name, expected_file)
+                            res = datamodels.open(expected_file)
                     results.append(res)
                 # If ngroup = 2, use a custom temporal domain jump flagging
                 # algorithm, which is applied after ramp fitting.
@@ -414,8 +455,12 @@ class RampFitStep:
                     # like having extra files.
                     rate = res.meta.filename.replace('_1_ramp', '_0_ramp')
                     os.remove(self.output_dir + rate)
-                    # Hack to remove _1_ tag from file name.
-                    res = utils.fix_filenames(res, '_1_', self.output_dir)[0]
+                    # Verify that filename is correct.
+                    current_name = self.output_dir + res.meta.filename
+                    if expected_file != current_name:
+                        res.close()
+                        os.rename(current_name, expected_file)
+                        res = datamodels.open(expected_file)
             results.append(res)
 
         return results
@@ -452,13 +497,13 @@ class GainScaleStep:
                 step = calwebb_detector1.gain_scale_step.GainScaleStep()
                 res = step.call(segment, output_dir=self.output_dir,
                                 save_results=save_results, **kwargs)
-                # Hack to remove jump tag from file name.
-                try:
-                    res = utils.fix_filenames(res, '_jump_',
-                                              self.output_dir)[0]
-                    res = datamodels.open(res)
-                except IndexError:
-                    pass
+                # Verify that filename is correct.
+                if save_results is True:
+                    current_name = self.output_dir + res.meta.filename
+                    if expected_file != current_name:
+                        res.close()
+                        os.rename(current_name, expected_file)
+                        res = datamodels.open(expected_file)
             results.append(res)
 
         return results
