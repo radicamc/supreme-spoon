@@ -193,6 +193,57 @@ def make_lightcurve_plot(t, data, model, scatter, errors, nfit, outpdf=None,
         plt.show()
 
 
+def make_linearity_plot(cube, old_cube):
+    """Plot group differences before and after linearity correction.
+    """
+
+    nint, ngroup, dimy, dimx = np.shape(cube)
+    # Get the brightest pixels in the trace.
+    stack = bn.nanmedian(cube[np.random.randint(0, nint, 25), -1], axis=0)
+    ii = np.where((stack >= np.nanpercentile(stack, 95)) &
+                  (stack < np.nanpercentile(stack, 99)))
+
+    # Compute group differences in these pixels.
+    new_diffs = np.zeros((ngroup-1, len(ii[0])))
+    old_diffs = np.zeros((ngroup-1, len(ii[0])))
+    for it in tqdm(range(len(ii[0]))):
+        # Choose a random integration.
+        i = np.random.randint(0, nint)
+        # Calculate the group differences.
+        for g in range(ngroup-1, 0, -1):
+            new_diffs[ngroup-1-g, it] = cube[i, g][ii][it] - cube[i, g-1][ii][it]
+            old_diffs[ngroup-1-g, it] = old_cube[i, g][ii][it] - old_cube[i, g-1][ii][it]
+
+    new_med = np.mean(new_diffs, axis=1)
+    old_med = np.mean(old_diffs, axis=1)
+
+    # Plot up mean group differences before and after linearity correction.
+    plt.figure(figsize=(5, 3))
+    for i in range(100):
+        plt.plot(np.arange(len(new_med)),
+                 new_diffs[:, i] - np.mean(new_diffs[:, i]),
+                 c='blue', alpha=0.05)
+        plt.plot(np.arange(len(new_med)),
+                 old_diffs[:, i] - np.mean(old_diffs[:, i]),
+                 c='red', alpha=0.05)
+    plt.plot(np.arange(len(new_med)), new_med - np.mean(new_med),
+             label='After Correction', c='blue', lw=2)
+    plt.plot(np.arange(len(new_med)), old_med - np.mean(old_med),
+             label='Before Correction', c='red', lw=2)
+    plt.axhline(0, ls='--', c='black', zorder=0)
+    plt.xlabel(r'Groups', fontsize=12)
+    locs = np.arange(ngroup-1).astype(int)
+    labels = []
+    for i in range(ngroup-1):
+        labels.append('{0}-{1}'.format(i+2, i+1))
+    plt.xticks(locs, labels, rotation=45)
+    plt.ylabel('Differences [DN]', fontsize=12)
+    plt.ylim(1.1*np.min(old_med - np.mean(old_med)),
+             1.1*np.max(old_med - np.mean(old_med)))
+    plt.legend()
+    plt.show()
+
+
 def make_oneoverf_psd(cube, old_cube, timeseries, baseline_ints, nsample=100,
                       mask_cube=None, occultation_type='transit',
                       tframe=5.494, tpix=1e-5, tgap=1.2e-4):
