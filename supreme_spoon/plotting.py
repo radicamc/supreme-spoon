@@ -8,12 +8,17 @@ Created on Wed Jul 20 14:02 2022
 Plotting routines.
 """
 
+from astropy.timeseries import LombScargle
+import bottleneck as bn
 import corner
 import matplotlib.backends.backend_pdf
 from matplotlib.gridspec import GridSpec
 import matplotlib.pyplot as plt
 import numpy as np
+from tqdm import tqdm
 import warnings
+
+from supreme_spoon import utils
 
 
 def make_corner_plot(fit_params, results, posterior_names=None, outpdf=None,
@@ -186,6 +191,79 @@ def make_lightcurve_plot(t, data, model, scatter, errors, nfit, outpdf=None,
         plt.close(fig)
     else:
         plt.show()
+
+
+def make_oneoverf_psd(cube, old_cube, timeseries, baseline_ints, nsample=100,
+                      mask_cube=None, occultation_type='transit',
+                      tframe=5.494, tpix=1e-5, tgap=1.2e-4):
+    """Make a PSD plot to see PSD of background before and after 1/f removal.
+    """
+
+    nints, ngroups, dimy, dimx = np.shape(cube)
+    baseline_ints = utils.format_out_frames(baseline_ints, occultation_type)
+    old_deep = bn.nanmedian(old_cube[baseline_ints], axis=0)
+    deep = bn.nanmedian(cube[baseline_ints], axis=0)
+
+    # Generate array of timestamps for each pixel
+    pixel_ts = []
+    time1 = 0
+    for p in range(dimy * dimx):
+        ti = time1 + tpix
+        # If column is done, add gap time.
+        if p % 256 == 0 and p != 0:
+            ti += tgap
+        pixel_ts.append(ti)
+        time1 = ti
+
+    # Generate psd frequency array
+    freqs = np.logspace(np.log10(1 / tframe), np.log10(1 / tpix), 100)
+    pwr_old = np.zeros((nsample, len(freqs)))
+    pwr = np.zeros((nsample, len(freqs)))
+    # Select nsample random frames and compare PSDs before and after 1/f
+    # removal.
+    for s in tqdm(range(nsample)):
+        # Get random groups and ints
+        i, g = np.random.randint(nints), np.random.randint(ngroups)
+        # Get difference images before and after 1/f removal.
+        diff_old = (old_cube[i, g] - old_deep[g] * timeseries[i]).flatten('F')[::-1]
+        diff = (cube[i, g] - deep[g] * timeseries[i]).flatten('F')[::-1]
+        # Mask pixels which are not part of the background
+        if mask_cube is None:
+            # If no pixel/trace mask, discount pixels above a threshold.
+            bad = np.where(np.abs(diff) > 100)
+        else:
+            # Mask flagged pixels.
+            bad = np.where(mask_cube[i, g] != 0)
+        diff, diff_old = np.delete(diff, bad), np.delete(diff_old, bad)
+        this_t = np.delete(pixel_ts, bad)
+        # Calculate PSDs
+        pwr_old[s] = LombScargle(this_t, diff_old).power(freqs, normalization='psd')
+        pwr[s] = LombScargle(this_t, diff).power(freqs, normalization='psd')
+
+    # Generate the approximate purely white noise level.
+    rndm = np.random.normal(0, np.nanstd(diff), len(diff))
+    wht = LombScargle(this_t, rndm).power(freqs, normalization='psd')
+
+    # Make the plot.
+    plt.figure(figsize=(7, 3))
+    # Individual power series.
+    for i in range(nsample):
+        plt.plot(freqs[:-1], pwr_old[i, :-1], c='salmon', alpha=0.1)
+        plt.plot(freqs[:-1], pwr[i, :-1], c='royalblue', alpha=0.1)
+    # Median trends.
+    # Aprox white noise level
+    plt.plot(freqs[:-1], np.median(pwr_old, axis=0)[:-1], c='red', lw=2,
+             label='Before Correction')
+    plt.plot(freqs[:-1], np.median(pwr, axis=0)[:-1], c='blue', lw=2,
+             label='After Correction')
+
+    plt.xscale('log')
+    plt.xlabel('Frequency [Hz]', fontsize=12)
+    plt.yscale('log')
+    plt.ylim(np.percentile(pwr, 0.1), np.max(pwr_old))
+    plt.ylabel('PSD', fontsize=12)
+    plt.legend(loc=1)
+    plt.show()
 
 
 def make_2d_lightcurve_plot(wave1, flux1, wave2=None, flux2=None, outpdf=None,
