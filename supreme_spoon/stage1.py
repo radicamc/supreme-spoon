@@ -212,8 +212,8 @@ class OneOverFStep:
     """
 
     def __init__(self, input_data, baseline_ints, output_dir,
-                 smoothed_wlc=None, outlier_maps=None, trace_mask=None,
-                 background=None, occultation_type='transit'):
+                 smoothed_wlc=None, pixel_masks=None, background=None,
+                 occultation_type='transit'):
         """Step initializer.
         """
 
@@ -221,8 +221,7 @@ class OneOverFStep:
         self.output_dir = output_dir
         self.baseline_ints = baseline_ints
         self.smoothed_wlc = smoothed_wlc
-        self.trace_mask = trace_mask
-        self.outlier_maps = outlier_maps
+        self.pixel_masks = pixel_masks
         self.background = background
         self.occultation_type = occultation_type
         self.datafiles = utils.sort_datamodels(input_data)
@@ -255,8 +254,7 @@ class OneOverFStep:
                                    smoothed_wlc=self.smoothed_wlc,
                                    output_dir=self.output_dir,
                                    save_results=save_results,
-                                   outlier_maps=self.outlier_maps,
-                                   trace_mask=self.trace_mask,
+                                   pixel_masks=self.pixel_masks,
                                    fileroots=self.fileroots,
                                    occultation_type=self.occultation_type)
 
@@ -468,8 +466,8 @@ class GainScaleStep:
 
 def oneoverfstep(datafiles, baseline_ints, even_odd_rows=True,
                  background=None, smoothed_wlc=None, output_dir=None,
-                 save_results=True, outlier_maps=None, trace_mask=None,
-                 fileroots=None, occultation_type='transit'):
+                 save_results=True, pixel_masks=None, fileroots=None,
+                 occultation_type='transit'):
     """Custom 1/f correction routine to be applied at the group level. A
     median stack is constructed using all out-of-transit integrations and
     subtracted from each individual integration. The column-wise median of
@@ -481,25 +479,22 @@ def oneoverfstep(datafiles, baseline_ints, even_odd_rows=True,
     ----------
     datafiles : array-like[str], array-like[RampModel], array-like[CubeModel]
         List of paths to data files, or datamodels themselves for each segment
-        of the TSO. Should be 4D ramps, but 3D rate files can also be accepted.
+        of the TSO. Should be 4D ramps, but 3D rate files are also accepted.
     baseline_ints : array-like[int]
         Integration numbers of ingress and egress.
     even_odd_rows : bool
         If True, calculate 1/f noise seperately for even and odd numbered rows.
     background : str, array-like[float], None
         Model of background flux.
-    smoothed_wlc : array-like[float], None
-        Estimate of the normalized light curve.
+    smoothed_wlc : array-like[float], str, None
+        Estimate of the normalized light curve, or path to file containing it.
     output_dir : str, None
         Directory to which to save results. Only necessary if saving results.
     save_results : bool
         If True, save results to disk.
-    outlier_maps : array-like[str], None
-        List of paths to outlier maps for each data segment. Can be
-        3D (nints, dimy, dimx), or 2D (dimy, dimx) files.
-    trace_mask : str, None
-        Path to file containing a trace mask. Should be 3D (norder, dimy,
-        dimx), or 2D (dimy, dimx).
+    pixel_masks : array-like[str], None
+        List of paths to maps of pixels to mask for each data segment. Can be
+        3D (nints, dimy, dimx), or 2D (dimy, dimx).
     fileroots : array-like[str], None
         Root names for output files. Only necessary if saving results.
     occultation_type : str
@@ -527,10 +522,10 @@ def oneoverfstep(datafiles, baseline_ints, even_odd_rows=True,
 
     datafiles = np.atleast_1d(datafiles)
     # If outlier maps are passed, ensure that there is one for each segment.
-    if outlier_maps is not None:
-        outlier_maps = np.atleast_1d(outlier_maps)
-        if len(outlier_maps) == 1:
-            outlier_maps = [outlier_maps[0] for d in datafiles]
+    if pixel_masks is not None:
+        pixel_masks = np.atleast_1d(pixel_masks)
+        if len(pixel_masks) == 1:
+            pixel_masks = [pixel_masks[0] for d in datafiles]
 
     data = []
     # Load in datamodels from all segments.
@@ -549,7 +544,7 @@ def oneoverfstep(datafiles, baseline_ints, even_odd_rows=True,
 
     # Generate the 3D deep stack (ngroup, dimy, dimx) using only
     # baseline integrations.
-    msg = 'Generating a deep stack for each frame using baseline' \
+    msg = 'Generating a deep stack for each group using baseline' \
           ' integrations...'
     fancyprint(msg)
     deepstack = utils.make_deepstack(cube[baseline_ints])
@@ -557,6 +552,15 @@ def oneoverfstep(datafiles, baseline_ints, even_odd_rows=True,
     # In order to subtract off the trace as completely as possible, the median
     # stack must be scaled, via the transit curve, to the flux level of each
     # integration.
+    # Try to open light curve file. If not, estimate it from data.
+    if isinstance(smoothed_wlc, str):
+        try:
+            smoothed_wlc = np.load(smoothed_wlc)
+        except (ValueError, FileNotFoundError):
+            msg = 'Light curve file cannot be opened. ' \
+                  'It will be estimated from current data.'
+            fancyprint(msg, msg_type='WARNING')
+            smoothed_wlc = None
     # If no lightcurve is provided, estimate it from the current data.
     if smoothed_wlc is None:
         postage = cube[:, -1, 20:60, 1500:1550]
@@ -578,7 +582,7 @@ def oneoverfstep(datafiles, baseline_ints, even_odd_rows=True,
     corrected_rampmodels = []
     current_int = 0
     for n, datamodel in enumerate(data):
-        fancyprint('Starting segment {} of {}.'.format(n + 1, len(data)))
+        fancyprint('Starting segment {} of {}.'.format(n+1, len(data)))
 
         # Define the readout setup - can be 4D (recommended) or 3D.
         if np.ndim(datamodel.data) == 4:
@@ -587,12 +591,12 @@ def oneoverfstep(datafiles, baseline_ints, even_odd_rows=True,
             nint, dimy, dimx = np.shape(datamodel.data)
 
         # Read in the outlier map - a (nints, dimy, dimx) 3D cube
-        if outlier_maps is None:
+        if pixel_masks is None:
             fancyprint(' No outlier maps passed, ignoring outliers.')
             outliers = np.zeros((nint, dimy, dimx))
         else:
-            fancyprint(' Using outlier map {}'.format(outlier_maps[n]))
-            outliers = fits.getdata(outlier_maps[n])
+            fancyprint(' Using outlier map {}'.format(pixel_masks[n]))
+            outliers = fits.getdata(pixel_masks[n])
             # If the outlier map is 2D (dimy, dimx) extend to int dimension.
             if np.ndim(outliers) == 2:
                 outliers = np.repeat(outliers, nint)
@@ -601,35 +605,6 @@ def oneoverfstep(datafiles, baseline_ints, even_odd_rows=True,
         # The outlier map is 0 where good and >0 otherwise. As this will be
         # applied multiplicatively, replace 0s with 1s and others with NaNs.
         outliers = np.where(outliers == 0, 1, np.nan)
-
-        # Read in the main trace mask - a (dimy, dimx) or (3, dimy, dimx)
-        # data frame.
-        if trace_mask is None:
-            fancyprint(' No trace mask passed, ignoring the trace.')
-            tracemask = np.zeros((3, dimy, dimx))
-        else:
-            fancyprint(' Using trace mask {}.'.format(trace_mask))
-            if isinstance(trace_mask, str):
-                tracemask = fits.getdata(trace_mask)
-            else:
-                msg = 'Unrecognized trace_mask file type: {}.' \
-                      'Ignoring the trace mask.'.format(type(trace_mask))
-                warnings.warn(msg)
-                tracemask = np.zeros((3, dimy, dimx))
-        # Trace mask may be order specific, or all orders combined. Collapse
-        # into a combined mask.
-        if np.ndim(tracemask) == 3:
-            tracemask = tracemask[0].astype(bool) | tracemask[1].astype(bool)\
-                        | tracemask[2].astype(bool)
-        else:
-            tracemask = tracemask
-        # Convert into a multiplicative mask of 1s and NaNs.
-        tracemask = np.where(tracemask == 0, 1, np.nan)
-        # Reshape into (nints, dimy, dimx) format.
-        tracemask = np.repeat(tracemask, nint).reshape((dimy, dimx, nint))
-        tracemask = tracemask.transpose(2, 0, 1)
-        # Combine the two masks.
-        outliers = (outliers + tracemask) // 2
 
         # Initialize output storage arrays.
         corr_data = np.copy(datamodel.data)
