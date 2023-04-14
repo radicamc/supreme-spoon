@@ -198,34 +198,30 @@ def make_linearity_plot(cube, old_cube):
     """
 
     nint, ngroup, dimy, dimx = np.shape(cube)
-    # Get the brightest pixels in the trace.
+    # Get bright pixels in the trace.
     stack = bn.nanmedian(cube[np.random.randint(0, nint, 25), -1], axis=0)
-    ii = np.where((stack >= np.nanpercentile(stack, 95)) &
+    ii = np.where((stack >= np.nanpercentile(stack, 80)) &
                   (stack < np.nanpercentile(stack, 99)))
 
     # Compute group differences in these pixels.
     new_diffs = np.zeros((ngroup-1, len(ii[0])))
     old_diffs = np.zeros((ngroup-1, len(ii[0])))
-    for it in tqdm(range(len(ii[0]))):
+    num_pix = 20000
+    if len(ii[0]) < 20000:
+        num_pix = len(ii[0])
+    for it in tqdm(range(num_pix)):
+        ypos, xpos = ii[0][it], ii[1][it]
         # Choose a random integration.
         i = np.random.randint(0, nint)
         # Calculate the group differences.
-        for g in range(ngroup-1, 0, -1):
-            new_diffs[ngroup-1-g, it] = cube[i, g][ii][it] - cube[i, g-1][ii][it]
-            old_diffs[ngroup-1-g, it] = old_cube[i, g][ii][it] - old_cube[i, g-1][ii][it]
+        new_diffs[:, it] = np.diff(cube[i, :, ypos, xpos])
+        old_diffs[:, it] = np.diff(old_cube[i, :, ypos, xpos])
 
     new_med = np.mean(new_diffs, axis=1)
     old_med = np.mean(old_diffs, axis=1)
 
     # Plot up mean group differences before and after linearity correction.
     plt.figure(figsize=(5, 3))
-    for i in range(100):
-        plt.plot(np.arange(len(new_med)),
-                 new_diffs[:, i] - np.mean(new_diffs[:, i]),
-                 c='blue', alpha=0.05)
-        plt.plot(np.arange(len(new_med)),
-                 old_diffs[:, i] - np.mean(old_diffs[:, i]),
-                 c='red', alpha=0.05)
     plt.plot(np.arange(len(new_med)), new_med - np.mean(new_med),
              label='After Correction', c='blue', lw=2)
     plt.plot(np.arange(len(new_med)), old_med - np.mean(old_med),
