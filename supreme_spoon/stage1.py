@@ -73,7 +73,7 @@ class DQInitStep:
     step.
     """
 
-    def __init__(self, input_data, output_dir):
+    def __init__(self, input_data, output_dir, deepframe=None):
         """Step initializer.
         """
 
@@ -81,9 +81,9 @@ class DQInitStep:
         self.output_dir = output_dir
         self.datafiles = utils.sort_datamodels(input_data)
         self.fileroots = utils.get_filename_root(self.datafiles)
+        self.deepframe = deepframe
 
-    def run(self, save_results=True, force_redo=False, deepframe=None,
-            **kwargs):
+    def run(self, save_results=True, force_redo=False, **kwargs):
         """Method to run the step.
         """
 
@@ -104,10 +104,10 @@ class DQInitStep:
                                 save_results=save_results, **kwargs)
                 # If a deep frame is passed, use it to search for and flag
                 # additional hot pixels not in the default map.
-                if deepframe is not None:
-                    res, hot_pix = utils.flag_hot_pixels(res,
-                                                         deepframe=deepframe,
-                                                         hot_pix=hot_pix)
+                if self.deepframe is not None:
+                    res, hot_pix = flag_hot_pixels(res,
+                                                   deepframe=self.deepframe,
+                                                   hot_pix=hot_pix)
                     # Overwite the previous edition.
                     res.save(expected_file)
                 # Verify that filename is correct.
@@ -278,7 +278,7 @@ class OneOverFStep:
         self.datafiles = utils.sort_datamodels(input_data)
         self.fileroots = utils.get_filename_root(self.datafiles)
 
-    def run(self, even_odd_rows=True, save_results=True, force_redo=False):
+    def run(self, save_results=True, force_redo=False, **kwargs):
         """Method to run the step.
         """
 
@@ -300,14 +300,14 @@ class OneOverFStep:
         else:
             results = oneoverfstep(self.datafiles,
                                    baseline_ints=self.baseline_ints,
-                                   even_odd_rows=even_odd_rows,
                                    background=self.background,
                                    smoothed_wlc=self.smoothed_wlc,
                                    output_dir=self.output_dir,
                                    save_results=save_results,
                                    pixel_masks=self.pixel_masks,
                                    fileroots=self.fileroots,
-                                   occultation_type=self.occultation_type)
+                                   occultation_type=self.occultation_type,
+                                   **kwargs)
 
         return results
 
@@ -356,7 +356,8 @@ class LinearityStep:
 
 
 class JumpStep:
-    """Wrapper around default calwebb_detector1 Jump Detection step.
+    """Wrapper around default calwebb_detector1 Jump Detection step with some
+    custom modifications.
     """
 
     def __init__(self, input_data, output_dir):
@@ -516,6 +517,179 @@ class GainScaleStep:
             results.append(res)
 
         return results
+
+
+def flag_hot_pixels(result, deepframe, box_size=10, thresh=15, hot_pix=None):
+    """Identify and flag additional hot pixels in a SOSS TSO which are not
+    already in the default pipeline flags.
+
+    Parameters
+    ----------
+    result : jwst.datamodel, str
+        Input datamodel, or path to.
+    deepframe : array-like(float), str
+        Deep stack of the time series, or path to.
+    box_size : int
+        Size of box around each pixel to consider.
+    thresh : int
+        Sigma threshhold above which a pixel will be flagged.
+    hot_pix : array-like(bool), None
+        Map of pixels to flag.
+
+    Returns
+    -------
+    result : jwst.datamodel
+        Input datamodel with newly flagged pixels added to pixeldq extension.
+    hot_pix : np.array(bool)
+        Map of new flagged pixels.
+    """
+
+    fancyprint('Identifying additional unflagged hot pixels...')
+
+    result = utils.open_filetype(result)
+    # Open the deep frame.
+    if isinstance(deepframe, str):
+        deepframe = fits.getdata(deepframe)
+    dimy, dimx = np.shape(deepframe)
+    all_med = np.nanmedian(deepframe)
+    # Get location of all pixels already flagged as warm or hot.
+    hot = utils.get_dq_flag_metrics(result.pixeldq, ['HOT', 'WARM'])
+
+    if hot_pix is not None:
+        fancyprint('Using provided hot pixel map...')
+        assert np.shape(hot_pix) == np.shape(deepframe)
+        result.pixeldq[hot_pix] += 2048
+
+    else:
+        hot_pix = np.zeros_like(deepframe).astype(bool)
+        for i in tqdm(range(4, dimx - 4)):
+            for j in range(dimy):
+                box_size_i = box_size
+                box_prop = utils.get_interp_box(deepframe, box_size_i, i, j,
+                                                dimx)
+                # Ensure that the median and std dev extracted are good.
+                # If not, increase the box size until they are.
+                while np.any(np.isnan(box_prop)):
+                    box_size_i += 1
+                    box_prop = utils.get_interp_box(deepframe, box_size_i, i,
+                                                    j, dimx)
+                med, std = box_prop[0], box_prop[1]
+
+                # If central pixel is too deviant...
+                if np.abs(deepframe[j, i] - med) >= (thresh * std):
+                    # And reasonably bright (don't want to flag noise)...
+                    if deepframe[j, i] > all_med:
+                        # And not already flagged...
+                        if hot[j, i] == 0:
+                            # Flag it.
+                            result.pixeldq[j, i] += 2048
+                            hot_pix[j, i] = True
+
+        count = int(np.sum(hot_pix))
+        fancyprint('{} additional hot pixels identified.'.format(count))
+
+    return result, hot_pix
+
+
+def jumpstep_in_time(datafile, window=10, thresh=10, fileroot=None,
+                     save_results=True, output_dir=None):
+    """Jump detection step in the temporal domain. This algorithm is based off
+    of Nikolov+ (2014) and identifies cosmic ray hits in the temporal domain.
+    All jumps for ngroup<=2 are replaced with the median of surrounding
+    integrations, whereas jumps for ngroup>3 are flagged.
+
+    Parameters
+    ----------
+    datafile : str, RampModel
+        Path to data file, or RampModel itself for a segment of the TSO.
+        Should be 4D ramp.
+    window : int
+        Number of integrations before and after to use for cosmic ray flagging.
+    thresh : int
+        Sigma threshold for a pixel to be flagged.
+    output_dir : str
+        Directory to which to save results.
+    save_results : bool
+        If True, save results to disk.
+    fileroot : str, None
+        Root name for output file.
+
+    Returns
+    -------
+    datafile : RampModel
+        Data file corrected for cosmic ray hits.
+    """
+
+    fancyprint('Starting time-domain jump detection step.')
+
+    # If saving results, ensure output directory and fileroots are provided.
+    if save_results is True:
+        assert output_dir is not None
+        assert fileroot is not None
+        # Output directory formatting.
+        if output_dir[-1] != '/':
+            output_dir += '/'
+
+    # Load in the datafile.
+    datafile = utils.open_filetype(datafile)
+    cube = datafile.data
+    dqcube = datafile.groupdq
+
+    nints, ngroups, dimy, dimx = np.shape(cube)
+    # Jump detection algorithm based on Nikolov+ (2014). For each integration,
+    # create a difference image using the median of surrounding integrations.
+    # Flag all pixels with deviations more than X-sigma as comsic rays hits.
+    count, interp = 0, 0
+    for i in tqdm(range(nints)):
+        # Create a stack of the integrations before and after the current
+        # integration.
+        up = np.min([nints, i + window + 1])
+        low = np.max([0, i - window])
+        stack = np.concatenate([cube[low:i], cube[(i + 1):up]])
+        # Get median and standard deviation of the stack.
+        local_med = np.nanmedian(stack, axis=0)
+        local_std = np.nanstd(stack, axis=0)
+        for g in range(ngroups):
+            # Find deviant pixels.
+            ii = np.where(np.abs(cube[i, g] - local_med[g]) >= thresh * local_std[g])
+            # If ngroup<=2, replace the pixel with the stack median so that a
+            # ramp can still be fit.
+            if g < 2:
+                # Do not want to interpolate pixels which are flagged for
+                # another reason, so only select good pixels or those which
+                # are flagged for jumps.
+                jj = np.where((dqcube[i, g][ii] == 0) | (dqcube[i, g][ii] == 4))
+                # Replace these pixels with the stack median and remove the
+                # dq flag.
+                cube[i, g][ii][jj] = local_med[g][ii][jj]
+                dqcube[i, g][ii][jj] = 0
+                interp += len(jj[0])
+            # If ngroup>2, flag the pixel as having a jump.
+            else:
+                # Want to ignore pixels which are already flagged for a jump.
+                jj = np.where(utils.get_dq_flag_metrics(dqcube[i, g], ['JUMP_DET']) == 1)
+                alrdy_flg = np.ones_like(dqcube[i, g]).astype(bool)
+                alrdy_flg[jj] = False
+                new_flg = np.zeros_like(dqcube[i, g]).astype(bool)
+                new_flg[ii] = True
+                to_flag = new_flg & alrdy_flg
+                # Add the jump detection flag.
+                dqcube[i, g][to_flag] += 4
+                count += int(np.sum(to_flag))
+    fancyprint(' {} jumps flagged'.format(count))
+    fancyprint(' and {} interpolated'.format(interp))
+
+    datafile.data = cube
+    datafile.groupdq = dqcube
+    if save_results is True:
+        with warnings.catch_warnings():
+            warnings.simplefilter('ignore')
+            datafile.write(output_dir + fileroot + 'jump.fits')
+    datafile.close()
+
+    fancyprint('Done')
+
+    return datafile
 
 
 def oneoverfstep(datafiles, baseline_ints, even_odd_rows=True,
@@ -721,112 +895,12 @@ def oneoverfstep(datafiles, baseline_ints, even_odd_rows=True,
     return corrected_rampmodels
 
 
-def jumpstep_in_time(datafile, window=10, thresh=10, fileroot=None,
-                     save_results=True, output_dir=None):
-    """Jump detection step in the temporal domain. This algorithm is based off
-    of Nikolov+ (2014) and identifies cosmic ray hits in the temporal domain.
-    All jumps for ngroup<=2 are replaced with the median of surrounding
-    integrations, whereas jumps for ngroup>3 are flagged.
-
-    Parameters
-    ----------
-    datafile : str, RampModel
-        Path to data file, or RampModel itself for a segment of the TSO.
-        Should be 4D ramp.
-    window : int
-        Number of integrations before and after to use for cosmic ray flagging.
-    thresh : int
-        Sigma threshold for a pixel to be flagged.
-    output_dir : str
-        Directory to which to save results.
-    save_results : bool
-        If True, save results to disk.
-    fileroot : str, None
-        Root name for output file.
-
-    Returns
-    -------
-    datafile : RampModel
-        Data file corrected for cosmic ray hits.
-    """
-
-    fancyprint('Starting time-domain jump detection step.')
-
-    # If saving results, ensure output directory and fileroots are provided.
-    if save_results is True:
-        assert output_dir is not None
-        assert fileroot is not None
-        # Output directory formatting.
-        if output_dir[-1] != '/':
-            output_dir += '/'
-
-    # Load in the datafile.
-    datafile = utils.open_filetype(datafile)
-    cube = datafile.data
-    dqcube = datafile.groupdq
-
-    nints, ngroups, dimy, dimx = np.shape(cube)
-    # Jump detection algorithm based on Nikolov+ (2014). For each integration,
-    # create a difference image using the median of surrounding integrations.
-    # Flag all pixels with deviations more than X-sigma as comsic rays hits.
-    count, interp = 0, 0
-    for i in tqdm(range(nints)):
-        # Create a stack of the integrations before and after the current
-        # integration.
-        up = np.min([nints, i + window + 1])
-        low = np.max([0, i - window])
-        stack = np.concatenate([cube[low:i], cube[(i + 1):up]])
-        # Get median and standard deviation of the stack.
-        local_med = np.nanmedian(stack, axis=0)
-        local_std = np.nanstd(stack, axis=0)
-        for g in range(ngroups):
-            # Find deviant pixels.
-            ii = np.where(np.abs(cube[i, g] - local_med[g]) >= thresh * local_std[g])
-            # If ngroup<=2, replace the pixel with the stack median so that a
-            # ramp can still be fit.
-            if g < 2:
-                # Do not want to interpolate pixels which are flagged for
-                # another reason, so only select good pixels or those which
-                # are flagged for jumps.
-                jj = np.where((dqcube[i, g][ii] == 0) | (dqcube[i, g][ii] == 4))
-                # Replace these pixels with the stack median and remove the
-                # dq flag.
-                cube[i, g][ii][jj] = local_med[g][ii][jj]
-                dqcube[i, g][ii][jj] = 0
-                interp += len(jj[0])
-            # If ngroup>2, flag the pixel as having a jump.
-            else:
-                # Want to ignore pixels which are already flagged for a jump.
-                jj = np.where(utils.get_dq_flag_metrics(dqcube[i, g], ['JUMP_DET']) == 1)
-                alrdy_flg = np.ones_like(dqcube[i, g]).astype(bool)
-                alrdy_flg[jj] = False
-                new_flg = np.zeros_like(dqcube[i, g]).astype(bool)
-                new_flg[ii] = True
-                to_flag = new_flg & alrdy_flg
-                # Add the jump detection flag.
-                dqcube[i, g][to_flag] += 4
-                count += int(np.sum(to_flag))
-    fancyprint(' {} jumps flagged'.format(count))
-    fancyprint(' and {} interpolated'.format(interp))
-
-    datafile.data = cube
-    datafile.groupdq = dqcube
-    if save_results is True:
-        with warnings.catch_warnings():
-            warnings.simplefilter('ignore')
-            datafile.write(output_dir + fileroot + 'jump.fits')
-    datafile.close()
-
-    fancyprint('Done')
-
-    return datafile
-
-
 def run_stage1(results, background_model, baseline_ints=None,
-               smoothed_wlc=None, save_results=True, outlier_maps=None,
-               trace_mask=None,  even_odd_rows=True, force_redo=False,
-               rejection_threshold=5, root_dir='./', output_tag='',
-               occultation_type='transit', skip_steps=None, **kwargs):
+               smoothed_wlc=None, save_results=True, pixel_masks=None,
+               force_redo=False, deepframe=None, rejection_threshold=15,
+               flag_in_time=False, time_rejection_threshold=10,
+               root_dir='./', output_tag='', occultation_type='transit',
+               skip_steps=None, do_plot=False, **kwargs):
     """Run the supreme-SPOON Stage 1 pipeline: detector level processing,
     using a combination of official STScI DMS and custom steps. Documentation
     for the official DMS steps can be found here:
@@ -842,23 +916,25 @@ def run_stage1(results, background_model, baseline_ints=None,
     baseline_ints : array-like[int]
         Integration numbers for transit ingress and egress.
     smoothed_wlc : array-like[float], None
-        Estimate of the out-of-transit normalized light curve.
+        Estimate of the normalized light curve.
     save_results : bool
         If True, save results of each step to file.
-    outlier_maps : array-like[str], None
+    pixel_masks : array-like[str], None
         For improved 1/f noise corecton. List of paths to outlier maps for each
         data segment. Can be 3D (nints, dimy, dimx), or 2D (dimy, dimx) files.
-    trace_mask : str, array-like[bool], None
-        For improved 1/f noise correcton. Trace mask, or path to file
-        containing a trace mask. Should be 3D (norder, dimy, dimx), or 2D
-        (dimy, dimx).
-    even_odd_rows : bool
-        If True, calculate 1/f noise seperately for even and odd numbered rows.
     force_redo : bool
         If True, redo steps even if outputs files are already present.
+    deepframe : str, None
+        Path to deep stack without any bad pixel interpolation to flag
+        additional hot pixels.
     rejection_threshold : int
         For jump detection; sigma threshold for a pixel to be considered an
         outlier.
+    flag_in_time : bool
+        If True, flag cosmic rays temporally in addition to the default
+        up-the-ramp jump detection.
+    time_rejection_threshold : int
+        Sigma threshold to flag outliers in temporal flagging.
     root_dir : str
         Directory from which all relative paths are defined.
     output_tag : str
@@ -867,6 +943,8 @@ def run_stage1(results, background_model, baseline_ints=None,
         Type of occultation: transit or eclipse.
     skip_steps : array-like[str], None
         Step names to skip (if any).
+    do_plot : bool
+        If True, make step diagnostic plots.
 
     Returns
     -------
@@ -901,13 +979,13 @@ def run_stage1(results, background_model, baseline_ints=None,
                            **step_kwargs)
 
     # ===== Data Quality Initialization Step =====
-    # Default DMS step.
+    # Default/Custom DMS step.
     if 'DQInitStep' not in skip_steps:
         if 'DQInitStep' in kwargs.keys():
             step_kwargs = kwargs['DQInitStep']
         else:
             step_kwargs = {}
-        step = DQInitStep(results, output_dir=outdir)
+        step = DQInitStep(results, output_dir=outdir, deepframe=deepframe)
         results = step.run(save_results=save_results, force_redo=force_redo,
                            **step_kwargs)
 
@@ -931,7 +1009,7 @@ def run_stage1(results, background_model, baseline_ints=None,
             step_kwargs = {}
         step = SuperBiasStep(results, output_dir=outdir)
         results = step.run(save_results=save_results, force_redo=force_redo,
-                           **step_kwargs)
+                           do_plot=do_plot, **step_kwargs)
 
     # ===== Reference Pixel Correction Step =====
     # Default DMS step.
@@ -954,13 +1032,17 @@ def run_stage1(results, background_model, baseline_ints=None,
 
         # ===== 1/f Noise Correction Step =====
         # Custom DMS step.
+        if 'OneOverFStep' in kwargs.keys():
+            step_kwargs = kwargs['OneOverFStep']
+        else:
+            step_kwargs = {}
         step = OneOverFStep(results, baseline_ints=baseline_ints,
-                            output_dir=outdir, outlier_maps=outlier_maps,
-                            trace_mask=trace_mask, smoothed_wlc=smoothed_wlc,
+                            output_dir=outdir, pixel_masks=pixel_masks,
+                            smoothed_wlc=smoothed_wlc,
                             background=background_model,
                             occultation_type=occultation_type)
-        results = step.run(even_odd_rows=even_odd_rows,
-                           save_results=save_results, force_redo=force_redo)
+        results = step.run(save_results=save_results, force_redo=force_redo,
+                           **step_kwargs)
 
     # ===== Linearity Correction Step =====
     # Default DMS step.
@@ -974,18 +1056,18 @@ def run_stage1(results, background_model, baseline_ints=None,
                            **step_kwargs)
 
     # ===== Jump Detection Step =====
-    # Default DMS step.
+    # Default/Custom DMS step.
     if 'JumpStep' not in skip_steps:
         if 'JumpStep' in kwargs.keys():
             step_kwargs = kwargs['JumpStep']
         else:
             step_kwargs = {}
         step = JumpStep(results, output_dir=outdir)
-        step_results = step.run(save_results=save_results,
-                                force_redo=force_redo,
-                                rejection_threshold=rejection_threshold,
-                                **step_kwargs)
-        results, ngroup_flag = step_results
+        results = step.run(save_results=save_results, force_redo=force_redo,
+                           rejection_threshold=rejection_threshold,
+                           flag_in_time=flag_in_time,
+                           time_rejection_threshold=time_rejection_threshold,
+                           **step_kwargs)
 
     # ===== Ramp Fit Step =====
     # Default DMS step.
@@ -997,16 +1079,6 @@ def run_stage1(results, background_model, baseline_ints=None,
         step = RampFitStep(results, output_dir=outdir)
         results = step.run(save_results=save_results, force_redo=force_redo,
                            **step_kwargs)
-
-    # ===== Jump Detection Step =====
-    # Custom DMS step - specifically for ngroup=2.
-    if 'JumpStep' not in skip_steps:
-        if ngroup_flag is True:
-            step = JumpStep(results, output_dir=outdir)
-            results = step.run(save_results=save_results,
-                               force_redo=force_redo,
-                               rejection_threshold=rejection_threshold,
-                               ngroup_flag=True)[0]
 
     # ===== Gain Scale Correcton Step =====
     # Default DMS step.

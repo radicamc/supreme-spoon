@@ -19,7 +19,6 @@ import ray
 from scipy.interpolate import interp2d
 from scipy.ndimage import median_filter
 from scipy.optimize import curve_fit
-from tqdm import tqdm
 import warnings
 import yaml
 
@@ -134,77 +133,6 @@ def fix_filenames(old_files, to_remove, outdir, to_add=''):
         os.remove(outdir + old_filename)
 
     return new_files
-
-
-def flag_hot_pixels(result, deepframe, box_size=10, thresh=15, hot_pix=None):
-    """Identify and flag additional hot pixels in a SOSS TSO which are not
-    already in the default pipeline flags.
-
-    Parameters
-    ----------
-    result : jwst.datamodel, str
-        Input datamodel, or path to.
-    deepframe : array-like(float), str
-        Deep stack of the time series, or path to.
-    box_size : int
-        Size of box around each pixel to consider.
-    thresh : int
-        Sigma threshhold above which a pixel will be flagged.
-    hot_pix : array-like(bool)
-        Map of pixels to flag.
-
-    Returns
-    -------
-    result : jwst.datamodel
-        Input datamodel with newly flagged pixels added to pixeldq extension.
-    hot_pix : np.array(bool)
-        Map of new flagged pixels.
-    """
-
-    fancyprint('Identifying additional unflagged hot pixels...')
-
-    result = open_filetype(result)
-    # Open the deep frame.
-    if isinstance(deepframe, str):
-        deepframe = fits.getdata(deepframe)
-    dimy, dimx = np.shape(deepframe)
-    all_med = np.nanmedian(deepframe)
-    # Get location of all pixels already flagged as warm or hot.
-    hot = get_dq_flag_metrics(result.pixeldq, ['HOT', 'WARM'])
-
-    if hot_pix is not None:
-        fancyprint('Using provided hot pixel map...')
-        assert np.shape(hot_pix) == np.shape(deepframe)
-        result.pixeldq[hot_pix] += 2048
-
-    else:
-        hot_pix = np.zeros_like(deepframe).astype(bool)
-        for i in tqdm(range(4, dimx - 4)):
-            for j in range(dimy):
-                box_size_i = box_size
-                box_prop = get_interp_box(deepframe, box_size_i, i, j, dimx)
-                # Ensure that the median and std dev extracted are good.
-                # If not, increase the box size until they are.
-                while np.any(np.isnan(box_prop)):
-                    box_size_i += 1
-                    box_prop = get_interp_box(deepframe, box_size_i, i, j,
-                                              dimx)
-                med, std = box_prop[0], box_prop[1]
-
-                # If central pixel is too deviant...
-                if np.abs(deepframe[j, i] - med) >= (thresh * std):
-                    # And reasonably bright (don't want to flag noise)...
-                    if deepframe[j, i] > all_med:
-                        # And not already flagged...
-                        if hot[j, i] == 0:
-                            # Flag it.
-                            result.pixeldq[j, i] += 2048
-                            hot_pix[j, i] = True
-
-        count = int(np.sum(hot_pix))
-        fancyprint('{} additional hot pixels identified.'.format(count))
-
-    return result, hot_pix
 
 
 def format_out_frames(out_frames, occultation_type='transit'):

@@ -49,13 +49,14 @@ if 1 in config['run_stages']:
                                 baseline_ints=config['baseline_ints'],
                                 smoothed_wlc=config['smoothed_wlc'],
                                 save_results=config['save_results'],
-                                outlier_maps=config['outlier_maps'],
+                                pixel_masks=config['outlier_maps'],
                                 trace_mask=config['trace_mask'],
                                 even_odd_rows=config['even_odd_rows'],
                                 force_redo=config['force_redo'],
+                                rejection_threshold=config[
+                                    'rejection_threshold'],
                                 output_tag=config['output_tag'],
                                 occultation_type=config['occultation_type'],
-                                rejection_threshold=config['rejection_threshold'],
                                 skip_steps=config['stage1_skip'],
                                 **config['stage1_kwargs'])
 else:

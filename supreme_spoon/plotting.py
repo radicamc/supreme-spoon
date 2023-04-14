@@ -370,7 +370,7 @@ def make_superbias_plot(results, outfile=None):
     """Make nine-panel plot of dataframes after superbias subtraction.
     """
 
-    fancyprint('Doing step plot.')
+    fancyprint('Doing diagnostic plot.')
     results = np.atleast_1d(results)
     for i, file in enumerate(results):
         with utils.open_filetype(file) as datamodel:
