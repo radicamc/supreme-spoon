@@ -13,17 +13,19 @@ import bottleneck as bn
 import corner
 import matplotlib.backends.backend_pdf
 from matplotlib.gridspec import GridSpec
+from matplotlib.patches import Ellipse
 import matplotlib.pyplot as plt
 import numpy as np
 from tqdm import tqdm
 import warnings
 
 from supreme_spoon import utils
+from supreme_spoon.utils import fancyprint
 
 
 def make_corner_plot(fit_params, results, posterior_names=None, outpdf=None,
                      truths=None):
-    """make corner plot for lightcurve fitting.
+    """Make corner plot for lightcurve fitting.
     """
 
     first_time = True
@@ -47,6 +49,57 @@ def make_corner_plot(fit_params, results, posterior_names=None, outpdf=None,
         plt.close(figure)
     else:
         plt.show()
+
+
+def make_jump_location_plot(result):
+    """Show locations of detected jumps.
+    """
+
+    result = utils.open_filetype(result)
+    nint, ngroup, dimy, dimx = np.shape(result.data)
+    # Get random group and integration.
+    i = np.random.randint(nint)
+    g = np.random.randint(1, ngroup)
+
+    # Get location of all hot pixels and jump detections.
+    hot = utils.get_dq_flag_metrics(result.pixeldq, ['HOT', 'WARM'])
+    jump = utils.get_dq_flag_metrics(result.groupdq[i, g], ['JUMP_DET'])
+    hot = np.where(hot != 0)
+    jump = np.where(jump != 0)
+    fancyprint('Showing integration {0}, group {1}.'.format(i, g))
+    fancyprint('{} jumps detected in this frame.'.format(len(jump[0])))
+
+    # Plot the location of all jumps and hot pixels.
+    f, ax = plt.subplots(figsize=(8, 5))
+    plt.imshow(result.data[i, g] - result.data[i, g-1], aspect='auto',
+               origin='lower', vmin=0, vmax=100)
+
+    # Show hot pixel locations.
+    first_time = True
+    for ypos, xpos in zip(hot[0], hot[1]):
+        if first_time is True:
+            marker = Ellipse((xpos, ypos), 21, 3, color='blue', fill=False,
+                             label='Hot Pixel')
+            ax.add_patch(marker)
+            first_time = False
+        else:
+            marker = Ellipse((xpos, ypos), 21, 3, color='blue', fill=False)
+            ax.add_patch(marker)
+
+    # Show jump locations.
+    first_time = True
+    for ypos, xpos in zip(jump[0], jump[1]):
+        if first_time is True:
+            marker = Ellipse((xpos, ypos), 21, 3, color='red', fill=False,
+                             label='Cosmic Ray')
+            ax.add_patch(marker)
+            first_time = False
+        else:
+            marker = Ellipse((xpos, ypos), 21, 3, color='red', fill=False)
+            ax.add_patch(marker)
+
+    plt.legend(loc=2)
+    plt.show()
 
 
 def make_lightcurve_plot(t, data, model, scatter, errors, nfit, outpdf=None,
