@@ -362,8 +362,9 @@ class JumpStep:
         self.datafiles = utils.sort_datamodels(input_data)
         self.fileroots = utils.get_filename_root(self.datafiles)
 
-    def run(self, save_results=True, force_redo=False, rejection_threshold=5,
-            ngroup_flag=False, **kwargs):
+    def run(self, save_results=True, force_redo=False, rejection_threshold=15,
+            flag_in_time=False, time_rejection_threshold=10, time_window=10,
+            **kwargs):
         """Method to run the step.
         """
 
@@ -384,42 +385,34 @@ class JumpStep:
                 testfile = datamodels.open(self.datafiles[0])
                 ngroups = testfile.meta.exposure.ngroups
                 testfile.close()
-                # for ngroup > 2, use the default JumpStep.
+                # For ngroup > 2, default JumpStep can be used.
                 if ngroups > 2:
                     step = calwebb_detector1.jump_step.JumpStep()
                     res = step.call(segment, output_dir=self.output_dir,
                                     save_results=save_results,
                                     rejection_threshold=rejection_threshold,
                                     maximum_cores='quarter', **kwargs)
-                    # Verify that filename is correct.
-                    if save_results is True:
-                        current_name = self.output_dir + res.meta.filename
-                        if expected_file != current_name:
-                            res.close()
-                            os.rename(current_name, expected_file)
-                            res = datamodels.open(expected_file)
-                    results.append(res)
-                # If ngroup = 2, use a custom temporal domain jump flagging
-                # algorithm, which is applied after ramp fitting.
-                elif ngroups == 2 and ngroup_flag is False:
-                    # If before the RampFitStep, just pass.
-                    fancyprint('\nObservation has ngroups=2.')
-                    fancyprint('Jump detection will be treated after ramp '
-                               'fit.\n')
-                    ngroup_flag = True
-                    results = self.datafiles
-                    break
+                # Time domain jump step must be run for ngroup=2.
                 else:
-                    # If after the RampFitStep, run the two group jump
-                    # detection.
-                    results = two_group_jumpstep(self.datafiles,
-                                                 thresh=rejection_threshold,
-                                                 fileroots=self.fileroots,
-                                                 save_results=save_results,
-                                                 output_dir=self.output_dir)
-                    break
+                    res = segment
+                    flag_in_time = True
+                # Do time-domain flagging.
+                if flag_in_time is True:
+                    res = jumpstep_in_time(res, window=time_window,
+                                           thresh=time_rejection_threshold,
+                                           fileroot=self.fileroots[i],
+                                           save_results=save_results,
+                                           output_dir=self.output_dir)
+                # Verify that filename is correct.
+                if save_results is True:
+                    current_name = self.output_dir + res.meta.filename
+                    if expected_file != current_name:
+                        res.close()
+                        os.rename(current_name, expected_file)
+                        res = datamodels.open(expected_file)
+                results.append(res)
 
-        return results, ngroup_flag
+        return results
 
 
 class RampFitStep:
@@ -722,19 +715,18 @@ def oneoverfstep(datafiles, baseline_ints, even_odd_rows=True,
     return corrected_rampmodels
 
 
-def two_group_jumpstep(datafiles, window=5, thresh=10, fileroots=None,
-                       save_results=True, output_dir=None):
-    """ Jump detection step for ngroup=2 observations. The standard JWST
-    pipeline JumpStep fails for these observations as deviations in a linear
-    ramp cannot be identified with only 2 groups. This algorithm is based off
+def jumpstep_in_time(datafile, window=10, thresh=10, fileroot=None,
+                     save_results=True, output_dir=None):
+    """Jump detection step in the temporal domain. This algorithm is based off
     of Nikolov+ (2014) and identifies cosmic ray hits in the temporal domain.
-    All jumps are replaced with the median of surrounding integrations.
+    All jumps for ngroup<=2 are replaced with the median of surrounding
+    integrations, whereas jumps for ngroup>3 are flagged.
 
     Parameters
     ----------
-    datafiles : array-like[str], array-like[CubeModel]
-        List of paths to data files, or RampModels themselves for each segment
-        of the TSO. Should be 3D rate files.
+    datafile : str, RampModel
+        Path to data file, or RampModel itself for a segment of the TSO.
+        Should be 4D ramp.
     window : int
         Number of integrations before and after to use for cosmic ray flagging.
     thresh : int
@@ -743,45 +735,35 @@ def two_group_jumpstep(datafiles, window=5, thresh=10, fileroots=None,
         Directory to which to save results.
     save_results : bool
         If True, save results to disk.
-    fileroots : array-like[str], None
-        Root names for output files.
+    fileroot : str, None
+        Root name for output file.
 
     Returns
     -------
-    corrected_rampmodels : array-like[CubeModel]
-        Data files corrected for cosmic ray hits.
+    datafile : RampModel
+        Data file corrected for cosmic ray hits.
     """
 
-    fancyprint('Starting two-group jump detection step.')
+    fancyprint('Starting time-domain jump detection step.')
 
     # If saving results, ensure output directory and fileroots are provided.
     if save_results is True:
         assert output_dir is not None
-        assert fileroots is not None
+        assert fileroot is not None
         # Output directory formatting.
         if output_dir[-1] != '/':
             output_dir += '/'
 
-    datafiles = np.atleast_1d(datafiles)
-    opened_datafiles = []
-    # Load in each of the datafiles.
-    for i, file in enumerate(datafiles):
-        currentfile = utils.open_filetype(file)
-        opened_datafiles.append(currentfile)
-        # Make cube of data and DQ flags.
-        if i == 0:
-            cube = currentfile.data
-            dqcube = currentfile.dq
-        else:
-            cube = np.concatenate([cube, currentfile.data], axis=0)
-            dqcube = np.concatenate([dqcube, currentfile.dq], axis=0)
-    corrected_rampmodels = opened_datafiles
+    # Load in the datafile.
+    datafile = utils.open_filetype(datafile)
+    cube = datafile.data
+    dqcube = datafile.groupdq
 
-    nints, dimy, dimx = np.shape(cube)
+    nints, ngroups, dimy, dimx = np.shape(cube)
     # Jump detection algorithm based on Nikolov+ (2014). For each integration,
     # create a difference image using the median of surrounding integrations.
     # Flag all pixels with deviations more than X-sigma as comsic rays hits.
-    count = 0
+    count, interp = 0, 0
     for i in tqdm(range(nints)):
         # Create a stack of the integrations before and after the current
         # integration.
@@ -791,31 +773,47 @@ def two_group_jumpstep(datafiles, window=5, thresh=10, fileroots=None,
         # Get median and standard deviation of the stack.
         local_med = np.nanmedian(stack, axis=0)
         local_std = np.nanstd(stack, axis=0)
-        # Find deviant pixels.
-        ii = np.where(np.abs(cube[i] - local_med) >= thresh * local_std)
-        # Replace flagged pixels with the stack median and remove the dq flag.
-        cube[i][ii] = local_med[ii]
-        dqcube[i][ii] = 0
-        count += len(ii[0])
+        for g in range(ngroups):
+            # Find deviant pixels.
+            ii = np.where(np.abs(cube[i, g] - local_med[g]) >= thresh * local_std[g])
+            # If ngroup<=2, replace the pixel with the stack median so that a
+            # ramp can still be fit.
+            if g < 2:
+                # Do not want to interpolate pixels which are flagged for
+                # another reason, so only select good pixels or those which
+                # are flagged for jumps.
+                jj = np.where((dqcube[i, g][ii] == 0) | (dqcube[i, g][ii] == 4))
+                # Replace these pixels with the stack median and remove the
+                # dq flag.
+                cube[i, g][ii][jj] = local_med[g][ii][jj]
+                dqcube[i, g][ii][jj] = 0
+                interp += len(jj[0])
+            # If ngroup>2, flag the pixel as having a jump.
+            else:
+                # Want to ignore pixels which are already flagged for a jump.
+                jj = np.where(utils.get_dq_flag_metrics(dqcube[i, g], ['JUMP_DET']) == 1)
+                alrdy_flg = np.ones_like(dqcube[i, g]).astype(bool)
+                alrdy_flg[jj] = False
+                new_flg = np.zeros_like(dqcube[i, g]).astype(bool)
+                new_flg[ii] = True
+                to_flag = new_flg & alrdy_flg
+                # Add the jump detection flag.
+                dqcube[i, g][to_flag] += 4
+                count += int(np.sum(to_flag))
     fancyprint(' {} jumps flagged'.format(count))
+    fancyprint(' and {} interpolated'.format(interp))
 
-    current_int = 0
-    # Save interpolated data.
-    for n, file in enumerate(corrected_rampmodels):
-        currentdata = file.data
-        nints = np.shape(currentdata)[0]
-        file.data = cube[current_int:(current_int + nints)]
-        file.dq = dqcube[current_int:(current_int + nints)]
-        current_int += nints
-        if save_results is True:
-            with warnings.catch_warnings():
-                warnings.simplefilter('ignore')
-                file.write(output_dir + fileroots[n] + 'jump.fits')
-        file.close()
+    datafile.data = cube
+    datafile.groupdq = dqcube
+    if save_results is True:
+        with warnings.catch_warnings():
+            warnings.simplefilter('ignore')
+            datafile.write(output_dir + fileroot + 'jump.fits')
+    datafile.close()
 
     fancyprint('Done')
 
-    return corrected_rampmodels
+    return datafile
 
 
 def run_stage1(results, background_model, baseline_ints=None,
