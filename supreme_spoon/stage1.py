@@ -21,7 +21,7 @@ from jwst import datamodels
 from jwst.pipeline import calwebb_detector1
 
 from supreme_spoon.stage2 import BackgroundStep
-from supreme_spoon import utils
+from supreme_spoon import utils, plotting
 from supreme_spoon.utils import fancyprint
 
 
@@ -178,7 +178,8 @@ class SuperBiasStep:
         self.datafiles = utils.sort_datamodels(input_data)
         self.fileroots = utils.get_filename_root(self.datafiles)
 
-    def run(self, save_results=True, force_redo=False, **kwargs):
+    def run(self, save_results=True, force_redo=False, do_plot=False,
+            **kwargs):
         """Method to run the step.
         """
 
@@ -191,6 +192,7 @@ class SuperBiasStep:
                 fancyprint('File {} already exists.'.format(expected_file))
                 fancyprint('Skipping Superbias Subtraction Step.\n')
                 res = expected_file
+                do_plot = False
             # If no output files are detected, run the step.
             else:
                 step = calwebb_detector1.superbias_step.SuperBiasStep()
@@ -204,6 +206,10 @@ class SuperBiasStep:
                         os.rename(current_name, expected_file)
                         res = datamodels.open(expected_file)
             results.append(res)
+        # Do step plot if requested.
+        if do_plot is True:
+            plot_file = self.output_dir + self.tag.replace('fits', 'pdf')
+            plotting.make_superbias_plot(results, outfile=plot_file)
 
         return results
 

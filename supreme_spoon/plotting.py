@@ -366,6 +366,30 @@ def make_oneoverf_psd(cube, old_cube, timeseries, baseline_ints, nsample=100,
     plt.show()
 
 
+def make_superbias_plot(results, outfile=None):
+    """Make nine-panel plot of dataframes after superbias subtraction.
+    """
+
+    fancyprint('Doing step plot.')
+    results = np.atleast_1d(results)
+    for i, file in enumerate(results):
+        with utils.open_filetype(file) as datamodel:
+            if i == 0:
+                cube = datamodel.data
+            else:
+                cube = np.concatenate([cube, datamodel.data])
+
+    nint, ngroup, dimy, dimx = np.shape(cube)
+    ints = np.random.randint(0, nint, 9)
+    grps = np.random.randint(0, ngroup, 9)
+    to_plot, to_write = [], []
+    for i, g in zip(ints, grps):
+        to_plot.append(cube[i, g])
+        to_write.append('({0}, {1})'.format(i, g))
+    nine_panel_plot(to_plot, to_write, outfile=outfile)
+    fancyprint('Plot saved to {}'.format(outfile))
+
+
 def make_2d_lightcurve_plot(wave1, flux1, wave2=None, flux2=None, outpdf=None,
                             title='', **kwargs):
     """Plot 2D spectroscopic light curves.
@@ -425,5 +449,39 @@ def make_2d_lightcurve_plot(wave1, flux1, wave2=None, flux2=None, outpdf=None,
             fig.savefig(outpdf)
         fig.clear()
         plt.close(fig)
+    else:
+        plt.show()
+
+
+def nine_panel_plot(data, text=None, outfile=None):
+    """Basic setup for nine panel plotting.
+    """
+
+    plt.figure(figsize=(15, 9), facecolor='white')
+    gs = GridSpec(3, 3)
+
+    frame = 0
+    for i in range(3):
+        for j in range(3):
+            ax = plt.subplot(gs[i, j])
+            ax.imshow(data[frame], aspect='auto', origin='lower', vmin=0,
+                      vmax=np.nanpercentile(data[frame], 85))
+            if text is not None:
+                ax.text(30, 230, text[frame], c='white', fontsize=12)
+            if j != 0:
+                ax.yaxis.set_major_formatter(plt.NullFormatter())
+            else:
+                plt.yticks(fontsize=10)
+            if i != 2:
+                ax.xaxis.set_major_formatter(plt.NullFormatter())
+            else:
+                plt.xticks(fontsize=10)
+            frame += 1
+
+    gs.update(hspace=0.05, wspace=0.05)
+
+    if outfile is not None:
+        plt.savefig(outfile, bbox_inches='tight')
+        plt.close()
     else:
         plt.show()
