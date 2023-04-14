@@ -82,12 +82,14 @@ class DQInitStep:
         self.datafiles = utils.sort_datamodels(input_data)
         self.fileroots = utils.get_filename_root(self.datafiles)
 
-    def run(self, save_results=True, force_redo=False, **kwargs):
+    def run(self, save_results=True, force_redo=False, deepframe=None,
+            **kwargs):
         """Method to run the step.
         """
 
         results = []
         all_files = glob.glob(self.output_dir + '*')
+        hot_pix = None
         for i, segment in enumerate(self.datafiles):
             # If an output file for this segment already exists, skip the step.
             expected_file = self.output_dir + self.fileroots[i] + self.tag
@@ -100,6 +102,14 @@ class DQInitStep:
                 step = calwebb_detector1.dq_init_step.DQInitStep()
                 res = step.call(segment, output_dir=self.output_dir,
                                 save_results=save_results, **kwargs)
+                # If a deep frame is passed, use it to search for and flag
+                # additional hot pixels not in the default map.
+                if deepframe is not None:
+                    res, hot_pix = utils.flag_hot_pixels(res,
+                                                         deepframe=deepframe,
+                                                         hot_pix=hot_pix)
+                    # Overwite the previous edition.
+                    res.save(expected_file)
                 # Verify that filename is correct.
                 if save_results is True:
                     current_name = self.output_dir + res.meta.filename
