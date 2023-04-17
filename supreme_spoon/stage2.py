@@ -21,7 +21,7 @@ from jwst import datamodels
 from jwst.extract_1d.soss_extract import soss_boxextract
 from jwst.pipeline import calwebb_spec2
 
-from supreme_spoon import utils
+from supreme_spoon import utils, plotting
 from supreme_spoon.utils import fancyprint
 
 
@@ -126,7 +126,8 @@ class BackgroundStep:
         self.fileroots = utils.get_filename_root(self.datafiles)
         self.fileroot_noseg = utils.get_filename_root_noseg(self.fileroots)
 
-    def run(self, save_results=True, force_redo=False, **kwargs):
+    def run(self, save_results=True, force_redo=False, do_plot=False,
+            show_plot=False, **kwargs):
         """Method to run the step.
         """
 
@@ -141,8 +142,8 @@ class BackgroundStep:
                 do_step = 0
                 break
             else:
-                results.append(datamodels.open(expected_file))
-                background_models.append(np.load(expected_bkg))
+                results.append(expected_file)
+                background_models.append(expected_bkg)
         if do_step == 1 and force_redo is False:
             fancyprint('Output files already exist.')
             fancyprint('Skipping Background Subtraction Step.')
@@ -163,6 +164,16 @@ class BackgroundStep:
                                               fileroot_noseg=self.fileroot_noseg,
                                               scale1=scale1, scale2=scale2)
                 results, background_models = step_results
+
+            # Do step plot if requested.
+            if do_plot is True:
+                if save_results is True:
+                    plot_file = self.output_dir + self.tag.replace('fits',
+                                                                   'pdf')
+                else:
+                    plot_file = None
+                plotting.make_superbias_plot(results, outfile=plot_file,
+                                             show_plot=show_plot)
 
         return results, background_models
 
@@ -384,17 +395,14 @@ def backgroundstep(datafiles, background_model, output_dir='./',
             output_dir += '/'
 
     datafiles = np.atleast_1d(datafiles)
-    opened_datafiles = []
     # Load in each of the datafiles.
     for i, file in enumerate(datafiles):
-        currentfile = utils.open_filetype(file)
-        opened_datafiles.append(currentfile)
-        # To create the deepstack, join all segments together.
-        if i == 0:
-            cube = currentfile.data
-        else:
-            cube = np.concatenate([cube, currentfile.data], axis=0)
-    datafiles = opened_datafiles
+        with utils.open_filetype(file) as currentfile:
+            # To create the deepstack, join all segments together.
+            if i == 0:
+                cube = currentfile.data
+            else:
+                cube = np.concatenate([cube, currentfile.data], axis=0)
 
     # Make median stack of all integrations to use for background scaling.
     # This is to limit the influence of cosmic rays, which can greatly effect
@@ -458,23 +466,23 @@ def backgroundstep(datafiles, background_model, output_dir='./',
     # Loop over all segments in the exposure and subtract the background from
     # each of them.
     results = []
-    for i, currentfile in enumerate(datafiles):
-        # Subtract the scaled background model.
-        data_backsub = currentfile.data - model_scaled
-        currentfile.data = data_backsub
+    for i, file in enumerate(datafiles):
+        with utils.open_filetype(file) as currentfile:
+            # Subtract the scaled background model.
+            data_backsub = currentfile.data - model_scaled
+            currentfile.data = data_backsub
 
-        # Save the results to file if requested.
-        if save_results is True:
-            if first_time is True:
-                # Scaled model background.
-                np.save(output_dir + fileroot_noseg + 'background.npy',
-                        model_scaled)
-                first_time = False
-            # Background subtracted data.
-            currentfile.write(output_dir + fileroots[i] + 'backgroundstep.fits')
+            # Save the results to file if requested.
+            if save_results is True:
+                if first_time is True:
+                    # Scaled model background.
+                    np.save(output_dir + fileroot_noseg + 'background.npy',
+                            model_scaled)
+                    first_time = False
+                # Background subtracted data.
+                currentfile.write(output_dir + fileroots[i] + 'backgroundstep.fits')
 
-        results.append(currentfile)
-        currentfile.close()
+            results.append(currentfile)
 
     return results, model_scaled
 
