@@ -8,6 +8,7 @@ Created on Wed Jul 20 14:02 2022
 Plotting routines.
 """
 
+from astropy.io import fits
 from astropy.timeseries import LombScargle
 import bottleneck as bn
 import corner
@@ -22,6 +23,41 @@ import warnings
 
 from supreme_spoon import utils
 from supreme_spoon.utils import fancyprint
+
+
+def make_background_plot(results, outfile=None, show_plot=True):
+    """Do nine-panel plot of background subtraction.
+    """
+
+    fancyprint('Doing diagnostic plot.')
+    results = np.atleast_1d(results)
+    for i, file in enumerate(results):
+        with utils.open_filetype(file) as datamodel:
+            if i == 0:
+                cube = datamodel.data
+            else:
+                cube = np.concatenate([cube, datamodel.data])
+
+    if np.ndim(cube) == 4:
+        nint, ngroup, dimy, dimx = np.shape(cube)
+        grps = np.random.randint(0, ngroup, 9)
+    else:
+        nint, dimy, dimx = np.shape(cube)
+        ngroup = 0
+    ints = np.random.randint(0, nint, 9)
+
+    to_plot, to_write = [], []
+    if ngroup != 0:
+        for i, g in zip(ints, grps):
+            to_plot.append(cube[i, g])
+            to_write.append('({0}, {1})'.format(i, g))
+    else:
+        for i in ints:
+            to_plot.append(cube[i])
+            to_write.append('({0})'.format(i))
+    nine_panel_plot(to_plot, to_write, outfile=outfile, show_plot=show_plot)
+    if outfile is not None:
+        fancyprint('Plot saved to {}'.format(outfile))
 
 
 def make_corner_plot(fit_params, results, posterior_names=None, outpdf=None,
@@ -52,7 +88,7 @@ def make_corner_plot(fit_params, results, posterior_names=None, outpdf=None,
         plt.show()
 
 
-def make_jump_location_plot(results, outfile=None, show_plot=False):
+def make_jump_location_plot(results, outfile=None, show_plot=True):
     """Show locations of detected jumps.
     """
 
@@ -73,7 +109,7 @@ def make_jump_location_plot(results, outfile=None, show_plot=False):
     plt.figure(figsize=(15, 9), facecolor='white')
     gs = GridSpec(3, 3)
 
-    for i in range(3):
+    for k in range(3):
         for j in range(3):
             # Get random group and integration.
             i = np.random.randint(nint)
@@ -85,7 +121,7 @@ def make_jump_location_plot(results, outfile=None, show_plot=False):
             hot = np.where(hot != 0)
             jump = np.where(jump != 0)
 
-            ax = plt.subplot(gs[i, j])
+            ax = plt.subplot(gs[k, j])
             diff = cube[i, g] - cube[i, g-1]
             plt.imshow(diff, aspect='auto', origin='lower', vmin=0,
                        vmax=np.nanpercentile(diff, 85))
@@ -121,11 +157,11 @@ def make_jump_location_plot(results, outfile=None, show_plot=False):
                 ax.yaxis.set_major_formatter(plt.NullFormatter())
             else:
                 plt.yticks(fontsize=10)
-            if i != 2:
+            if k != 2:
                 ax.xaxis.set_major_formatter(plt.NullFormatter())
             else:
                 plt.xticks(fontsize=10)
-            if i == 0 and j == 0:
+            if k == 0 and j == 0:
                 plt.legend(loc=1)
 
     if outfile is not None:
@@ -281,9 +317,25 @@ def make_lightcurve_plot(t, data, model, scatter, errors, nfit, outpdf=None,
         plt.show()
 
 
-def make_linearity_plot(cube, old_cube, outfile=None, show_plot=True):
+def make_linearity_plot(results, old_results, outfile=None, show_plot=True):
     """Plot group differences before and after linearity correction.
     """
+
+    fancyprint('Doing diagnostic plot.')
+    results = np.atleast_1d(results)
+    old_results = np.atleast_1d(old_results)
+    for i, file in enumerate(results):
+        with utils.open_filetype(file) as datamodel:
+            if i == 0:
+                cube = datamodel.data
+            else:
+                cube = np.concatenate([cube, datamodel.data])
+    for i, file in enumerate(old_results):
+        with utils.open_filetype(file) as datamodel:
+            if i == 0:
+                old_cube = datamodel.data
+            else:
+                old_cube = np.concatenate([old_cube, datamodel.data])
 
     nint, ngroup, dimy, dimx = np.shape(cube)
     # Get bright pixels in the trace.
@@ -385,18 +437,57 @@ def make_oneoverf_plot(results, baseline_ints, timeseries=None,
         fancyprint('Plot saved to {}'.format(outfile))
 
 
-def make_oneoverf_psd(cube, old_cube, timeseries, baseline_ints, nsample=25,
-                      mask_cube=None, occultation_type='transit',
-                      tframe=5.494, tpix=1e-5, tgap=1.2e-4, outfile=None,
-                      show_plot=True):
+def make_oneoverf_psd(results, old_results, timeseries, baseline_ints,
+                      nsample=25,  pixel_masks=None,
+                      occultation_type='transit', tframe=5.494, tpix=1e-5,
+                      tgap=1.2e-4, outfile=None, show_plot=True):
     """Make a PSD plot to see PSD of background before and after 1/f removal.
     """
 
     fancyprint('Doing diagnostic plot 2.')
+
+    results = np.atleast_1d(results)
+    old_results = np.atleast_1d(old_results)
+    for i, file in enumerate(results):
+        with utils.open_filetype(file) as datamodel:
+            if i == 0:
+                cube = datamodel.data
+            else:
+                cube = np.concatenate([cube, datamodel.data])
+    for i, file in enumerate(old_results):
+        with utils.open_filetype(file) as datamodel:
+            if i == 0:
+                old_cube = datamodel.data
+            else:
+                old_cube = np.concatenate([old_cube, datamodel.data])
+    if pixel_masks is not None:
+        for i, file in enumerate(pixel_masks):
+            if i == 0:
+                mask_cube = fits.getdata(file)
+            else:
+                mask_cube = np.concatenate([mask_cube, fits.getdata(file)])
+    else:
+        mask_cube = None
+
     nints, ngroups, dimy, dimx = np.shape(cube)
     baseline_ints = utils.format_out_frames(baseline_ints, occultation_type)
     old_deep = bn.nanmedian(old_cube[baseline_ints], axis=0)
     deep = bn.nanmedian(cube[baseline_ints], axis=0)
+
+    # Get smoothed light curve.
+    if isinstance(timeseries, str):
+        try:
+            timeseries = np.load(timeseries)
+        except (ValueError, FileNotFoundError):
+            timeseries = None
+    # If no lightcurve is provided, estimate it from the current data.
+    if timeseries is None:
+        postage = cube[:, -1, 20:60, 1500:1550]
+        timeseries = np.nansum(postage, axis=(1, 2))
+        timeseries = timeseries / np.nanmedian(timeseries[baseline_ints])
+        # Smooth the time series on a timescale of roughly 2%.
+        timeseries = median_filter(timeseries,
+                                   int(0.02 * np.shape(cube)[0]))
 
     # Generate array of timestamps for each pixel
     pixel_ts = []

@@ -332,6 +332,7 @@ class OneOverFStep:
                                            timeseries=self.smoothed_wlc,
                                            baseline_ints=self.baseline_ints,
                                            occultation_type=self.occultation_type,
+                                           pixel_masks=self.pixel_masks,
                                            outfile=plot_file2,
                                            show_plot=show_plot)
 
@@ -804,20 +805,18 @@ def oneoverfstep(datafiles, baseline_ints, even_odd_rows=True,
         if len(pixel_masks) == 1:
             pixel_masks = [pixel_masks[0] for d in datafiles]
 
-    data = []
     # Load in datamodels from all segments.
     for i, file in enumerate(datafiles):
-        currentfile = utils.open_filetype(file)
-        # FULL frame uses multiple amplifiers and probably has to be
-        # treated differently. Break if we encounted a FULL frame exposure.
-        if currentfile.meta.subarray.name == 'FULL':
-            raise NotImplementedError
-        data.append(currentfile)
-        # To create the deepstack, join all segments together.
-        if i == 0:
-            cube = currentfile.data
-        else:
-            cube = np.concatenate([cube, currentfile.data], axis=0)
+        with utils.open_filetype(file) as currentfile:
+            # FULL frame uses multiple amplifiers and probably has to be
+            # treated differently. Break if we encounter a FULL frame exposure.
+            if currentfile.meta.subarray.name == 'FULL':
+                raise NotImplementedError
+            # To create the deepstack, join all segments together.
+            if i == 0:
+                cube = currentfile.data
+            else:
+                cube = np.concatenate([cube, currentfile.data], axis=0)
 
     # Generate the 3D deep stack (ngroup, dimy, dimx) using only
     # baseline integrations.
@@ -858,14 +857,15 @@ def oneoverfstep(datafiles, baseline_ints, even_odd_rows=True,
     # Individually treat each segment.
     corrected_rampmodels = []
     current_int = 0
-    for n, datamodel in enumerate(data):
-        fancyprint('Starting segment {} of {}.'.format(n+1, len(data)))
+    for n, currentfile in enumerate(datafiles):
+        currentfile = datamodels.open(currentfile)
+        fancyprint('Starting segment {} of {}.'.format(n+1, len(datafiles)))
 
         # Define the readout setup - can be 4D (recommended) or 3D.
-        if np.ndim(datamodel.data) == 4:
-            nint, ngroup, dimy, dimx = np.shape(datamodel.data)
+        if np.ndim(currentfile.data) == 4:
+            nint, ngroup, dimy, dimx = np.shape(currentfile.data)
         else:
-            nint, dimy, dimx = np.shape(datamodel.data)
+            nint, dimy, dimx = np.shape(currentfile.data)
 
         # Read in the outlier map - a (nints, dimy, dimx) 3D cube
         if pixel_masks is None:
@@ -884,7 +884,7 @@ def oneoverfstep(datafiles, baseline_ints, even_odd_rows=True,
         outliers = np.where(outliers == 0, 1, np.nan)
 
         # Initialize output storage arrays.
-        corr_data = np.copy(datamodel.data)
+        corr_data = np.copy(currentfile.data)
         # Loop over all integrations to determine the 1/f noise level via a
         # difference image, and correct it.
         for i in tqdm(range(nint)):
@@ -892,7 +892,7 @@ def oneoverfstep(datafiles, baseline_ints, even_odd_rows=True,
             # ints from the start of the exposure.
             ii = current_int + i
             # Create the difference image.
-            sub = datamodel.data[i] - deepstack * smoothed_wlc[ii]
+            sub = currentfile.data[i] - deepstack * smoothed_wlc[ii]
             # Apply the outlier mask.
             sub *= outliers[i, :, :]
             with warnings.catch_warnings():
@@ -903,7 +903,7 @@ def oneoverfstep(datafiles, baseline_ints, even_odd_rows=True,
                     # doesn't hurt to do it again.
                     dc = np.zeros_like(sub)
                     # For group-level corrections.
-                    if np.ndim(datamodel.data == 4):
+                    if np.ndim(currentfile.data == 4):
                         dc[:, ::2] = bn.nanmedian(sub[:, ::2], axis=1)[:, None, :]
                         dc[:, 1::2] = bn.nanmedian(sub[:, 1::2], axis=1)[:, None, :]
                     # For integration-level corrections.
@@ -914,7 +914,7 @@ def oneoverfstep(datafiles, baseline_ints, even_odd_rows=True,
                     # Single 1/f scaling for all rows.
                     dc = np.zeros_like(sub)
                     # For group-level corrections.
-                    if np.ndim(datamodel.data == 4):
+                    if np.ndim(currentfile.data == 4):
                         dc[:, :, :] = bn.nanmedian(sub, axis=1)[:, None, :]
                     # For integration-level corrections.
                     else:
@@ -929,17 +929,15 @@ def oneoverfstep(datafiles, baseline_ints, even_odd_rows=True,
             corr_data += background
 
         # Store results.
-        rampmodel_corr = datamodel.copy()
-        rampmodel_corr.data = corr_data
-        corrected_rampmodels.append(rampmodel_corr)
+        newfile = currentfile.copy()
+        currentfile.close()
+        newfile.data = corr_data
+        corrected_rampmodels.append(newfile)
 
         # Save the results if requested.
         if save_results is True:
             suffix = 'oneoverfstep.fits'
-            rampmodel_corr.write(output_dir + fileroots[n] + suffix)
-
-        # Close datamodel for current segment.
-        datamodel.close()
+            newfile.write(output_dir + fileroots[n] + suffix)
 
     return corrected_rampmodels
 
