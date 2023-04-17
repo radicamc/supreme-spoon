@@ -366,7 +366,7 @@ def make_oneoverf_psd(cube, old_cube, timeseries, baseline_ints, nsample=100,
     plt.show()
 
 
-def make_superbias_plot(results, outfile=None):
+def make_superbias_plot(results, outfile=None, show_plot=True):
     """Make nine-panel plot of dataframes after superbias subtraction.
     """
 
@@ -386,8 +386,9 @@ def make_superbias_plot(results, outfile=None):
     for i, g in zip(ints, grps):
         to_plot.append(cube[i, g])
         to_write.append('({0}, {1})'.format(i, g))
-    nine_panel_plot(to_plot, to_write, outfile=outfile)
-    fancyprint('Plot saved to {}'.format(outfile))
+    nine_panel_plot(to_plot, to_write, outfile=outfile, show_plot=show_plot)
+    if outfile is not None:
+        fancyprint('Plot saved to {}'.format(outfile))
 
 
 def make_2d_lightcurve_plot(wave1, flux1, wave2=None, flux2=None, outpdf=None,
@@ -453,7 +454,7 @@ def make_2d_lightcurve_plot(wave1, flux1, wave2=None, flux2=None, outpdf=None,
         plt.show()
 
 
-def nine_panel_plot(data, text=None, outfile=None):
+def nine_panel_plot(data, text=None, outfile=None, show_plot=True):
     """Basic setup for nine panel plotting.
     """
 
@@ -482,6 +483,7 @@ def nine_panel_plot(data, text=None, outfile=None):
 
     if outfile is not None:
         plt.savefig(outfile, bbox_inches='tight')
+    if show_plot is False:
         plt.close()
     else:
         plt.show()

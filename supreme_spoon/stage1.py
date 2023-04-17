@@ -179,7 +179,7 @@ class SuperBiasStep:
         self.fileroots = utils.get_filename_root(self.datafiles)
 
     def run(self, save_results=True, force_redo=False, do_plot=False,
-            **kwargs):
+            show_plot=False, **kwargs):
         """Method to run the step.
         """
 
@@ -208,8 +208,12 @@ class SuperBiasStep:
             results.append(res)
         # Do step plot if requested.
         if do_plot is True:
-            plot_file = self.output_dir + self.tag.replace('fits', 'pdf')
-            plotting.make_superbias_plot(results, outfile=plot_file)
+            if save_results is True:
+                plot_file = self.output_dir + self.tag.replace('fits', 'pdf')
+            else:
+                plot_file = None
+            plotting.make_superbias_plot(results, outfile=plot_file,
+                                         show_plot=show_plot)
 
         return results
 
