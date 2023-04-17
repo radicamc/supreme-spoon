@@ -282,7 +282,8 @@ class OneOverFStep:
         self.datafiles = utils.sort_datamodels(input_data)
         self.fileroots = utils.get_filename_root(self.datafiles)
 
-    def run(self, save_results=True, force_redo=False, **kwargs):
+    def run(self, save_results=True, force_redo=False, do_plot=False,
+            show_plot=False, **kwargs):
         """Method to run the step.
         """
 
@@ -296,7 +297,7 @@ class OneOverFStep:
                 do_step = 0
                 break
             else:
-                results.append(datamodels.open(expected_file))
+                results.append(expected_file)
         if do_step == 1 and force_redo is False:
             fancyprint('Output files already exist.')
             fancyprint('Skipping 1/f Correction Step.\n')
@@ -312,6 +313,27 @@ class OneOverFStep:
                                    fileroots=self.fileroots,
                                    occultation_type=self.occultation_type,
                                    **kwargs)
+            # Do step plots if requested.
+            if do_plot is True:
+                if save_results is True:
+                    plot_file1 = self.output_dir + self.tag.replace('.fits',
+                                                                    '_1.pdf')
+                    plot_file2 = self.output_dir + self.tag.replace('.fits',
+                                                                    '_2.pdf')
+                else:
+                    plot_file1, plot_file2 = None, None
+                plotting.make_oneoverf_plot(results,
+                                            timeseries=self.smoothed_wlc,
+                                            baseline_ints=self.baseline_ints,
+                                            occultation_type=self.occultation_type,
+                                            outfile=plot_file1,
+                                            show_plot=show_plot)
+                plotting.make_oneoverf_psd(results, self.datafiles,
+                                           timeseries=self.smoothed_wlc,
+                                           baseline_ints=self.baseline_ints,
+                                           occultation_type=self.occultation_type,
+                                           outfile=plot_file2,
+                                           show_plot=show_plot)
 
         return results
 
@@ -329,7 +351,8 @@ class LinearityStep:
         self.datafiles = utils.sort_datamodels(input_data)
         self.fileroots = utils.get_filename_root(self.datafiles)
 
-    def run(self, save_results=True, force_redo=False, **kwargs):
+    def run(self, save_results=True, force_redo=False, do_plot=False,
+            show_plot=False, **kwargs):
         """Method to run the step.
         """
 
@@ -342,6 +365,7 @@ class LinearityStep:
                 fancyprint('File {} already exists.'.format(expected_file))
                 fancyprint('Skipping Linearity Correction Step.\n')
                 res = expected_file
+                do_plot = False
             # If no output files are detected, run the step.
             else:
                 step = calwebb_detector1.linearity_step.LinearityStep()
@@ -355,6 +379,16 @@ class LinearityStep:
                         os.rename(current_name, expected_file)
                         res = datamodels.open(expected_file)
             results.append(res)
+        # Do step plot if requested.
+        if do_plot is True:
+            if save_results is True:
+                plot_file = self.output_dir + self.tag.replace('fits',
+                                                               'pdf')
+            else:
+                plot_file = None
+            plotting.make_linearity_plot(results, self.datafiles,
+                                         outfile=plot_file,
+                                         show_plot=show_plot)
 
         return results
 
@@ -375,7 +409,7 @@ class JumpStep:
 
     def run(self, save_results=True, force_redo=False, rejection_threshold=15,
             flag_in_time=False, time_rejection_threshold=10, time_window=10,
-            **kwargs):
+            do_plot=False, show_plot=False, **kwargs):
         """Method to run the step.
         """
 
@@ -388,6 +422,7 @@ class JumpStep:
                 fancyprint('File {} already exists.'.format(expected_file))
                 fancyprint('Skipping Jump Detection Step.\n')
                 results.append(datamodels.open(expected_file))
+                do_plot = False
             # If no output files are detected, proceed.
             else:
                 # Get number of groups in the observation - ngroup=2 must be
@@ -422,6 +457,16 @@ class JumpStep:
                         os.rename(current_name, expected_file)
                         res = datamodels.open(expected_file)
                 results.append(res)
+
+        # Do step plot if requested.
+        if do_plot is True:
+            if save_results is True:
+                plot_file = self.output_dir + self.tag.replace('fits',
+                                                               'pdf')
+            else:
+                plot_file = None
+            plotting.make_jump_location_plot(results, outfile=plot_file,
+                                             show_plot=show_plot)
 
         return results
 
@@ -553,7 +598,7 @@ def flag_hot_pixels(result, deepframe, box_size=10, thresh=15, hot_pix=None):
     result = utils.open_filetype(result)
     # Open the deep frame.
     if isinstance(deepframe, str):
-        deepframe = fits.getdata(deepframe)
+        deepframe = fits.getdata(deepframe, 2)
     dimy, dimx = np.shape(deepframe)
     all_med = np.nanmedian(deepframe)
     # Get location of all pixels already flagged as warm or hot.
@@ -904,7 +949,7 @@ def run_stage1(results, background_model, baseline_ints=None,
                force_redo=False, deepframe=None, rejection_threshold=15,
                flag_in_time=False, time_rejection_threshold=10,
                root_dir='./', output_tag='', occultation_type='transit',
-               skip_steps=None, do_plot=False, **kwargs):
+               skip_steps=None, do_plot=False, show_plot=False, **kwargs):
     """Run the supreme-SPOON Stage 1 pipeline: detector level processing,
     using a combination of official STScI DMS and custom steps. Documentation
     for the official DMS steps can be found here:
@@ -929,8 +974,7 @@ def run_stage1(results, background_model, baseline_ints=None,
     force_redo : bool
         If True, redo steps even if outputs files are already present.
     deepframe : str, None
-        Path to deep stack without any bad pixel interpolation to flag
-        additional hot pixels.
+        Path to deep stack, such as one produced by BadPixStep.
     rejection_threshold : int
         For jump detection; sigma threshold for a pixel to be considered an
         outlier.
@@ -949,6 +993,9 @@ def run_stage1(results, background_model, baseline_ints=None,
         Step names to skip (if any).
     do_plot : bool
         If True, make step diagnostic plots.
+    show_plot : bool
+        Only necessary if do_plot is True. Show the diagnostic plots in
+        addition to/instead of saving to file.
 
     Returns
     -------
@@ -1013,7 +1060,7 @@ def run_stage1(results, background_model, baseline_ints=None,
             step_kwargs = {}
         step = SuperBiasStep(results, output_dir=outdir)
         results = step.run(save_results=save_results, force_redo=force_redo,
-                           do_plot=do_plot, **step_kwargs)
+                           do_plot=do_plot, show_plot=show_plot, **step_kwargs)
 
     # ===== Reference Pixel Correction Step =====
     # Default DMS step.
@@ -1046,7 +1093,7 @@ def run_stage1(results, background_model, baseline_ints=None,
                             background=background_model,
                             occultation_type=occultation_type)
         results = step.run(save_results=save_results, force_redo=force_redo,
-                           **step_kwargs)
+                           do_plot=do_plot, show_plot=show_plot, **step_kwargs)
 
     # ===== Linearity Correction Step =====
     # Default DMS step.
@@ -1057,7 +1104,7 @@ def run_stage1(results, background_model, baseline_ints=None,
             step_kwargs = {}
         step = LinearityStep(results, output_dir=outdir)
         results = step.run(save_results=save_results, force_redo=force_redo,
-                           **step_kwargs)
+                           do_plot=do_plot, show_plot=show_plot, **step_kwargs)
 
     # ===== Jump Detection Step =====
     # Default/Custom DMS step.
@@ -1071,7 +1118,7 @@ def run_stage1(results, background_model, baseline_ints=None,
                            rejection_threshold=rejection_threshold,
                            flag_in_time=flag_in_time,
                            time_rejection_threshold=time_rejection_threshold,
-                           **step_kwargs)
+                           do_plot=do_plot, show_plot=show_plot, **step_kwargs)
 
     # ===== Ramp Fit Step =====
     # Default DMS step.

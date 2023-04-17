@@ -16,6 +16,7 @@ from matplotlib.gridspec import GridSpec
 from matplotlib.patches import Ellipse
 import matplotlib.pyplot as plt
 import numpy as np
+from scipy.ndimage import median_filter
 from tqdm import tqdm
 import warnings
 
@@ -51,55 +52,89 @@ def make_corner_plot(fit_params, results, posterior_names=None, outpdf=None,
         plt.show()
 
 
-def make_jump_location_plot(result):
+def make_jump_location_plot(results, outfile=None, show_plot=False):
     """Show locations of detected jumps.
     """
 
-    result = utils.open_filetype(result)
-    nint, ngroup, dimy, dimx = np.shape(result.data)
-    # Get random group and integration.
-    i = np.random.randint(nint)
-    g = np.random.randint(1, ngroup)
-
-    # Get location of all hot pixels and jump detections.
-    hot = utils.get_dq_flag_metrics(result.pixeldq, ['HOT', 'WARM'])
-    jump = utils.get_dq_flag_metrics(result.groupdq[i, g], ['JUMP_DET'])
-    hot = np.where(hot != 0)
-    jump = np.where(jump != 0)
-    fancyprint('Showing integration {0}, group {1}.'.format(i, g))
-    fancyprint('{} jumps detected in this frame.'.format(len(jump[0])))
+    fancyprint('Doing diagnostic plot.')
+    results = np.atleast_1d(results)
+    for i, file in enumerate(results):
+        with utils.open_filetype(file) as datamodel:
+            if i == 0:
+                cube = datamodel.data
+                dqcube = datamodel.groupdq
+            else:
+                cube = np.concatenate([cube, datamodel.data])
+                dqcube = np.concatenate([dqcube, datamodel.groupdq])
+            pixeldq = datamodel.pixeldq
+    nint, ngroup, dimy, dimx = np.shape(cube)
 
     # Plot the location of all jumps and hot pixels.
-    f, ax = plt.subplots(figsize=(8, 5))
-    plt.imshow(result.data[i, g] - result.data[i, g-1], aspect='auto',
-               origin='lower', vmin=0, vmax=100)
+    plt.figure(figsize=(15, 9), facecolor='white')
+    gs = GridSpec(3, 3)
 
-    # Show hot pixel locations.
-    first_time = True
-    for ypos, xpos in zip(hot[0], hot[1]):
-        if first_time is True:
-            marker = Ellipse((xpos, ypos), 21, 3, color='blue', fill=False,
-                             label='Hot Pixel')
-            ax.add_patch(marker)
-            first_time = False
-        else:
-            marker = Ellipse((xpos, ypos), 21, 3, color='blue', fill=False)
-            ax.add_patch(marker)
+    for i in range(3):
+        for j in range(3):
+            # Get random group and integration.
+            i = np.random.randint(nint)
+            g = np.random.randint(1, ngroup)
 
-    # Show jump locations.
-    first_time = True
-    for ypos, xpos in zip(jump[0], jump[1]):
-        if first_time is True:
-            marker = Ellipse((xpos, ypos), 21, 3, color='red', fill=False,
-                             label='Cosmic Ray')
-            ax.add_patch(marker)
-            first_time = False
-        else:
-            marker = Ellipse((xpos, ypos), 21, 3, color='red', fill=False)
-            ax.add_patch(marker)
+            # Get location of all hot pixels and jump detections.
+            hot = utils.get_dq_flag_metrics(pixeldq, ['HOT', 'WARM'])
+            jump = utils.get_dq_flag_metrics(dqcube[i, g], ['JUMP_DET'])
+            hot = np.where(hot != 0)
+            jump = np.where(jump != 0)
 
-    plt.legend(loc=2)
-    plt.show()
+            ax = plt.subplot(gs[i, j])
+            diff = cube[i, g] - cube[i, g-1]
+            plt.imshow(diff, aspect='auto', origin='lower', vmin=0,
+                       vmax=np.nanpercentile(diff, 85))
+
+            # Show hot pixel locations.
+            first_time = True
+            for ypos, xpos in zip(hot[0], hot[1]):
+                if first_time is True:
+                    marker = Ellipse((xpos, ypos), 21, 3, color='blue',
+                                     fill=False, label='Hot Pixel')
+                    ax.add_patch(marker)
+                    first_time = False
+                else:
+                    marker = Ellipse((xpos, ypos), 21, 3, color='blue',
+                                     fill=False)
+                    ax.add_patch(marker)
+
+            # Show jump locations.
+            first_time = True
+            for ypos, xpos in zip(jump[0], jump[1]):
+                if first_time is True:
+                    marker = Ellipse((xpos, ypos), 21, 3, color='red',
+                                     fill=False, label='Cosmic Ray')
+                    ax.add_patch(marker)
+                    first_time = False
+                else:
+                    marker = Ellipse((xpos, ypos), 21, 3, color='red',
+                                     fill=False)
+                    ax.add_patch(marker)
+
+            ax.text(30, 230, '({0}, {1})'.format(i, g), c='white', fontsize=12)
+            if j != 0:
+                ax.yaxis.set_major_formatter(plt.NullFormatter())
+            else:
+                plt.yticks(fontsize=10)
+            if i != 2:
+                ax.xaxis.set_major_formatter(plt.NullFormatter())
+            else:
+                plt.xticks(fontsize=10)
+            if i == 0 and j == 0:
+                plt.legend(loc=1)
+
+    if outfile is not None:
+        plt.savefig(outfile, bbox_inches='tight')
+        fancyprint('Plot saved to {}'.format(outfile))
+    if show_plot is False:
+        plt.close()
+    else:
+        plt.show()
 
 
 def make_lightcurve_plot(t, data, model, scatter, errors, nfit, outpdf=None,
@@ -246,7 +281,7 @@ def make_lightcurve_plot(t, data, model, scatter, errors, nfit, outpdf=None,
         plt.show()
 
 
-def make_linearity_plot(cube, old_cube):
+def make_linearity_plot(cube, old_cube, outfile=None, show_plot=True):
     """Plot group differences before and after linearity correction.
     """
 
@@ -262,7 +297,7 @@ def make_linearity_plot(cube, old_cube):
     num_pix = 20000
     if len(ii[0]) < 20000:
         num_pix = len(ii[0])
-    for it in tqdm(range(num_pix)):
+    for it in range(num_pix):
         ypos, xpos = ii[0][it], ii[1][it]
         # Choose a random integration.
         i = np.random.randint(0, nint)
@@ -290,15 +325,74 @@ def make_linearity_plot(cube, old_cube):
     plt.ylim(1.1*np.min(old_med - np.mean(old_med)),
              1.1*np.max(old_med - np.mean(old_med)))
     plt.legend()
-    plt.show()
+
+    if outfile is not None:
+        plt.savefig(outfile, bbox_inches='tight')
+        fancyprint('Plot saved to {}'.format(outfile))
+    if show_plot is False:
+        plt.close()
+    else:
+        plt.show()
 
 
-def make_oneoverf_psd(cube, old_cube, timeseries, baseline_ints, nsample=100,
+def make_oneoverf_plot(results, baseline_ints, timeseries=None,
+                       occultation_type='transit', outfile=None,
+                       show_plot=True):
+    """make nine-panel plot of dataframes after 1/f correction.
+    """
+
+    fancyprint('Doing diagnostic plot 1.')
+    results = np.atleast_1d(results)
+    for i, file in enumerate(results):
+        with utils.open_filetype(file) as datamodel:
+            if i == 0:
+                cube = datamodel.data
+            else:
+                cube = np.concatenate([cube, datamodel.data])
+
+    # Format the baseline frames - either out-of-transit or in-eclipse.
+    baseline_ints = utils.format_out_frames(baseline_ints,
+                                            occultation_type)
+    # Make deepstack using baseline integrations.
+    deep = utils.make_deepstack(cube[baseline_ints])
+
+    # Get smoothed light curve.
+    if isinstance(timeseries, str):
+        try:
+            timeseries = np.load(timeseries)
+        except (ValueError, FileNotFoundError):
+            timeseries = None
+    # If no lightcurve is provided, estimate it from the current data.
+    if timeseries is None:
+        postage = cube[:, -1, 20:60, 1500:1550]
+        timeseries = np.nansum(postage, axis=(1, 2))
+        timeseries = timeseries / np.nanmedian(timeseries[baseline_ints])
+        # Smooth the time series on a timescale of roughly 2%.
+        timeseries = median_filter(timeseries,
+                                   int(0.02 * np.shape(cube)[0]))
+
+    nint, ngroup, dimy, dimx = np.shape(cube)
+    ints = np.random.randint(0, nint, 9)
+    grps = np.random.randint(0, ngroup, 9)
+    to_plot, to_write = [], []
+    kwargs = {'vmin': -50, 'vmax': 50}
+    for i, g in zip(ints, grps):
+        to_plot.append(cube[i, g] - deep[g] * timeseries[i])
+        to_write.append('({0}, {1})'.format(i, g))
+    nine_panel_plot(to_plot, to_write, outfile=outfile, show_plot=show_plot,
+                    **kwargs)
+    if outfile is not None:
+        fancyprint('Plot saved to {}'.format(outfile))
+
+
+def make_oneoverf_psd(cube, old_cube, timeseries, baseline_ints, nsample=25,
                       mask_cube=None, occultation_type='transit',
-                      tframe=5.494, tpix=1e-5, tgap=1.2e-4):
+                      tframe=5.494, tpix=1e-5, tgap=1.2e-4, outfile=None,
+                      show_plot=True):
     """Make a PSD plot to see PSD of background before and after 1/f removal.
     """
 
+    fancyprint('Doing diagnostic plot 2.')
     nints, ngroups, dimy, dimx = np.shape(cube)
     baseline_ints = utils.format_out_frames(baseline_ints, occultation_type)
     old_deep = bn.nanmedian(old_cube[baseline_ints], axis=0)
@@ -340,10 +434,6 @@ def make_oneoverf_psd(cube, old_cube, timeseries, baseline_ints, nsample=100,
         pwr_old[s] = LombScargle(this_t, diff_old).power(freqs, normalization='psd')
         pwr[s] = LombScargle(this_t, diff).power(freqs, normalization='psd')
 
-    # Generate the approximate purely white noise level.
-    rndm = np.random.normal(0, np.nanstd(diff), len(diff))
-    wht = LombScargle(this_t, rndm).power(freqs, normalization='psd')
-
     # Make the plot.
     plt.figure(figsize=(7, 3))
     # Individual power series.
@@ -363,7 +453,14 @@ def make_oneoverf_psd(cube, old_cube, timeseries, baseline_ints, nsample=100,
     plt.ylim(np.percentile(pwr, 0.1), np.max(pwr_old))
     plt.ylabel('PSD', fontsize=12)
     plt.legend(loc=1)
-    plt.show()
+
+    if outfile is not None:
+        plt.savefig(outfile, bbox_inches='tight')
+        fancyprint('Plot saved to {}'.format(outfile))
+    if show_plot is False:
+        plt.close()
+    else:
+        plt.show()
 
 
 def make_superbias_plot(results, outfile=None, show_plot=True):
@@ -454,7 +551,7 @@ def make_2d_lightcurve_plot(wave1, flux1, wave2=None, flux2=None, outpdf=None,
         plt.show()
 
 
-def nine_panel_plot(data, text=None, outfile=None, show_plot=True):
+def nine_panel_plot(data, text=None, outfile=None, show_plot=True, **kwargs):
     """Basic setup for nine panel plotting.
     """
 
@@ -465,8 +562,16 @@ def nine_panel_plot(data, text=None, outfile=None, show_plot=True):
     for i in range(3):
         for j in range(3):
             ax = plt.subplot(gs[i, j])
-            ax.imshow(data[frame], aspect='auto', origin='lower', vmin=0,
-                      vmax=np.nanpercentile(data[frame], 85))
+            if 'vmin' not in kwargs.keys():
+                vmin = 0
+            else:
+                vmin = kwargs['vmin']
+            if 'vmax' not in kwargs.keys():
+                vmax = np.nanpercentile(data[frame], 85)
+            else:
+                vmax = kwargs['vmax']
+            ax.imshow(data[frame], aspect='auto', origin='lower', vmin=vmin,
+                      vmax=vmax)
             if text is not None:
                 ax.text(30, 230, text[frame], c='white', fontsize=12)
             if j != 0:

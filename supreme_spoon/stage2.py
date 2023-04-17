@@ -209,7 +209,7 @@ class FlatFieldStep:
 
         return results
 
-
+# TODO: Also save deepframe with no interpolation as second extension.
 class BadPixStep:
     """Wrapper around custom Bad Pixel Correction Step.
     """
