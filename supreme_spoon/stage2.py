@@ -172,8 +172,8 @@ class BackgroundStep:
                                                                    'pdf')
                 else:
                     plot_file = None
-                plotting.make_superbias_plot(results, outfile=plot_file,
-                                             show_plot=show_plot)
+                plotting.make_background_plot(results, outfile=plot_file,
+                                              show_plot=show_plot)
 
         return results, background_models
 
