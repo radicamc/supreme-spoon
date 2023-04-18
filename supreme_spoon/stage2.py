@@ -220,7 +220,7 @@ class FlatFieldStep:
 
         return results
 
-# TODO: Also save deepframe with no interpolation as second extension.
+
 class BadPixStep:
     """Wrapper around custom Bad Pixel Correction Step.
     """
@@ -239,8 +239,7 @@ class BadPixStep:
         self.fileroots = utils.get_filename_root(self.datafiles)
         self.fileroot_noseg = utils.get_filename_root_noseg(self.fileroots)
 
-    def run(self, thresh=10, box_size=5, max_iter=1, save_results=True,
-            force_redo=False):
+    def run(self, thresh=10, box_size=5, save_results=True, force_redo=False):
         """Method to run the step.
         """
 
@@ -256,7 +255,7 @@ class BadPixStep:
                 break
             else:
                 results.append(datamodels.open(expected_file))
-                deepframe = fits.getdata(expected_deep)
+                deepframe = fits.getdata(expected_deep, 1)
         if do_step == 1 and force_redo is False:
             fancyprint('Output files already exist.')
             fancyprint('Skipping Bad Pixel Correction Step.\n')
@@ -270,8 +269,7 @@ class BadPixStep:
                                       fileroots=self.fileroots,
                                       fileroot_noseg=self.fileroot_noseg,
                                       occultation_type=self.occultation_type,
-                                      max_iter=max_iter, thresh=thresh,
-                                      box_size=box_size)
+                                      thresh=thresh, box_size=box_size)
             results, deepframe = step_results
 
         return results, deepframe
@@ -488,8 +486,8 @@ def backgroundstep(datafiles, background_model, output_dir='./',
 
 
 def badpixstep(datafiles, baseline_ints, smoothed_wlc=None, thresh=10,
-               box_size=5, max_iter=1, output_dir='./', save_results=True,
-               fileroots=None, fileroot_noseg='', occultation_type='transit'):
+               box_size=5, output_dir='./', save_results=True, fileroots=None,
+               fileroot_noseg='', occultation_type='transit'):
     """Identify and correct hot pixels remaining in the dataset. Find outlier
     pixels in the median stack and correct them via the median of a box of
     surrounding pixels. Then replace these pixels in each integration via the
@@ -508,8 +506,6 @@ def badpixstep(datafiles, baseline_ints, smoothed_wlc=None, thresh=10,
         Sigma threshold for a deviant pixel to be flagged.
     box_size : int
         Size of box around each pixel to test for deviations.
-    max_iter : int
-        Maximum number of outlier flagging iterations.
     output_dir : str
         Directory to which to output results.
     save_results : bool
@@ -541,115 +537,123 @@ def badpixstep(datafiles, baseline_ints, smoothed_wlc=None, thresh=10,
     baseline_ints = utils.format_out_frames(baseline_ints,
                                             occultation_type)
 
-    data = []
     # Load in datamodels from all segments.
     for i, file in enumerate(datafiles):
-        currentfile = utils.open_filetype(file)
-        data.append(currentfile)
-
-        # To create the deepstack, join all segments together.
-        # Also stack all the dq arrays from each segement.
-        if i == 0:
-            cube = currentfile.data
-            dq_cube = currentfile.dq
-        else:
-            cube = np.concatenate([cube, currentfile.data], axis=0)
-            dq_cube = np.concatenate([dq_cube, currentfile.dq], axis=0)
+        with utils.open_filetype(file) as currentfile:
+            # To create the deepstack, join all segments together.
+            # Also stack all the dq arrays from each segement.
+            if i == 0:
+                cube = currentfile.data
+                dq_cube = currentfile.dq
+            else:
+                cube = np.concatenate([cube, currentfile.data], axis=0)
+                dq_cube = np.concatenate([dq_cube, currentfile.dq], axis=0)
 
     # Initialize starting loop variables.
     newdata = np.copy(cube)
     newdq = np.copy(dq_cube)
-    it = 0
 
-    while it < max_iter:
-        fancyprint('Starting iteration {0} of {1}.'.format(it + 1, max_iter))
+    # Generate the deepstack.
+    fancyprint(' Generating a deep stack...')
+    deepframe_itl = utils.make_deepstack(newdata[baseline_ints])
+    badpix = np.zeros_like(deepframe_itl)
+    count = 0
+    nint, dimy, dimx = np.shape(newdata)
 
-        # Generate the deepstack.
-        fancyprint(' Generating a deep stack...')
-        deepframe = utils.make_deepstack(newdata[baseline_ints])
-        badpix = np.zeros_like(deepframe)
-        count = 0
-        nint, dimy, dimx = np.shape(newdata)
+    # Loop over whole deepstack and flag deviant pixels.
+    for i in tqdm(range(4, dimx-4)):
+        for j in range(dimy):
+            box_size_i = box_size
+            box_prop = utils.get_interp_box(deepframe_itl, box_size_i, i, j,
+                                            dimx)
+            # Ensure that the median and std dev extracted are good.
+            # If not, increase the box size until they are.
+            while np.any(np.isnan(box_prop)):
+                box_size_i += 1
+                box_prop = utils.get_interp_box(deepframe_itl, box_size_i, i,
+                                                j, dimx)
+            med, std = box_prop[0], box_prop[1]
 
-        # Loop over whole deepstack and flag deviant pixels.
-        for i in tqdm(range(4, dimx-4)):
-            for j in range(dimy):
-                box_size_i = box_size
-                box_prop = utils.get_interp_box(deepframe, box_size_i, i, j,
-                                                dimx)
-                # Ensure that the median and std dev extracted are good.
-                # If not, increase the box size until they are.
-                while np.any(np.isnan(box_prop)):
-                    box_size_i += 1
-                    box_prop = utils.get_interp_box(deepframe, box_size_i, i,
-                                                    j, dimx)
-                med, std = box_prop[0], box_prop[1]
+            # If central pixel is too deviant (or nan/negative) flag it.
+            if np.abs(deepframe_itl[j, i] - med) >= (thresh * std) or np.isnan(deepframe_itl[j, i]) or deepframe_itl[j, i] < 0:
+                mini, maxi = np.max([0, i - 1]), np.min([dimx - 1, i + 1])
+                minj, maxj = np.max([0, j - 1]), np.min([dimy - 1, j + 1])
+                badpix[j, i] = 1
+                # Also flag cross around the central pixel.
+                badpix[maxj, i] = 1
+                badpix[minj, i] = 1
+                badpix[j, maxi] = 1
+                badpix[j, mini] = 1
+                count += 1
 
-                # If central pixel is too deviant (or nan/negative) flag it.
-                if np.abs(deepframe[j, i] - med) >= (thresh * std) or np.isnan(deepframe[j, i]) or deepframe[j, i] < 0:
-                    mini, maxi = np.max([0, i - 1]), np.min([dimx - 1, i + 1])
-                    minj, maxj = np.max([0, j - 1]), np.min([dimy - 1, j + 1])
-                    badpix[j, i] = 1
-                    # Also flag cross around the central pixel.
-                    badpix[maxj, i] = 1
-                    badpix[minj, i] = 1
-                    badpix[j, maxi] = 1
-                    badpix[j, mini] = 1
-                    count += 1
+    fancyprint(' {} bad pixels identified.'.format(count))
+    # Replace the flagged pixels in the median integration.
+    newdeep, deepdq = utils.do_replacement(deepframe_itl, badpix,
+                                           dq=np.ones_like(deepframe_itl),
+                                           box_size=box_size)
 
-        fancyprint(' {} bad pixels identified this iteration.'.format(count))
-        # End if no bad pixels are found.
-        if count == 0:
-            break
-        # Replace the flagged pixels in the median integration.
-        newdeep, deepdq = utils.do_replacement(deepframe, badpix,
-                                               dq=np.ones_like(deepframe),
-                                               box_size=box_size)
+    # Attempt to open smoothed wlc file.
+    if isinstance(smoothed_wlc, str):
+        try:
+            smoothed_wlc = np.load(smoothed_wlc)
+        except (ValueError, FileNotFoundError):
+            msg = 'Light curve file cannot be opened. ' \
+                  'It will be estimated from current data.'
+            fancyprint(msg, msg_type='WARNING')
+            smoothed_wlc = None
+    # If no lightcurve is provided, estimate it from the current data.
+    if smoothed_wlc is None:
+        postage = cube[:, 20:60, 1500:1550]
+        timeseries = np.nansum(postage, axis=(1, 2))
+        timeseries = timeseries / np.nanmedian(timeseries[baseline_ints])
+        # Smooth the time series on a timescale of roughly 2%.
+        smoothed_wlc = median_filter(timeseries,
+                                     int(0.02*np.shape(cube)[0]))
 
-        # If no lightcurve is provided, estimate it from the current data.
-        if smoothed_wlc is None:
-            postage = cube[:, 20:60, 1500:1550]
-            timeseries = np.nansum(postage, axis=(1, 2))
-            timeseries = timeseries / np.nanmedian(timeseries[baseline_ints])
-            # Smooth the time series on a timescale of roughly 2%.
-            smoothed_wlc = median_filter(timeseries,
-                                         int(0.02*np.shape(cube)[0]))
-        # Replace hot pixels in each integration using a scaled median.
-        newdeep = np.repeat(newdeep, nint).reshape(dimy, dimx, nint)
-        newdeep = newdeep.transpose(2, 0, 1) * smoothed_wlc[:, None, None]
-        mask = badpix.astype(bool)
-        newdata[:, mask] = newdeep[:, mask]
-        # Set DQ flags for these pixels to zero (use the pixel).
-        deepdq = ~deepdq.astype(bool)
-        newdq[:, deepdq] = 0
-
-        it += 1
-        thresh += 1
+    # Replace hot pixels in each integration using a scaled median.
+    newdeep = np.repeat(newdeep, nint).reshape(dimy, dimx, nint)
+    newdeep = newdeep.transpose(2, 0, 1) * smoothed_wlc[:, None, None]
+    mask = badpix.astype(bool)
+    newdata[:, mask] = newdeep[:, mask]
+    # Set DQ flags for these pixels to zero (use the pixel).
+    deepdq = ~deepdq.astype(bool)
+    newdq[:, deepdq] = 0
 
     # Generate a final corrected deep frame for the baseline integrations.
-    deepframe = utils.make_deepstack(newdata[baseline_ints])
+    deepframe_fnl = utils.make_deepstack(newdata[baseline_ints])
 
+    results = []
     current_int = 0
     # Save interpolated data.
-    for n, file in enumerate(data):
-        currentdata = file.data
-        nints = np.shape(currentdata)[0]
-        file.data = newdata[current_int:(current_int + nints)]
-        file.dq = newdq[current_int:(current_int + nints)]
-        current_int += nints
-        if save_results is True:
-            with warnings.catch_warnings():
-                warnings.simplefilter('ignore')
-                file.write(output_dir + fileroots[n] + 'badpixstep.fits')
-        file.close()
+    for n, file in enumerate(datafiles):
+        with utils.open_filetype(file) as currentfile:
+            currentdata = currentfile.data
+            nints = np.shape(currentdata)[0]
+            currentfile.data = newdata[current_int:(current_int + nints)]
+            currentfile.dq = newdq[current_int:(current_int + nints)]
+            current_int += nints
+            if save_results is True:
+                with warnings.catch_warnings():
+                    warnings.simplefilter('ignore')
+                    file.write(output_dir + fileroots[n] + 'badpixstep.fits')
+
+            results.append(currentfile)
 
     if save_results is True:
-        # Save deep frame.
-        hdu = fits.PrimaryHDU(deepframe)
-        hdu.writeto(output_dir + fileroot_noseg + 'deepframe.fits',
-                    overwrite=True)
+        # Save deep frame before and after interpolation.
+        hdu1 = fits.PrimaryHDU()
+        hdr = fits.Header()
+        hdr['EXTNAME'] = 'Interpolated'
+        hdu2 = fits.ImageHDU(deepframe_fnl, header=hdr)
+        hdr = fits.Header()
+        hdr['EXTNAME'] = 'Uninterpolated'
+        hdu3 = fits.ImageHDU(deepframe_itl, header=hdr)
 
-    return data, deepframe
+        hdul = fits.HDUList([hdu1, hdu2, hdu3])
+        hdul.writeto(output_dir + fileroot_noseg + 'deepframe.fits',
+                     overwrite=True)
+
+    return results, deepframe_fnl
 
 
 def tracingstep(datafiles, deepframe=None, calculate_stability=True,
