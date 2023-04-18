@@ -26,38 +26,9 @@ from supreme_spoon.utils import fancyprint
 
 
 def make_background_plot(results, outfile=None, show_plot=True):
-    """Do nine-panel plot of background subtraction.
+    """Nine-panel plot for background subtraction results.
     """
-
-    fancyprint('Doing diagnostic plot.')
-    results = np.atleast_1d(results)
-    for i, file in enumerate(results):
-        with utils.open_filetype(file) as datamodel:
-            if i == 0:
-                cube = datamodel.data
-            else:
-                cube = np.concatenate([cube, datamodel.data])
-
-    if np.ndim(cube) == 4:
-        nint, ngroup, dimy, dimx = np.shape(cube)
-        grps = np.random.randint(0, ngroup, 9)
-    else:
-        nint, dimy, dimx = np.shape(cube)
-        ngroup = 0
-    ints = np.random.randint(0, nint, 9)
-
-    to_plot, to_write = [], []
-    if ngroup != 0:
-        for i, g in zip(ints, grps):
-            to_plot.append(cube[i, g])
-            to_write.append('({0}, {1})'.format(i, g))
-    else:
-        for i in ints:
-            to_plot.append(cube[i])
-            to_write.append('({0})'.format(i))
-    nine_panel_plot(to_plot, to_write, outfile=outfile, show_plot=show_plot)
-    if outfile is not None:
-        fancyprint('Plot saved to {}'.format(outfile))
+    make_basic_nine_panel_plot(results, outfile=outfile, show_plot=show_plot)
 
 
 def make_corner_plot(fit_params, results, posterior_names=None, outpdf=None,
@@ -387,6 +358,41 @@ def make_linearity_plot(results, old_results, outfile=None, show_plot=True):
         plt.show()
 
 
+def make_basic_nine_panel_plot(results, outfile=None, show_plot=True):
+    """Do general nine-panel plot of either 4D or 3D data.
+    """
+
+    fancyprint('Doing diagnostic plot.')
+    results = np.atleast_1d(results)
+    for i, file in enumerate(results):
+        with utils.open_filetype(file) as datamodel:
+            if i == 0:
+                cube = datamodel.data
+            else:
+                cube = np.concatenate([cube, datamodel.data])
+
+    if np.ndim(cube) == 4:
+        nint, ngroup, dimy, dimx = np.shape(cube)
+        grps = np.random.randint(0, ngroup, 9)
+    else:
+        nint, dimy, dimx = np.shape(cube)
+        ngroup = 0
+    ints = np.random.randint(0, nint, 9)
+
+    to_plot, to_write = [], []
+    if ngroup != 0:
+        for i, g in zip(ints, grps):
+            to_plot.append(cube[i, g])
+            to_write.append('({0}, {1})'.format(i, g))
+    else:
+        for i in ints:
+            to_plot.append(cube[i])
+            to_write.append('({0})'.format(i))
+    nine_panel_plot(to_plot, to_write, outfile=outfile, show_plot=show_plot)
+    if outfile is not None:
+        fancyprint('Plot saved to {}'.format(outfile))
+
+
 def make_oneoverf_plot(results, baseline_ints, timeseries=None,
                        occultation_type='transit', outfile=None,
                        show_plot=True):
@@ -555,28 +561,9 @@ def make_oneoverf_psd(results, old_results, timeseries, baseline_ints,
 
 
 def make_superbias_plot(results, outfile=None, show_plot=True):
-    """Make nine-panel plot of dataframes after superbias subtraction.
+    """Nine-panel plot for superbias subtraction results.
     """
-
-    fancyprint('Doing diagnostic plot.')
-    results = np.atleast_1d(results)
-    for i, file in enumerate(results):
-        with utils.open_filetype(file) as datamodel:
-            if i == 0:
-                cube = datamodel.data
-            else:
-                cube = np.concatenate([cube, datamodel.data])
-
-    nint, ngroup, dimy, dimx = np.shape(cube)
-    ints = np.random.randint(0, nint, 9)
-    grps = np.random.randint(0, ngroup, 9)
-    to_plot, to_write = [], []
-    for i, g in zip(ints, grps):
-        to_plot.append(cube[i, g])
-        to_write.append('({0}, {1})'.format(i, g))
-    nine_panel_plot(to_plot, to_write, outfile=outfile, show_plot=show_plot)
-    if outfile is not None:
-        fancyprint('Plot saved to {}'.format(outfile))
+    make_basic_nine_panel_plot(results, outfile=outfile, show_plot=show_plot)
 
 
 def make_2d_lightcurve_plot(wave1, flux1, wave2=None, flux2=None, outpdf=None,
