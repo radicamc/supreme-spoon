@@ -10,6 +10,7 @@ Custom JWST DMS pipeline steps for Stage 2 (Spectroscopic processing).
 
 from astropy.io import fits
 import glob
+import more_itertools as mit
 import numpy as np
 import os
 import pandas as pd
@@ -292,10 +293,10 @@ class TracingStep:
         self.fileroot_noseg = utils.get_filename_root_noseg(self.fileroots)
 
     def run(self, generate_tracemask=True, mask_width=45, pixel_flags=None,
-            calculate_stability=True, stability_params='ALL', nthreads=4,
-            save_results=True, force_redo=False, generate_lc=True,
-            baseline_ints=None, occultation_type='transit',
-            smoothing_scale=None):
+            generate_order0_mask=True, f277w=None, calculate_stability=True,
+            stability_params='ALL', nthreads=4, save_results=True,
+            force_redo=False, generate_lc=True, baseline_ints=None,
+            occultation_type='transit', smoothing_scale=None):
         """Method to run the step.
         """
 
@@ -309,7 +310,7 @@ class TracingStep:
                        'with force_redo=True.\n')
             fancyprint('Skipping Tracing Step.\n')
             centroids = pd.read_csv(expected_file, comment='#')
-            tracemask, smoothed_lc = None, None
+            tracemask, order0mask, smoothed_lc = None, None, None
         # If no output files are detected, run the step.
         else:
             # Attempt to find pixel mask files if none were passed.
@@ -332,6 +333,8 @@ class TracingStep:
                                        generate_tracemask=generate_tracemask,
                                        mask_width=mask_width,
                                        pixel_flags=pixel_flags,
+                                       generate_order0_mask=generate_order0_mask,
+                                       f277w=f277w,
                                        generate_lc=generate_lc,
                                        baseline_ints=baseline_ints,
                                        occultation_type=occultation_type,
@@ -339,9 +342,9 @@ class TracingStep:
                                        output_dir=self.output_dir,
                                        save_results=save_results,
                                        fileroot_noseg=self.fileroot_noseg)
-            centroids, tracemask, smoothed_lc = step_results
+            centroids, tracemask, order0mask, smoothed_lc = step_results
 
-        return centroids, tracemask, smoothed_lc
+        return centroids, tracemask, order0mask, smoothed_lc
 
 
 def backgroundstep(datafiles, background_model, output_dir='./',
@@ -701,21 +704,24 @@ def badpixstep(datafiles, baseline_ints, smoothed_wlc=None, thresh=15,
     return results, deepframe_fnl
 
 
+# TODO: add order 0 flagging here
 def tracingstep(datafiles, deepframe=None, calculate_stability=True,
                 stability_params='ALL', nthreads=4, generate_tracemask=True,
-                mask_width=45, pixel_flags=None, generate_lc=True,
-                baseline_ints=None, occultation_type='transit',
-                smoothing_scale=None, output_dir='./', save_results=True,
-                fileroot_noseg=''):
+                mask_width=45, pixel_flags=None, generate_order0_mask=False,
+                f277w=None, generate_lc=True, baseline_ints=None,
+                occultation_type='transit', smoothing_scale=None,
+                output_dir='./', save_results=True, fileroot_noseg=''):
     """A multipurpose step to perform some initial analysis of the 2D
     dataframes and produce products which can be useful in further reduction
-    iterations. The four functionalities are detailed below:
+    iterations. The five functionalities are detailed below:
     1. Locate the centroids of all three SOSS orders via the edgetrigger
     algorithm.
     2. (optional) Generate a mask of the target diffraction orders.
-    3. (optional) Calculate the stability of the SOSS traces over the course
+    3. (optional) Generate a mask of order 0 contaminants from background
+    stars.
+    4. (optional) Calculate the stability of the SOSS traces over the course
     of the TSO.
-    4. (optional) Create a smoothed estimate of the order 1 white light curve.
+    5. (optional) Create a smoothed estimate of the order 1 white light curve.
 
     Parameters
     ----------
@@ -740,6 +746,12 @@ def tracingstep(datafiles, deepframe=None, calculate_stability=True,
     pixel_flags: None, str, array-like[str]
         Paths to files containing existing pixel flags to which the trace mask
         should be added. Only necesssary if generate_tracemask is True.
+    generate_order0_mask : bool
+        If True, generate a mask of order 0 cotaminants using an F277W filter
+        exposure.
+    f277w : None, str, array-like[float]
+        F277W filter exposure which has been superbias and background
+        corrected. Only necessary if generate_order0_mask is True.
     generate_lc : bool
         If True, also produce a smoothed order 1 white light curve.
     baseline_ints : array-like[int]
@@ -763,6 +775,8 @@ def tracingstep(datafiles, deepframe=None, calculate_stability=True,
         Trace centroids for all three orders.
     tracemask : array-like[bool], None
         If requested, the trace mask.
+    order0mask : array-like[bool], None
+        If requested, the order 0 mask.
     smoothed_lc : array-like[float], None
         If requested, the smoothed order 1 white light curve.
     """
@@ -813,6 +827,7 @@ def tracingstep(datafiles, deepframe=None, calculate_stability=True,
     # If requested, create a trace mask for each order.
     tracemask = None
     if generate_tracemask is True:
+        fancyprint('Generating trace masks.')
         weights1 = soss_boxextract.get_box_weights(y1, mask_width,
                                                    (dimy, dimx),
                                                    cols=x1.astype(int))
@@ -858,7 +873,49 @@ def tracingstep(datafiles, deepframe=None, calculate_stability=True,
                 hdu.writeto(outfile, overwrite=True)
                 fancyprint('Trace mask saved to {}'.format(outfile))
 
-    # ===== PART 3: Calculate the trace stability =====
+    # ===== PART 3: Create order 0 background contamination mask =====
+    # If requested, create a mask for all background order 0 contaminants.
+    order0mask = None
+    if generate_order0_mask is True:
+        fancyprint('Generating background order 0 mask.')
+        if isinstance(f277w, str):
+            try:
+                f277w = np.load(f277w)
+            except (ValueError, FileNotFoundError):
+                msg = 'F277W filter exposure file cannot be opened.'
+                fancyprint(msg, msg_type='WARNING')
+                f277w = None
+        if f277w is None:
+            msg = 'No F277W filter exposure provided. ' \
+                  'Skipping the order 0 mask.'
+            fancyprint(msg, msg_type='WARNING')
+        else:
+            order0mask = make_order0_mask_from_f277w(f277w)
+
+            # Save the order 0 mask to file if requested.
+            if save_results is True:
+                # If we are to combine the trace mask with existing pixel mask.
+                if pixel_flags is not None:
+                    pixel_flags = np.atleast_1d(pixel_flags)
+                    # Ensure there is one pixel flag file per data file
+                    assert len(pixel_flags) == len(datafiles)
+                    # Combine with existing flags and overwrite old file.
+                    parts = pixel_flags[0].split('seg')
+                    outfile = parts[0] + 'seg' + 'XXX' + parts[1][3:]
+                    fancyprint('Order 0 mask added to {}'.format(outfile))
+                    for flag_file in pixel_flags:
+                        old_flags = fits.getdata(flag_file)
+                        new_flags = old_flags.astype(bool) | order0mask.astype(bool)
+                        hdu = fits.PrimaryHDU(new_flags.astype(int))
+                        hdu.writeto(flag_file, overwrite=True)
+                else:
+                    hdu = fits.PrimaryHDU(order0mask)
+                    suffix = 'order0_mask.fits'
+                    outfile = output_dir + fileroot_noseg + suffix
+                    hdu.writeto(outfile, overwrite=True)
+                    fancyprint('Order 0 mask saved to {}'.format(outfile))
+
+    # ===== PART 4: Calculate the trace stability =====
     # If requested, calculate the change in position of the trace, as well as
     # its FWHM over the course of the TSO. These quantities may be useful for
     # lightcurve detrending.
@@ -891,11 +948,12 @@ def tracingstep(datafiles, deepframe=None, calculate_stability=True,
             os.remove(output_dir + fileroot_noseg + suffix)
         df.to_csv(output_dir + fileroot_noseg + suffix, index=False)
 
-    # ===== PART 4: Calculate a smoothed light curve =====
+    # ===== PART 5: Calculate a smoothed light curve =====
     # If requested, generate a smoothed estimate of the order 1 white light
     # curve.
     smoothed_lc = None
     if generate_lc is True:
+        fancyprint('Generating a smoothed light curve')
         # Format the baseline frames - either out-of-transit or in-eclipse.
         assert baseline_ints is not None
         baseline_ints = utils.format_out_frames(baseline_ints,
@@ -918,7 +976,47 @@ def tracingstep(datafiles, deepframe=None, calculate_stability=True,
             fancyprint('Smoothed light curve saved to {}'.format(outfile))
             np.save(outfile, smoothed_lc)
 
-    return centroids, tracemask, smoothed_lc
+    return centroids, tracemask, order0mask, smoothed_lc
+
+
+def make_order0_mask_from_f277w(f277w, thresh_std=1, thresh_size=10):
+    """Locate order 0 contaminants from background stars using an F277W filter
+     exposure data frame.
+
+    Parameters
+    ----------
+    f277w : array-like[float]
+        An F277W filter exposure, superbias and background subtracted.
+    thresh_std : int
+        Threshold above which a group of pixels will be flagged.
+    thresh_size : int
+        Size of pixel group to be considered an order 0.
+
+    Returns
+    -------
+    mask : array-like[int]
+        Frame with locations of order 0 contaminants.
+    """
+
+    dimy, dimx = np.shape(f277w)
+    mask = np.zeros_like(f277w)
+
+    # Loop over all columns and find groups of pixels which are significantly
+    # above the column median.
+    # Start at column 700 as that is ~where pickoff mirror effects start.
+    for col in range(700, dimx):
+        # Subtract median from column and get the standard deviation
+        diff = f277w[:, col] - np.nanmedian(f277w[:, col])
+        dev = np.nanstd(diff)
+        # Find pixels which are deviant.
+        vals = np.where(np.abs(diff) > thresh_std * dev)[0]
+        # Mark consecutive groups of pixels found above.
+        for group in mit.consecutive_groups(vals):
+            group = list(group)
+            if len(group) > thresh_size:
+                mask[group, col] = 1
+
+    return mask
 
 
 def run_stage2(results, background_model, baseline_ints, smoothed_wlc=None,
@@ -926,8 +1024,8 @@ def run_stage2(results, background_model, baseline_ints, smoothed_wlc=None,
                stability_params='ALL', nthreads=4, root_dir='./',
                output_tag='', occultation_type='transit', smoothing_scale=None,
                skip_steps=None, generate_lc=True, generate_tracemask=True,
-               mask_width=45, pixel_flags=None, do_plot=False, show_plot=False,
-               **kwargs):
+               mask_width=45, pixel_flags=None, generate_order0_mask=True,
+               f277w=None, do_plot=False, show_plot=False, **kwargs):
     """Run the supreme-SPOON Stage 2 pipeline: spectroscopic processing,
     using a combination of official STScI DMS and custom steps. Documentation
     for the official DMS steps can be found here:
@@ -975,6 +1073,12 @@ def run_stage2(results, background_model, baseline_ints, smoothed_wlc=None,
     pixel_flags: None, str, array-like[str]
         Paths to files containing existing pixel flags to which the trace mask
         should be added. Only necesssary if generate_tracemask is True.
+    generate_order0_mask : bool
+        If True, generate a mask of order 0 cotaminants using an F277W filter
+        exposure.
+    f277w : None, str, array-like[float]
+        F277W filter exposure which has been superbias and background
+        corrected. Only necessary if generate_order0_mask is True.
     do_plot : bool
         If True, make step diagnostic plots.
     show_plot : bool
@@ -1068,15 +1172,17 @@ def run_stage2(results, background_model, baseline_ints, smoothed_wlc=None,
     # Custom DMS step.
     if 'TracingStep' not in skip_steps:
         step = TracingStep(results, deepframe=deepframe, output_dir=outdir)
-        centroids = step.run(calculate_stability=calculate_stability,
-                             stability_params=stability_params,
-                             nthreads=nthreads,
-                             generate_tracemask=generate_tracemask,
-                             mask_width=mask_width, pixel_flags=pixel_flags,
-                             generate_lc=generate_lc,
-                             baseline_ints=baseline_ints,
-                             occultation_type=occultation_type,
-                             smoothing_scale=smoothing_scale,
-                             save_results=save_results)
+        step_results = step.run(calculate_stability=calculate_stability,
+                                stability_params=stability_params,
+                                nthreads=nthreads,
+                                generate_tracemask=generate_tracemask,
+                                mask_width=mask_width, pixel_flags=pixel_flags,
+                                generate_order0_mask=generate_order0_mask,
+                                f277w=f277w,
+                                generate_lc=generate_lc,
+                                baseline_ints=baseline_ints,
+                                occultation_type=occultation_type,
+                                smoothing_scale=smoothing_scale,
+                                save_results=save_results)
 
     return results, deepframe
