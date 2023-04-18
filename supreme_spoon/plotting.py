@@ -28,7 +28,72 @@ from supreme_spoon.utils import fancyprint
 def make_background_plot(results, outfile=None, show_plot=True):
     """Nine-panel plot for background subtraction results.
     """
-    make_basic_nine_panel_plot(results, outfile=outfile, show_plot=show_plot)
+    kwargs = {'max_percentile': 70}
+    make_basic_nine_panel_plot(results, outfile=outfile, show_plot=show_plot,
+                               **kwargs)
+
+
+def make_badpix_plot(deep, hotpix, nanpix, otherpix, outfile=None,
+                     show_plot=True):
+    """Show locations of interpolated pixels.
+    """
+
+    fancyprint('Doing diagnostic plot.')
+    # Plot the location of all jumps and hot pixels.
+    fig, ax = plt.subplots(figsize=(8, 5), facecolor='white')
+    plt.imshow(deep, aspect='auto', origin='lower', vmin=0,
+               vmax=np.nanpercentile(deep, 85))
+
+    # Show hot pixel locations.
+    first_time = True
+    for ypos, xpos in zip(hotpix[0], hotpix[1]):
+        if first_time is True:
+            marker = Ellipse((xpos, ypos), 21, 3, color='red',
+                             fill=False, label='Hot Pixel')
+            ax.add_patch(marker)
+            first_time = False
+        else:
+            marker = Ellipse((xpos, ypos), 21, 3, color='red',
+                             fill=False)
+            ax.add_patch(marker)
+
+    # Show negative locations.
+    first_time = True
+    for ypos, xpos in zip(nanpix[0], nanpix[1]):
+        if first_time is True:
+            marker = Ellipse((xpos, ypos), 21, 3, color='blue',
+                             fill=False, label='Negative')
+            ax.add_patch(marker)
+            first_time = False
+        else:
+            marker = Ellipse((xpos, ypos), 21, 3, color='blue',
+                             fill=False)
+            ax.add_patch(marker)
+
+    # Show 'other' locations.
+    first_time = True
+    for ypos, xpos in zip(otherpix[0], otherpix[1]):
+        if first_time is True:
+            marker = Ellipse((xpos, ypos), 21, 3, color='green',
+                             fill=False, label='Other')
+            ax.add_patch(marker)
+            first_time = False
+        else:
+            marker = Ellipse((xpos, ypos), 21, 3, color='green',
+                             fill=False)
+            ax.add_patch(marker)
+
+    plt.yticks(fontsize=10)
+    plt.xticks(fontsize=10)
+    plt.legend(loc=1)
+
+    if outfile is not None:
+        plt.savefig(outfile, bbox_inches='tight')
+        fancyprint('Plot saved to {}'.format(outfile))
+    if show_plot is False:
+        plt.close()
+    else:
+        plt.show()
 
 
 def make_corner_plot(fit_params, results, posterior_names=None, outpdf=None,
@@ -358,7 +423,7 @@ def make_linearity_plot(results, old_results, outfile=None, show_plot=True):
         plt.show()
 
 
-def make_basic_nine_panel_plot(results, outfile=None, show_plot=True):
+def make_basic_nine_panel_plot(results, outfile=None, show_plot=True, **kwargs):
     """Do general nine-panel plot of either 4D or 3D data.
     """
 
@@ -388,7 +453,8 @@ def make_basic_nine_panel_plot(results, outfile=None, show_plot=True):
         for i in ints:
             to_plot.append(cube[i])
             to_write.append('({0})'.format(i))
-    nine_panel_plot(to_plot, to_write, outfile=outfile, show_plot=show_plot)
+    nine_panel_plot(to_plot, to_write, outfile=outfile, show_plot=show_plot,
+                    **kwargs)
     if outfile is not None:
         fancyprint('Plot saved to {}'.format(outfile))
 
@@ -645,7 +711,11 @@ def nine_panel_plot(data, text=None, outfile=None, show_plot=True, **kwargs):
             else:
                 vmin = kwargs['vmin']
             if 'vmax' not in kwargs.keys():
-                vmax = np.nanpercentile(data[frame], 85)
+                if 'max_percentile' not in kwargs.keys():
+                    max_percentile = 85
+                else:
+                    max_percentile = kwargs['max_percentile']
+                vmax = np.nanpercentile(data[frame], max_percentile)
             else:
                 vmax = kwargs['vmax']
             ax.imshow(data[frame], aspect='auto', origin='lower', vmin=vmin,

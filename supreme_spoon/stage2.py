@@ -239,7 +239,8 @@ class BadPixStep:
         self.fileroots = utils.get_filename_root(self.datafiles)
         self.fileroot_noseg = utils.get_filename_root_noseg(self.fileroots)
 
-    def run(self, thresh=10, box_size=5, save_results=True, force_redo=False):
+    def run(self, thresh=15, box_size=5, save_results=True, force_redo=False,
+            do_plot=False, show_plot=False):
         """Method to run the step.
         """
 
@@ -269,7 +270,8 @@ class BadPixStep:
                                       fileroots=self.fileroots,
                                       fileroot_noseg=self.fileroot_noseg,
                                       occultation_type=self.occultation_type,
-                                      thresh=thresh, box_size=box_size)
+                                      thresh=thresh, box_size=box_size,
+                                      do_plot=do_plot, show_plot=show_plot)
             results, deepframe = step_results
 
         return results, deepframe
@@ -485,9 +487,10 @@ def backgroundstep(datafiles, background_model, output_dir='./',
     return results, model_scaled
 
 
-def badpixstep(datafiles, baseline_ints, smoothed_wlc=None, thresh=10,
+def badpixstep(datafiles, baseline_ints, smoothed_wlc=None, thresh=15,
                box_size=5, output_dir='./', save_results=True, fileroots=None,
-               fileroot_noseg='', occultation_type='transit'):
+               fileroot_noseg='', occultation_type='transit', do_plot=False,
+               show_plot=False):
     """Identify and correct hot pixels remaining in the dataset. Find outlier
     pixels in the median stack and correct them via the median of a box of
     surrounding pixels. Then replace these pixels in each integration via the
@@ -516,6 +519,11 @@ def badpixstep(datafiles, baseline_ints, smoothed_wlc=None, thresh=10,
         Root file name with no segment information.
     occultation_type : str
         Type of occultation, either 'transit' or 'eclipse'.
+    do_plot : bool
+        If True, do the step diagnostic plot.
+    show_plot : bool
+        If True, show the step diagnostic plot instead of/in addition to
+        saving it to file.
 
     Returns
     -------
@@ -546,8 +554,8 @@ def badpixstep(datafiles, baseline_ints, smoothed_wlc=None, thresh=10,
                 cube = currentfile.data
                 dq_cube = currentfile.dq
             else:
-                cube = np.concatenate([cube, currentfile.data], axis=0)
-                dq_cube = np.concatenate([dq_cube, currentfile.dq], axis=0)
+                cube = np.concatenate([cube, currentfile.data])
+                dq_cube = np.concatenate([dq_cube, currentfile.dq])
 
     # Initialize starting loop variables.
     newdata = np.copy(cube)
@@ -556,37 +564,54 @@ def badpixstep(datafiles, baseline_ints, smoothed_wlc=None, thresh=10,
     # Generate the deepstack.
     fancyprint(' Generating a deep stack...')
     deepframe_itl = utils.make_deepstack(newdata[baseline_ints])
-    badpix = np.zeros_like(deepframe_itl)
-    count = 0
-    nint, dimy, dimx = np.shape(newdata)
 
+    # Get locations of all hot pixels.
+    hot_pix = utils.get_dq_flag_metrics(dq_cube[0], ['HOT', 'WARM'])
+
+    hotpix = np.zeros_like(deepframe_itl)
+    nanpix = np.zeros_like(deepframe_itl)
+    otherpix = np.zeros_like(deepframe_itl)
+    nan, hot, other = 0, 0, 0
+    nint, dimy, dimx = np.shape(newdata)
     # Loop over whole deepstack and flag deviant pixels.
     for i in tqdm(range(4, dimx-4)):
-        for j in range(dimy):
-            box_size_i = box_size
-            box_prop = utils.get_interp_box(deepframe_itl, box_size_i, i, j,
-                                            dimx)
-            # Ensure that the median and std dev extracted are good.
-            # If not, increase the box size until they are.
-            while np.any(np.isnan(box_prop)):
-                box_size_i += 1
-                box_prop = utils.get_interp_box(deepframe_itl, box_size_i, i,
-                                                j, dimx)
-            med, std = box_prop[0], box_prop[1]
+        for j in range(dimy-4):
+            # If the pixel is known to be hot, add it to list to interpolate.
+            if hot_pix[j, i]:
+                hotpix[j, i] = 1
+                hot += 1
+            # If not already flagged, double check that the pixel isn't
+            # deviant in some other manner.
+            else:
+                box_size_i = box_size
+                box_prop = utils.get_interp_box(deepframe_itl, box_size_i,
+                                                i, j, dimx)
+                # Ensure that the median and std dev extracted are good.
+                # If not, increase the box size until they are.
+                while np.any(np.isnan(box_prop)):
+                    box_size_i += 1
+                    box_prop = utils.get_interp_box(deepframe_itl, box_size_i,
+                                                    i, j, dimx)
+                med, std = box_prop[0], box_prop[1]
 
-            # If central pixel is too deviant (or nan/negative) flag it.
-            if np.abs(deepframe_itl[j, i] - med) >= (thresh * std) or np.isnan(deepframe_itl[j, i]) or deepframe_itl[j, i] < 0:
-                mini, maxi = np.max([0, i - 1]), np.min([dimx - 1, i + 1])
-                minj, maxj = np.max([0, j - 1]), np.min([dimy - 1, j + 1])
-                badpix[j, i] = 1
-                # Also flag cross around the central pixel.
-                badpix[maxj, i] = 1
-                badpix[minj, i] = 1
-                badpix[j, maxi] = 1
-                badpix[j, mini] = 1
-                count += 1
+                # If central pixel is too deviant (or nan/negative) flag it.
+                if np.isnan(deepframe_itl[j, i]):
+                    nanpix[j, i] = 1
+                    nan += 1
+                elif deepframe_itl[j, i] < 0:
+                    if med >= np.nanpercentile(deepframe_itl, 10):
+                        nanpix[j, i] = 1
+                        nan += 1
+                elif np.abs(deepframe_itl[j, i] - med) >= (thresh * std):
+                    otherpix[j, i] = 1
+                    other += 1
 
-    fancyprint(' {} bad pixels identified.'.format(count))
+    # Combine all flagged pixel maps.
+    badpix = hotpix.astype(bool) | nanpix.astype(bool) | otherpix.astype(bool)
+    badpix = badpix.astype(int)
+
+    fancyprint(' {0} hot, {1} negative, and {2} other deviant pixels '
+               'identified.'.format(hot, nan, other))
     # Replace the flagged pixels in the median integration.
     newdeep, deepdq = utils.do_replacement(deepframe_itl, badpix,
                                            dq=np.ones_like(deepframe_itl),
@@ -635,7 +660,7 @@ def badpixstep(datafiles, baseline_ints, smoothed_wlc=None, thresh=10,
             if save_results is True:
                 with warnings.catch_warnings():
                     warnings.simplefilter('ignore')
-                    file.write(output_dir + fileroots[n] + 'badpixstep.fits')
+                    currentfile.write(output_dir + fileroots[n] + 'badpixstep.fits')
 
             results.append(currentfile)
 
@@ -652,6 +677,17 @@ def badpixstep(datafiles, baseline_ints, smoothed_wlc=None, thresh=10,
         hdul = fits.HDUList([hdu1, hdu2, hdu3])
         hdul.writeto(output_dir + fileroot_noseg + 'deepframe.fits',
                      overwrite=True)
+
+    if do_plot is True:
+        if save_results is True:
+            outfile = 'badpixstep.pdf'
+        else:
+            outfile = None
+        hotpix = np.where(hotpix != 0)
+        nanpix = np.where(nanpix != 0)
+        otherpix = np.where(otherpix != 0)
+        plotting.make_badpix_plot(deepframe_itl, hotpix, nanpix, otherpix,
+                                  outfile=outfile, show_plot=show_plot)
 
     return results, deepframe_fnl
 
