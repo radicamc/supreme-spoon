@@ -552,9 +552,11 @@ def badpixstep(datafiles, baseline_ints, smoothed_wlc=None, thresh=15,
             # Also stack all the dq arrays from each segement.
             if i == 0:
                 cube = currentfile.data
+                err_cube = currentfile.err
                 dq_cube = currentfile.dq
             else:
                 cube = np.concatenate([cube, currentfile.data])
+                err_cube = np.concatenate([err_cube, currentfile.err])
                 dq_cube = np.concatenate([dq_cube, currentfile.dq])
 
     # Initialize starting loop variables.
@@ -647,6 +649,12 @@ def badpixstep(datafiles, baseline_ints, smoothed_wlc=None, thresh=15,
     # Generate a final corrected deep frame for the baseline integrations.
     deepframe_fnl = utils.make_deepstack(newdata[baseline_ints])
 
+    # Lastly, do a final check for any remaining invalid flux or error values.
+    ii = np.where(np.isnan(newdata))
+    newdata[ii] = newdeep[ii]
+    ii = np.where(np.isnan(err_cube))
+    err_cube[ii] = np.nanmedian(err_cube)
+
     results = []
     current_int = 0
     # Save interpolated data.
@@ -655,6 +663,7 @@ def badpixstep(datafiles, baseline_ints, smoothed_wlc=None, thresh=15,
             currentdata = currentfile.data
             nints = np.shape(currentdata)[0]
             currentfile.data = newdata[current_int:(current_int + nints)]
+            currentfile.err = err_cube[current_int:(current_int + nints)]
             currentfile.dq = newdq[current_int:(current_int + nints)]
             current_int += nints
             if save_results is True:
@@ -917,7 +926,8 @@ def run_stage2(results, background_model, baseline_ints, smoothed_wlc=None,
                stability_params='ALL', nthreads=4, root_dir='./',
                output_tag='', occultation_type='transit', smoothing_scale=None,
                skip_steps=None, generate_lc=True, generate_tracemask=True,
-               mask_width=45, pixel_flags=None, **kwargs):
+               mask_width=45, pixel_flags=None, do_plot=False, show_plot=False,
+               **kwargs):
     """Run the supreme-SPOON Stage 2 pipeline: spectroscopic processing,
     using a combination of official STScI DMS and custom steps. Documentation
     for the official DMS steps can be found here:
@@ -965,6 +975,11 @@ def run_stage2(results, background_model, baseline_ints, smoothed_wlc=None,
     pixel_flags: None, str, array-like[str]
         Paths to files containing existing pixel flags to which the trace mask
         should be added. Only necesssary if generate_tracemask is True.
+    do_plot : bool
+        If True, make step diagnostic plots.
+    show_plot : bool
+        Only necessary if do_plot is True. Show the diagnostic plots in
+        addition to/instead of saving to file.
 
     Returns
     -------
@@ -1022,6 +1037,7 @@ def run_stage2(results, background_model, baseline_ints, smoothed_wlc=None,
         step = BackgroundStep(results, background_model=background_model,
                               output_dir=outdir)
         results = step.run(save_results=save_results, force_redo=force_redo,
+                           do_plot=do_plot, show_plot=show_plot,
                            **step_kwargs)[0]
 
     # ===== Flat Field Correction Step =====
@@ -1042,7 +1058,8 @@ def run_stage2(results, background_model, baseline_ints, smoothed_wlc=None,
                           smoothed_wlc=smoothed_wlc, output_dir=outdir,
                           occultation_type=occultation_type)
         step_results = step.run(save_results=save_results,
-                                force_redo=force_redo)
+                                force_redo=force_redo, do_plot=do_plot,
+                                show_plot=show_plot)
         results, deepframe = step_results
     else:
         deepframe = None
