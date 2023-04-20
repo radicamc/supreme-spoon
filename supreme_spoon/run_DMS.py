@@ -64,22 +64,22 @@ else:
 
 # ===== Run Stage 2 =====
 if 2 in config['run_stages']:
-    results = run_stage2(stage1_results, smoothed_wlc=config['smoothed_wlc'],
-                         background_model=background_model,
+    results = run_stage2(stage1_results, background_model=background_model,
                          baseline_ints=config['baseline_ints'],
+                         smoothed_wlc=config['smoothed_wlc'],
                          save_results=config['save_results'],
                          force_redo=config['force_redo'],
-                         output_tag=config['output_tag'],
-                         occultation_type=config['occultation_type'],
-                         generate_tracemask=config['generate_tracemask'],
-                         pixel_flags=config['outlier_maps'],
-                         mask_width=config['mask_width'],
-                         calculate_stability=config['calculate_stability'],
+                         calculate_stability_ccf=config['calculate_stability'],
                          stability_params=config['stability_params'],
                          nthreads=config['nthreads'],
+                         output_tag=config['output_tag'],
+                         occultation_type=config['occultation_type'],
                          smoothing_scale=config['smoothing_scale'],
-                         generate_lc=config['generate_lc'],
                          skip_steps=config['stage2_skip'],
+                         generate_lc=config['generate_lc'],
+                         generate_tracemask=config['generate_tracemask'],
+                         mask_width=config['mask_width'],
+                         pixel_flags=config['outlier_maps'],
                          **config['stage2_kwargs'])
     stage2_results, deepframe = results
 else:

@@ -29,8 +29,8 @@ def make_background_plot(results, outfile=None, show_plot=True):
     """Nine-panel plot for background subtraction results.
     """
     kwargs = {'max_percentile': 70}
-    make_basic_nine_panel_plot(results, outfile=outfile, show_plot=show_plot,
-                               **kwargs)
+    basic_nine_panel_plot(results, outfile=outfile, show_plot=show_plot,
+                          **kwargs)
 
 
 def make_badpix_plot(deep, hotpix, nanpix, otherpix, outfile=None,
@@ -423,42 +423,6 @@ def make_linearity_plot(results, old_results, outfile=None, show_plot=True):
         plt.show()
 
 
-def make_basic_nine_panel_plot(results, outfile=None, show_plot=True, **kwargs):
-    """Do general nine-panel plot of either 4D or 3D data.
-    """
-
-    fancyprint('Doing diagnostic plot.')
-    results = np.atleast_1d(results)
-    for i, file in enumerate(results):
-        with utils.open_filetype(file) as datamodel:
-            if i == 0:
-                cube = datamodel.data
-            else:
-                cube = np.concatenate([cube, datamodel.data])
-
-    if np.ndim(cube) == 4:
-        nint, ngroup, dimy, dimx = np.shape(cube)
-        grps = np.random.randint(0, ngroup, 9)
-    else:
-        nint, dimy, dimx = np.shape(cube)
-        ngroup = 0
-    ints = np.random.randint(0, nint, 9)
-
-    to_plot, to_write = [], []
-    if ngroup != 0:
-        for i, g in zip(ints, grps):
-            to_plot.append(cube[i, g])
-            to_write.append('({0}, {1})'.format(i, g))
-    else:
-        for i in ints:
-            to_plot.append(cube[i])
-            to_write.append('({0})'.format(i))
-    nine_panel_plot(to_plot, to_write, outfile=outfile, show_plot=show_plot,
-                    **kwargs)
-    if outfile is not None:
-        fancyprint('Plot saved to {}'.format(outfile))
-
-
 def make_oneoverf_plot(results, baseline_ints, timeseries=None,
                        occultation_type='transit', outfile=None,
                        show_plot=True):
@@ -626,10 +590,53 @@ def make_oneoverf_psd(results, old_results, timeseries, baseline_ints,
         plt.show()
 
 
+def make_pca_plot(pcs, var, projections, show_plot=False, outfile=None):
+    """Plot of PCA results and reprojections.
+    """
+
+    fancyprint('Plotting PCA outputs.')
+    var_no1 = var / np.nansum(var[1:])
+
+    plt.figure(figsize=(12, 15), facecolor='white')
+    gs = GridSpec(len(var), 2)
+
+    for i in range(len(var)):
+        ax1 = plt.subplot(gs[i, 0])
+        if i == 0:
+            label = '{0:.2e}'.format(var[i])
+        else:
+            label = '{0:.2e} | {1:.2f}'.format(var[i], var_no1[i])
+        plt.plot(pcs[i], c='black', label=label)
+
+        ax1.legend(handlelength=0, handletextpad=0, fancybox=True)
+
+        ax2 = plt.subplot(gs[i, 1])
+        plt.imshow(projections[i], aspect='auto', origin='lower',
+                   vmin=np.nanpercentile(projections[i], 1),
+                   vmax=np.nanpercentile(projections[i], 99))
+
+        if i != len(var) - 1:
+            ax1.xaxis.set_major_formatter(plt.NullFormatter())
+            ax2.xaxis.set_major_formatter(plt.NullFormatter())
+        else:
+            ax1.set_xlabel('Integration Number', fontsize=14)
+            ax2.set_xlabel('Spectral Pixel', fontsize=14)
+
+    gs.update(hspace=0.1, wspace=0.1)
+
+    if outfile is not None:
+        plt.savefig(outfile, bbox_inches='tight')
+        fancyprint('Plot saved to {}'.format(outfile))
+    if show_plot is False:
+        plt.close()
+    else:
+        plt.show()
+
+
 def make_superbias_plot(results, outfile=None, show_plot=True):
     """Nine-panel plot for superbias subtraction results.
     """
-    make_basic_nine_panel_plot(results, outfile=outfile, show_plot=show_plot)
+    basic_nine_panel_plot(results, outfile=outfile, show_plot=show_plot)
 
 
 def make_2d_lightcurve_plot(wave1, flux1, wave2=None, flux2=None, outpdf=None,
@@ -693,6 +700,42 @@ def make_2d_lightcurve_plot(wave1, flux1, wave2=None, flux2=None, outpdf=None,
         plt.close(fig)
     else:
         plt.show()
+
+
+def basic_nine_panel_plot(results, outfile=None, show_plot=True, **kwargs):
+    """Do general nine-panel plot of either 4D or 3D data.
+    """
+
+    fancyprint('Doing diagnostic plot.')
+    results = np.atleast_1d(results)
+    for i, file in enumerate(results):
+        with utils.open_filetype(file) as datamodel:
+            if i == 0:
+                cube = datamodel.data
+            else:
+                cube = np.concatenate([cube, datamodel.data])
+
+    if np.ndim(cube) == 4:
+        nint, ngroup, dimy, dimx = np.shape(cube)
+        grps = np.random.randint(0, ngroup, 9)
+    else:
+        nint, dimy, dimx = np.shape(cube)
+        ngroup = 0
+    ints = np.random.randint(0, nint, 9)
+
+    to_plot, to_write = [], []
+    if ngroup != 0:
+        for i, g in zip(ints, grps):
+            to_plot.append(cube[i, g])
+            to_write.append('({0}, {1})'.format(i, g))
+    else:
+        for i in ints:
+            to_plot.append(cube[i])
+            to_write.append('({0})'.format(i))
+    nine_panel_plot(to_plot, to_write, outfile=outfile, show_plot=show_plot,
+                    **kwargs)
+    if outfile is not None:
+        fancyprint('Plot saved to {}'.format(outfile))
 
 
 def nine_panel_plot(data, text=None, outfile=None, show_plot=True, **kwargs):
