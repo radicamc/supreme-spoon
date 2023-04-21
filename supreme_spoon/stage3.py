@@ -16,7 +16,6 @@ import warnings
 from applesoss import applesoss
 
 from jwst import datamodels
-from jwst.extract_1d.soss_extract import soss_solver
 from jwst.pipeline import calwebb_spec2
 
 from supreme_spoon import utils
