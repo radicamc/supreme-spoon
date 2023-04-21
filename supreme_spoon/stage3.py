@@ -34,35 +34,27 @@ class SpecProfileStep:
         self.output_dir = output_dir
         self.datafiles = np.atleast_1d(datafiles)
         # Get subarray identifier.
-        temp_data = datamodels.open(datafiles[0])
-        if np.shape(temp_data.data)[0] == 96:
-            self.subarray = 'SUBSTRIP96'
-        else:
-            self.subarray = 'SUBSTRIP256'
-        temp_data.close()
+        self.subarray = fits.getheader(self.datafiles[0])['SUBARRAY']
 
-    def run(self, save_results=True, force_redo=False, empirical=True):
+    def run(self, force_redo=False, empirical=True):
         """Method to run the step.
         """
 
         all_files = glob.glob(self.output_dir + '*')
         # If an output file for this segment already exists, skip the step.
-        expected_file = self.output_dir + 'APPLESOSS_ref_2D_profile_{}_os1_pad0.fits'.format(self.subarray)
+        expected_file = self.output_dir + 'APPLESOSS_ref_2D_profile_{}_os1_pad20.fits'.format(self.subarray)
         if expected_file in all_files and force_redo is False:
             fancyprint('File {} already exists.'.format(expected_file))
             fancyprint('Skipping SpecProfile Reference Construction Step.\n')
-            specprofile = datamodels.open(expected_file)
-            filename = expected_file
+            specprofile = expected_file
         # If no output files are detected, run the step.
         else:
-            step_results = specprofilestep(self.datafiles,
-                                           save_results=save_results,
-                                           output_dir=self.output_dir,
-                                           empirical=empirical)
-            specprofile, filename = step_results
-            filename = self.output_dir + filename
+            specprofile = specprofilestep(self.datafiles,
+                                          output_dir=self.output_dir,
+                                          empirical=empirical)
+            specprofile = self.output_dir + specprofile
 
-        return specprofile, filename
+        return specprofile
 
 
 class SossSolverStep:
@@ -453,8 +445,7 @@ def sosssolverstep(datafile, deepframe):
     return transform
 
 
-def specprofilestep(datafiles, save_results=True, empirical=True,
-                    output_dir='./'):
+def specprofilestep(datafiles, empirical=True, output_dir='./'):
     """Wrapper around the APPLESOSS module to construct a specprofile
     reference file tailored to the particular TSO being analyzed.
 
@@ -462,19 +453,16 @@ def specprofilestep(datafiles, save_results=True, empirical=True,
     ----------
     datafiles : array-like[str], array-like[jwst.RampModel]
         Input datamodels or paths to datamodels for each segment.
-    save_results : bool
-        If True, save results to file.
     empirical : bool
         If True, construct profiles using only the data. If False, fall back
         on WebbPSF for the trace wings. Note: The current WebbPSF wings are
-        known to not accurately match the. This mode is therefore not advised.
+        known to not accurately match observations. This mode is therefore not
+        advised.
     output_dir : str
         Directory to which to save outputs.
 
     Returns
     -------
-    spat_prof : applesoss.EmpiricalProfile object
-        Modelled spatial profiles for all orders.
     filename : str
         Name of the output file.
     """
@@ -501,36 +489,33 @@ def specprofilestep(datafiles, save_results=True, empirical=True,
 
     # Initialize and run the APPLESOSS module with the median stack.
     spat_prof = applesoss.EmpiricalProfile(deepstack, tracetable=tracetable,
-                                           wavemap=wavemap)
+                                           wavemap=wavemap, pad=20)
     if empirical is False:
         # Get the date of the observations to use the calculated WFE models
         # from that time.
         obs_date = fits.getheader(datafiles[0])['DATE-OBS']
-        spat_prof.build_empirical_profile(verbose=1, empirical=False,
+        spat_prof.build_empirical_profile(verbose=0, empirical=False,
                                           wave_increment=0.1,
                                           obs_date=obs_date)
     else:
-        spat_prof.build_empirical_profile(verbose=1)
+        spat_prof.build_empirical_profile(verbose=0)
 
-    # Save results to file if requested.
-    if save_results is True:
-        if np.shape(deepstack)[0] == 96:
-            subarray = 'SUBSTRIP96'
-        else:
-            subarray = 'SUBSTRIP256'
-        filename = spat_prof.write_specprofile_reference(subarray,
-                                                         output_dir=output_dir)
+    # Save results to file (non-optional).
+    if np.shape(deepstack)[0] == 96:
+        subarray = 'SUBSTRIP96'
     else:
-        filename = None
+        subarray = 'SUBSTRIP256'
+    filename = spat_prof.write_specprofile_reference(subarray,
+                                                     output_dir=output_dir)
 
-    return spat_prof, filename
+    return filename
 
 
 def run_stage3(results, baseline_ints, deepframe, smoothed_wlc=None,
                save_results=True, root_dir='./', force_redo=False,
                extract_method='box', specprofile=None, soss_estimate=None,
-               soss_width=25, output_tag='', use_applesoss=True,
-               occultation_type='transit', soss_tikfac=None):
+               soss_width=25, output_tag='', occultation_type='transit',
+               soss_tikfac=None):
     """Run the supreme-SPOON Stage 3 pipeline: 1D spectral extraction, using
     a combination of official STScI DMS and custom steps.
 
@@ -561,9 +546,6 @@ def run_stage3(results, baseline_ints, deepframe, smoothed_wlc=None,
         Width around the trace centroids, in pixels, for the 1D extraction.
     output_tag : str
         Name tag to append to pipeline outputs directory.
-    use_applesoss : bool
-        If True, create a tailored specprofile reference file with the
-        applesoss module.
     occultation_type : str
         Type of occultation, either 'transit' or 'eclipse'.
     soss_tikfac : int, None
@@ -592,15 +574,8 @@ def run_stage3(results, baseline_ints, deepframe, smoothed_wlc=None,
     # Custom DMS step
     if extract_method == 'atoca':
         if specprofile is None:
-            if use_applesoss is True:
-                step = SpecProfileStep(results, output_dir=outdir)
-                specprofile = step.run(force_redo=force_redo)[1]
-            else:
-                msg = 'The default specprofile reference file will be used' \
-                      ' for extraction.\n' \
-                      'For optimal results, consider using a tailored' \
-                      ' specprofile reference'
-                fancyprint(msg)
+            step = SpecProfileStep(results, output_dir=outdir)
+            specprofile = step.run(force_redo=force_redo)
 
     # ===== SOSS Solver Step =====
     # Custom DMS step.
