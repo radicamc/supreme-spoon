@@ -661,6 +661,15 @@ def badpixstep(datafiles, baseline_ints, smoothed_wlc=None, thresh=15,
     # Generate a final corrected deep frame for the baseline integrations.
     deepframe_fnl = utils.make_deepstack(newdata[baseline_ints])
 
+    # Final check along the time axis for outlier pixels.
+    std_dev = bn.nanstd(newdata, axis=0)
+    all_med = bn.nanmedian(newdata)
+    scale = np.abs(newdata - deepframe_fnl)/std_dev
+    ii = np.where(scale > 5)
+    mask = np.zeros_like(cube).astype(bool)
+    mask[ii] = True
+    newdata[mask] = newdeep[mask]
+
     # Lastly, do a final check for any remaining invalid flux or error values.
     ii = np.where(np.isnan(newdata))
     newdata[ii] = newdeep[ii]
