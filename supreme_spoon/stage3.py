@@ -11,6 +11,7 @@ Custom JWST DMS pipeline steps for Stage 3 (1D spectral extraction).
 from astropy.io import fits
 import glob
 import numpy as np
+import os
 import warnings
 
 from applesoss import applesoss
@@ -61,8 +62,7 @@ class Extract1DStep:
     custom modifications.
     """
 
-    def __init__(self, input_data, extract_method, deepframe, smoothed_wlc,
-                 output_dir='./'):
+    def __init__(self, input_data, extract_method, output_dir='./'):
         """Step initializer.
         """
 
@@ -71,39 +71,20 @@ class Extract1DStep:
         self.datafiles = utils.sort_datamodels(input_data)
         self.fileroots = utils.get_filename_root(self.datafiles)
         self.extract_method = extract_method
-        self.scaled_deep = deepframe[None, :, :] * smoothed_wlc[:, None, None]
 
     def run(self, soss_transform, soss_width=25, specprofile=None,
-            soss_estimate=None, save_results=True, force_redo=False,
-            soss_tikfac=None):
+            save_results=True, force_redo=False):
         """Method to run the step.
         """
 
         fancyprint('\nStarting 1D extraction using the {} method.\n'.format(self.extract_method))
 
         # Initialize loop and storange variables.
-        i = 0
-        redo = False
         results = []
-        completed_segments, redo_segments = [], []
         all_files = glob.glob(self.output_dir + '*')
 
-        # To accomodate the need to occasionally iteratively run the ATOCA
-        # extraction, extract segments as long as all segments are not
-        # extracted. This is irrelevant for box extractions.
-        while len(completed_segments) < len(self.datafiles):
-            # If the segment counter gets larger than the number of
-            # segments, reset it.
-            if i == len(self.datafiles):
-                i = i % len(self.datafiles)
-                redo = True
-            # If segment counter has been reset, but segment has already been
-            # successfully extracted, skip it.
-            if redo is True and i not in redo_segments:
-                i += 1
-                continue
-
-            segment = utils.open_filetype(self.datafiles[i])
+        for i, segment in enumerate(self.datafiles):
+            segment = utils.open_filetype(segment)
             # If an output file for this segment already exists, skip the step.
             expected_file = self.output_dir + self.fileroots[i] + self.tag
             if expected_file in all_files and force_redo is False:
@@ -111,114 +92,37 @@ class Extract1DStep:
                 fancyprint('Skipping 1D Extraction Step.\n')
                 res = expected_file
 
-                if self.extract_method == 'atoca' and soss_estimate is None:
-                    atoca_spectra = self.output_dir + self.fileroots[i] + 'AtocaSpectra.fits'
-                    soss_estimate = utils.get_soss_estimate(atoca_spectra,
-                                                            output_dir=self.output_dir)
-
             # If no output file is detected, run the step.
             else:
                 # Initialize extraction parameters for ATOCA.
                 if self.extract_method == 'atoca':
-                    soss_atoca = True
                     soss_modelname = self.fileroots[i][:-1]
-                    soss_bad_pix = 'model'
-                    segment = utils.remove_nans(segment)
-                elif self.extract_method == 'box':
-                    # Initialize extraction parameters for box.
-                    soss_atoca = False
-                    soss_modelname = None
-                    soss_bad_pix = 'masking'
-                    # Replace all remaining bad pixels using scaled median,
-                    # and set dq values to zero.
-                    istart = segment.meta.exposure.integration_start - 1
-                    iend = segment.meta.exposure.integration_end
-                    for ii, itg in enumerate(range(istart, iend)):
-                        to_replace = np.where(segment.dq[ii] != 0)
-                        segment.data[ii][to_replace] = self.scaled_deep[itg][to_replace]
-                        segment.dq[ii][to_replace] = 0
-                else:
-                    msg = ('Invalid extraction: {}'.format(self.extract_method))
-                    raise ValueError(msg)
-
-                # Perform the extraction.
-                step = calwebb_spec2.extract_1d_step.Extract1dStep()
-                try:
+                    # Perform the extraction.
+                    step = calwebb_spec2.extract_1d_step.Extract1dStep()
                     res = step.call(segment, output_dir=self.output_dir,
                                     save_results=save_results,
                                     soss_transform=[soss_transform[0],
                                                     soss_transform[1],
                                                     soss_transform[2]],
-                                    soss_atoca=soss_atoca,
                                     subtract_background=False,
-                                    soss_bad_pix=soss_bad_pix,
+                                    soss_bad_pix='model',
                                     soss_width=soss_width,
                                     soss_modelname=soss_modelname,
-                                    override_specprofile=specprofile,
-                                    soss_tikfac=soss_tikfac)
-                    # If the step ran successfully, and ATOCA was used, save
-                    # the AtocaSpectra output for potential use as the
-                    # soss_estimate for later segments.
-                    if self.extract_method == 'atoca' and soss_estimate is None:
-                        atoca_spectra = self.output_dir + self.fileroots[i] + 'AtocaSpectra.fits'
-                        soss_estimate = utils.get_soss_estimate(atoca_spectra,
-                                                                output_dir=self.output_dir)
-                # When using ATOCA, sometimes a very specific error pops up
-                # when an initial estimate of the stellar spectrum cannot be
-                # obtained. This is needed to establish the wavelength grid
-                # (which has a varying resolution to better capture sharp
-                # features in stellar spectra). In these cases, the SOSS
-                # estimate provides information to create a wavelength grid.
-                except Exception as err:
-                    if str(err) == '(m>k) failed for hidden m: fpcurf0:m=0':
-                        # If no soss estimate is available, skip this segment
-                        # and move to the next one. We will come back and deal
-                        # with it later.
-                        if soss_estimate is None:
-                            fancyprint('Initial flux estimate failed, and no '
-                                       'soss estimate provided. Moving to '
-                                       'next segment.', type='WARNING')
-                            redo_segments.append(i)
-                            i += 1
-                            # If all segments fail without a soss estimate,
-                            # just fail.
-                            if len(redo_segments) == len(self.datafiles):
-                                fancyprint('No segment can be correctly '
-                                           'processed.', type='ERROR')
-                                raise err
-                            continue
-                        # Retry extraction with soss estimate.
-                        fancyprint('\nInitial flux estimate failed, retrying '
-                                   'with soss_estimate.\n')
-                        res = step.call(segment, output_dir=self.output_dir,
-                                        save_results=save_results,
-                                        soss_transform=[soss_transform[0],
-                                                        soss_transform[1],
-                                                        soss_transform[2]],
-                                        soss_atoca=soss_atoca,
-                                        subtract_background=False,
-                                        soss_bad_pix=soss_bad_pix,
-                                        soss_width=soss_width,
-                                        soss_modelname=soss_modelname,
-                                        override_specprofile=specprofile,
-                                        soss_estimate=soss_estimate,
-                                        soss_tikfac=soss_tikfac)
-                    # If any other error pops up, raise it.
-                    else:
-                        raise err
-                # Hack to fix file names
-                res = utils.fix_filenames(res, '_badpixstep_', self.output_dir,
-                                          to_add=self.extract_method)[0]
-            results.append(utils.open_filetype(res))
-            # If segment was correctly processed, note the segment.
-            completed_segments.append(i)
-            i += 1
+                                    override_specprofile=specprofile)
+                elif self.extract_method == 'box':
+                    raise NotImplementedError
+                else:
+                    raise ValueError('Invalid extraction method')
 
-        # Sort the segments in chronological order, in case they were
-        # processed out of order.
-        seg_nums = [seg.meta.exposure.segment_number for seg in results]
-        ii = np.argsort(seg_nums)
-        results = np.array(results)[ii]
+            # Verify that filename is correct.
+            if save_results is True:
+                current_name = self.output_dir + res.meta.filename
+                if expected_file != current_name:
+                    res.close()
+                    os.rename(current_name, expected_file)
+                    res = datamodels.open(expected_file)
+
+            results.append(res)
 
         # Save the final extraction parameters.
         extract_params = {'transform_x': soss_transform[0],
@@ -447,11 +351,9 @@ def specprofilestep(datafiles, empirical=True, output_dir='./'):
     return filename
 
 
-def run_stage3(results, baseline_ints, deepframe, smoothed_wlc=None,
-               save_results=True, root_dir='./', force_redo=False,
-               extract_method='box', specprofile=None, soss_estimate=None,
-               soss_width=25, output_tag='', occultation_type='transit',
-               soss_tikfac=None):
+def run_stage3(results, baseline_ints, save_results=True, root_dir='./',
+               force_redo=False, extract_method='box', specprofile=None,
+               soss_width=25, output_tag='', occultation_type='transit'):
     """Run the supreme-SPOON Stage 3 pipeline: 1D spectral extraction, using
     a combination of official STScI DMS and custom steps.
 
@@ -459,13 +361,8 @@ def run_stage3(results, baseline_ints, deepframe, smoothed_wlc=None,
     ----------
     results : array-like[str], array-like[CubeModel]
         supreme-SPOON Stage 2 outputs for each segment.
-    deepframe : array-like[float]
-        Median out-of-transit stack.
     baseline_ints : array-like[int]
         Integration number of ingress and egress.
-    smoothed_wlc : array-like[float], None
-        Estimate of the normalized light curve. If None is passed, one will be
-        generated.
     save_results : bool
         If True, save the results of each step to file.
     root_dir : str
@@ -476,16 +373,12 @@ def run_stage3(results, baseline_ints, deepframe, smoothed_wlc=None,
         Either 'box' or 'atoca'. Runs the applicable 1D extraction routine.
     specprofile : str, None
         For ATOCA; specprofile reference file.
-    soss_estimate : str, None
-        For ATOCA; soss estimate file.
     soss_width : int
         Width around the trace centroids, in pixels, for the 1D extraction.
     output_tag : str
         Name tag to append to pipeline outputs directory.
     occultation_type : str
         Type of occultation, either 'transit' or 'eclipse'.
-    soss_tikfac : int, None
-        Tikhonov regularization factor.
 
     Returns
     -------
@@ -515,14 +408,11 @@ def run_stage3(results, baseline_ints, deepframe, smoothed_wlc=None,
 
     # ===== 1D Extraction Step =====
     # Custom/default DMS step.
-    step = Extract1DStep(results, deepframe=deepframe,
-                         smoothed_wlc=smoothed_wlc,
-                         extract_method=extract_method, output_dir=outdir)
+    step = Extract1DStep(results, extract_method=extract_method,
+                         output_dir=outdir)
     step_results = step.run(soss_transform=[0, 0, 0],
                             soss_width=soss_width, specprofile=specprofile,
-                            soss_estimate=soss_estimate,
-                            save_results=save_results, force_redo=force_redo,
-                            soss_tikfac=soss_tikfac)
+                            save_results=save_results, force_redo=force_redo)
     results, extract_params, times = step_results
 
     # ===== Light Curve Construction Step =====

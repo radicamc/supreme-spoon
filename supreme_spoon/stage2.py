@@ -663,7 +663,6 @@ def badpixstep(datafiles, baseline_ints, smoothed_wlc=None, thresh=15,
 
     # Final check along the time axis for outlier pixels.
     std_dev = bn.nanstd(newdata, axis=0)
-    all_med = bn.nanmedian(newdata)
     scale = np.abs(newdata - deepframe_fnl)/std_dev
     ii = np.where(scale > 5)
     mask = np.zeros_like(cube).astype(bool)
