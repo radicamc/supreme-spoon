@@ -436,32 +436,6 @@ def get_soss_estimate(atoca_spectra, output_dir):
     return estimate_filename
 
 
-def get_timestamps(datafiles):
-    """Get the mid-time stamp for each integration in BJD,
-
-    Parameters
-    ----------
-    datafiles : array-like[jwst.datamodel], jwst.datamodel
-        Datamodels for each segment in a TSO.
-
-    Returns
-    -------
-    times : array-like[float]
-        Mid-integration times for each integraton in BJD.
-    """
-
-    datafiles = np.atleast_1d(datafiles)
-    # Loop over all data files and get mid integration time stamps.
-    for i, data in enumerate(datafiles):
-        data = datamodels.open(data)
-        if i == 0:
-            times = data.int_times['int_mid_BJD_TDB']
-        else:
-            times = np.concatenate([times, data.int_times['int_mid_BJD_TDB']])
-
-    return times
-
-
 def get_trace_centroids(deepframe, tracetable, subarray, save_results=True,
                         save_filename=''):
     """Get the trace centroids for all three orders via the edgetrigger method.

@@ -89,10 +89,6 @@ class Extract1DStep:
         completed_segments, redo_segments = [], []
         all_files = glob.glob(self.output_dir + '*')
 
-        # Calculate time axis. For some reason the extrat1d outputs lose the
-        # timestamps, so this must be done before extracting.
-        times = utils.get_timestamps(self.datafiles)
-
         # To accomodate the need to occasionally iteratively run the ATOCA
         # extraction, extract segments as long as all segments are not
         # extracted. This is irrelevant for box extractions.
@@ -231,6 +227,14 @@ class Extract1DStep:
                           'transform_t': soss_transform[2],
                           'soss_width': soss_width,
                           'method': self.extract_method}
+        # Get timestamps.
+        for i, result in enumerate(results):
+            with utils.open_filetype(result) as file:
+                this_time = file.int_times['int_mid_BJD_TDB']
+            if i == 0:
+                times = this_time
+            else:
+                times = np.concatenate([times, this_time])
 
         return results, extract_params, times
 
