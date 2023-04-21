@@ -57,26 +57,6 @@ class SpecProfileStep:
         return specprofile
 
 
-class SossSolverStep:
-    """Wrapper around custom SOSS Solver step.
-    """
-
-    def __init__(self, datafiles, deepframe):
-        """Step initializer.
-        """
-
-        self.datafiles = np.atleast_1d(datafiles)
-        self.deepframe = deepframe
-
-    def run(self):
-        """Method to run the step.
-        """
-
-        transform = sosssolverstep(self.datafiles[0], self.deepframe)
-
-        return transform
-
-
 class Extract1DStep:
     """Wrapper around default calwebb_spec2 1D Spectral Extraction step, with
     custom modifications.
@@ -398,53 +378,6 @@ def lightcurvestep(datafiles, times, baseline_ints, extract_params,
     return stellar_spectra
 
 
-def sosssolverstep(datafile, deepframe):
-    """Determine the rotation, as well as vertical and horizontal offsets
-    necessary to match the observed trace to the reference files.
-
-    Parameters
-    ----------
-    deepframe : array-like[float]
-        Median baseline stack.
-    datafile : str, jwst.datamodel
-        Datamodel, or path to datamodel for one segment.
-
-    Returns
-    -------
-    transform : tuple
-        dx, dy, and dtheta transformation.
-    """
-
-    fancyprint('Solving the SOSS transform.')
-    # Get the spectrace reference file to extract the reference centroids.
-    step = calwebb_spec2.extract_1d_step.Extract1dStep()
-    spectrace_ref = step.get_reference_file(datafile, 'spectrace')
-    spec_trace = datamodels.SpecTraceModel(spectrace_ref)
-    # Extract the reference centroids for the first and second order.
-    xref_o1 = spec_trace.trace[0].data['X']
-    yref_o1 = spec_trace.trace[0].data['Y']
-    xref_o2 = spec_trace.trace[1].data['X']
-    yref_o2 = spec_trace.trace[1].data['Y']
-
-    # Determine the correct subarray identifier.
-    if np.shape(deepframe)[0] == 96:
-        subarray = 'SUBSTRIP96'
-    else:
-        subarray = 'SUBSTRIP256'
-    # Determine the necessary dx, dy, dtheta transform.
-    with warnings.catch_warnings():
-        warnings.filterwarnings('ignore')
-        transform = soss_solver.solve_transform(deepframe, np.isnan(deepframe),
-                                                xref_o1, yref_o1,
-                                                xref_o2, yref_o2,
-                                                soss_filter=subarray,
-                                                is_fitted=(True, True, True),
-                                                guess_transform=(0, 0, 0))
-    fancyprint('Determined a transform of:\nx = {}\ny = {}\ntheta = {}'.format(*transform))
-
-    return transform
-
-
 def specprofilestep(datafiles, empirical=True, output_dir='./'):
     """Wrapper around the APPLESOSS module to construct a specprofile
     reference file tailored to the particular TSO being analyzed.
@@ -577,20 +510,12 @@ def run_stage3(results, baseline_ints, deepframe, smoothed_wlc=None,
             step = SpecProfileStep(results, output_dir=outdir)
             specprofile = step.run(force_redo=force_redo)
 
-    # ===== SOSS Solver Step =====
-    # Custom DMS step.
-    if specprofile is not None:
-        soss_transform = [0, 0, 0]
-    else:
-        step = SossSolverStep(results, deepframe=deepframe)
-        soss_transform = step.run()
-
     # ===== 1D Extraction Step =====
     # Custom/default DMS step.
     step = Extract1DStep(results, deepframe=deepframe,
                          smoothed_wlc=smoothed_wlc,
                          extract_method=extract_method, output_dir=outdir)
-    step_results = step.run(soss_transform=soss_transform,
+    step_results = step.run(soss_transform=[0, 0, 0],
                             soss_width=soss_width, specprofile=specprofile,
                             soss_estimate=soss_estimate,
                             save_results=save_results, force_redo=force_redo,
