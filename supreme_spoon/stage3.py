@@ -122,28 +122,24 @@ class Extract1DStep:
                         res.close()
                         os.rename(current_name, expected_file)
                         res = datamodels.open(expected_file)
-
-            # Do step plot if requested.
-            if do_plot is True and self.extract_method == 'atoca':
-                if save_results is True:
-                    plot_file = self.output_dir + self.tag.replace(
-                        'fits', 'pdf')
-                else:
-                    plot_file = None
-                models = []
-                for name in self.fileroots:
-                    models.append(name+'SossExtractModel.fits')
-                plotting.make_decontamination_plot(self.datafiles, models,
-                                                   outfile=plot_file,
-                                                   show_plot=show_plot)
-
             results.append(res)
 
+        # Do step plot if requested.
+        if do_plot is True and self.extract_method == 'atoca':
+            if save_results is True:
+                plot_file = self.output_dir + self.tag.replace(
+                    'fits', 'pdf')
+            else:
+                plot_file = None
+            models = []
+            for name in self.fileroots:
+                models.append(name + 'SossExtractModel.fits')
+            plotting.make_decontamination_plot(self.datafiles, models,
+                                               outfile=plot_file,
+                                               show_plot=show_plot)
+
         # Save the final extraction parameters.
-        extract_params = {'transform_x': soss_transform[0],
-                          'transform_y': soss_transform[1],
-                          'transform_t': soss_transform[2],
-                          'soss_width': soss_width,
+        extract_params = {'soss_width': soss_width,
                           'method': self.extract_method}
         # Get timestamps.
         for i, result in enumerate(results):
@@ -154,42 +150,16 @@ class Extract1DStep:
             else:
                 times = np.concatenate([times, this_time])
 
-        return results, extract_params, times
+        # Clip outliers and format extracted spectra.
+        spectra = format_extracted_spectra(results, times, extract_params,
+                                           output_dir=self.output_dir,
+                                           save_results=save_results)
+
+        return spectra
 
 
-class LightCurveStep:
-    """Wrapper around custom Light Curve Construction step.
-    """
-
-    def __init__(self, datafiles, extract_dict, baseline_ints, times,
-                 occultation_type='transit', output_dir='./'):
-        """Step initializer.
-        """
-
-        self.output_dir = output_dir
-        self.datafiles = np.atleast_1d(datafiles)
-        self.extract_dict = extract_dict
-        self.baseline_ints = baseline_ints
-        self.occultation_type = occultation_type
-        self.times = times
-
-    def run(self, save_results=True):
-        """Method to run the step.
-        """
-
-        stellar_spectra = lightcurvestep(self.datafiles, times=self.times,
-                                         extract_params=self.extract_dict,
-                                         baseline_ints=self.baseline_ints,
-                                         occultation_type=self.occultation_type,
-                                         save_results=save_results,
-                                         output_dir=self.output_dir)
-
-        return stellar_spectra
-
-
-def lightcurvestep(datafiles, times, baseline_ints, extract_params,
-                   output_dir='./', save_results=True,
-                   occultation_type='transit'):
+def format_extracted_spectra(datafiles, times, extract_params,
+                             output_dir='./', save_results=True):
     """Upack the outputs of the 1D extraction and format them into lightcurves
     at the native detector resolution.
 
@@ -199,16 +169,12 @@ def lightcurvestep(datafiles, times, baseline_ints, extract_params,
         Input extract1d data files.
     times : array-like[float]
         Time stamps corresponding to each integration.
-    baseline_ints : array-like[int]
-        Integrations of ingress and egress.
     output_dir : str
         Directory to which to save outputs.
     save_results : bool
         If True, save outputs to file.
     extract_params : dict
         Dictonary of parameters used for the 1D extraction.
-    occultation_type : str
-        Type of occultation, either 'transit' or 'eclipse'.
 
     Returns
     -------
@@ -218,11 +184,6 @@ def lightcurvestep(datafiles, times, baseline_ints, extract_params,
 
     fancyprint('Constructing stellar spectra.')
     datafiles = np.atleast_1d(datafiles)
-    # Format the baseline frames - either out-of-transit or in-eclipse.
-    baseline_ints = utils.format_out_frames(baseline_ints,
-                                            occultation_type)
-    # Calculate the DN/s to e- conversion factor for this TSO.
-    dn2e = utils.get_dn2e(datafiles[0])
 
     # Open the datafiles, and pack the wavelength, flux, and flux error
     # information into data cubes.
@@ -230,38 +191,24 @@ def lightcurvestep(datafiles, times, baseline_ints, extract_params,
         segment = utils.unpack_spectra(file)
         if i == 0:
             wave2d_o1 = segment[1]['WAVELENGTH']
-            flux_o1 = segment[1]['FLUX']*dn2e
-            ferr_o1 = segment[1]['FLUX_ERROR']*dn2e
+            flux_o1 = segment[1]['FLUX']
+            ferr_o1 = segment[1]['FLUX_ERROR']
             wave2d_o2 = segment[2]['WAVELENGTH']
-            flux_o2 = segment[2]['FLUX']*dn2e
-            ferr_o2 = segment[2]['FLUX_ERROR']*dn2e
+            flux_o2 = segment[2]['FLUX']
+            ferr_o2 = segment[2]['FLUX_ERROR']
         else:
             wave2d_o1 = np.concatenate([wave2d_o1, segment[1]['WAVELENGTH']])
-            flux_o1 = np.concatenate([flux_o1, segment[1]['FLUX']*dn2e])
-            ferr_o1 = np.concatenate([ferr_o1, segment[1]['FLUX_ERROR']*dn2e])
+            flux_o1 = np.concatenate([flux_o1, segment[1]['FLUX']])
+            ferr_o1 = np.concatenate([ferr_o1, segment[1]['FLUX_ERROR']])
             wave2d_o2 = np.concatenate([wave2d_o2, segment[2]['WAVELENGTH']])
-            flux_o2 = np.concatenate([flux_o2, segment[2]['FLUX']*dn2e])
-            ferr_o2 = np.concatenate([ferr_o2, segment[2]['FLUX_ERROR']*dn2e])
+            flux_o2 = np.concatenate([flux_o2, segment[2]['FLUX']])
+            ferr_o2 = np.concatenate([ferr_o2, segment[2]['FLUX_ERROR']])
     # Create 1D wavelength axes from the 2D wavelength solution.
     wave1d_o1, wave1d_o2 = wave2d_o1[0], wave2d_o2[0]
 
-    # Calculate the baseline flux level, and normalize light curves.
-    with warnings.catch_warnings():
-        warnings.filterwarnings('ignore')
-        norm_factor_o1 = np.nanmedian(flux_o1[baseline_ints], axis=0)
-        nflux_o1 = flux_o1 / norm_factor_o1
-        nferr_o1 = ferr_o1 / norm_factor_o1
-        norm_factor_o2 = np.nanmedian(flux_o2[baseline_ints], axis=0)
-        nflux_o2 = flux_o2 / norm_factor_o2
-        nferr_o2 = ferr_o2 / norm_factor_o2
-
     # Clip remaining 3-sigma outliers.
-    nflux_o1_clip = utils.sigma_clip_lightcurves(nflux_o1, nferr_o1)
-    nflux_o2_clip = utils.sigma_clip_lightcurves(nflux_o2, nferr_o2)
-
-    # Return the light curves back to their un-normalized state.
-    flux_o1_clip = nflux_o1_clip * norm_factor_o1
-    flux_o2_clip = nflux_o2_clip * norm_factor_o2
+    flux_o1_clip = utils.sigma_clip_lightcurves(flux_o1, ferr_o1)
+    flux_o2_clip = utils.sigma_clip_lightcurves(flux_o2, ferr_o2)
 
     # Pack the lightcurves into the output format.
     # First get the target name from the orignal data file headers.
@@ -272,15 +219,13 @@ def lightcurvestep(datafiles, times, baseline_ints, extract_params,
     old_header = fits.getheader(filename, 0)
     target_name = old_header['TARGNAME']
     # Pack 1D extraction parameters into the output file header.
-    filename = output_dir + target_name + '_' + extract_params['method'] + '_spectra_fullres.fits'
+    filename = output_dir + target_name + '_' + extract_params['method'] \
+        + '_spectra_fullres.fits'
     header_dict, header_comments = utils.get_default_header()
     header_dict['Target'] = target_name
     header_dict['Contents'] = 'Full resolution stellar spectra'
     header_dict['Method'] = extract_params['method']
     header_dict['Width'] = extract_params['soss_width']
-    header_dict['Transx'] = extract_params['transform_x']
-    header_dict['Transy'] = extract_params['transform_y']
-    header_dict['Transth'] = extract_params['transform_t']
     # Calculate the limits of each wavelength bin.
     nint = np.shape(flux_o1_clip)[0]
     wl1, wu1 = utils.get_wavebin_limits(wave1d_o1)
@@ -291,11 +236,12 @@ def lightcurvestep(datafiles, times, baseline_ints, extract_params,
     wu2 = np.repeat(wu2[np.newaxis, :], nint, axis=0)
 
     # Pack the stellar spectra and save to file if requested.
-    stellar_spectra = utils.pack_spectra(filename, wl1, wu1, flux_o1_clip,
-                                         ferr_o1, wl2, wu2, flux_o2_clip,
-                                         ferr_o2, times, header_dict,
-                                         header_comments,
-                                         save_results=save_results)
+    stellar_spectra = utils.save_extracted_spectra(filename, wl1, wu1,
+                                                   flux_o1_clip, ferr_o1, wl2,
+                                                   wu2, flux_o2_clip, ferr_o2,
+                                                   times, header_dict,
+                                                   header_comments,
+                                                   save_results=save_results)
 
     return stellar_spectra
 
@@ -366,9 +312,9 @@ def specprofilestep(datafiles, empirical=True, output_dir='./'):
     return filename
 
 
-def run_stage3(results, baseline_ints, save_results=True, root_dir='./',
-               force_redo=False, extract_method='box', specprofile=None,
-               soss_width=25, output_tag='', occultation_type='transit'):
+def run_stage3(results, save_results=True, root_dir='./', force_redo=False,
+               extract_method='box', specprofile=None, soss_width=25,
+               output_tag=''):
     """Run the supreme-SPOON Stage 3 pipeline: 1D spectral extraction, using
     a combination of official STScI DMS and custom steps.
 
@@ -376,8 +322,6 @@ def run_stage3(results, baseline_ints, save_results=True, root_dir='./',
     ----------
     results : array-like[str], array-like[CubeModel]
         supreme-SPOON Stage 2 outputs for each segment.
-    baseline_ints : array-like[int]
-        Integration number of ingress and egress.
     save_results : bool
         If True, save the results of each step to file.
     root_dir : str
@@ -392,12 +336,10 @@ def run_stage3(results, baseline_ints, save_results=True, root_dir='./',
         Width around the trace centroids, in pixels, for the 1D extraction.
     output_tag : str
         Name tag to append to pipeline outputs directory.
-    occultation_type : str
-        Type of occultation, either 'transit' or 'eclipse'.
 
     Returns
     -------
-    stellar_specra : dict
+    specra : dict
         1D stellar spectra for each wavelength bin at the native detector
         resolution.
     """
@@ -425,16 +367,8 @@ def run_stage3(results, baseline_ints, save_results=True, root_dir='./',
     # Custom/default DMS step.
     step = Extract1DStep(results, extract_method=extract_method,
                          output_dir=outdir)
-    step_results = step.run(soss_transform=[0, 0, 0],
-                            soss_width=soss_width, specprofile=specprofile,
-                            save_results=save_results, force_redo=force_redo)
-    results, extract_params, times = step_results
+    spectra = step.run(soss_transform=[0, 0, 0], soss_width=soss_width,
+                       specprofile=specprofile, save_results=save_results,
+                       force_redo=force_redo)
 
-    # ===== Light Curve Construction Step =====
-    # Custom DMS step.
-    step = LightCurveStep(results, extract_dict=extract_params, times=times,
-                          baseline_ints=baseline_ints,
-                          occultation_type=occultation_type, output_dir=outdir)
-    stellar_spectra = step.run(save_results=save_results)
-
-    return stellar_spectra
+    return spectra

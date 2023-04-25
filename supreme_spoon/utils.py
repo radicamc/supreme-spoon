@@ -172,36 +172,6 @@ def format_out_frames(out_frames, occultation_type='transit'):
     return out_frames
 
 
-def get_dn2e(datafile):
-    """Determine the correct DN/s to e- conversion based on the integration
-    time and estimated gain.
-
-    Parameters
-    ----------
-    datafile : str, jwst.datamodel
-        Path to datamodel, or datamodel itself.
-
-    Returns
-    -------
-    dn2e : float
-        DN/s to e- conversion factor.
-    """
-
-    data = open_filetype(datafile)
-    # Get number of groups and group time (each group is one frame).
-    ngroup = data.meta.exposure.ngroups
-    frame_time = data.meta.exposure.frame_time
-    # Approximate gain factor. Gain varies across the detector, but is ~1.6
-    # on average.
-    gain_factor = 1.6
-    # Calculate the DN/s to e- conversion by multiplying by integration time
-    # and gain factor. Note that the integration time uses ngroup-1, due to
-    # up-the-ramp fitting.
-    dn2e = gain_factor * (ngroup - 1) * frame_time
-
-    return dn2e
-
-
 def get_default_header():
     """Format the default header for the lightcurve file.
 
@@ -662,8 +632,62 @@ def pack_ld_priors(wave, c1, c2, order, target, m_h, teff, logg, outdir):
     f.close()
 
 
-def pack_spectra(filename, wl1, wu1, f1, e1, wl2, wu2, f2, e2, t,
-                 header_dict=None, header_comments=None, save_results=True):
+def parse_config(config_file):
+    """Parse a yaml config file.
+
+    Parameters
+    ----------
+    config_file : str
+        Path to config file.
+
+    Returns
+    -------
+    config : dict
+        Dictionary of config parameters.
+    """
+
+    with open(config_file) as f:
+        config = yaml.load(f, Loader=yaml.FullLoader)
+
+    for key in config.keys():
+        if config[key] == 'None':
+            config[key] = None
+
+    return config
+
+
+def remove_nans(datafile):
+    """Remove any NaN values remaining in a datamodel, either in the flux or
+    flux error arrays, before passing to an ATOCA extraction.
+
+    Parameters
+    ----------
+    datafile : str, RampModel
+        Datamodel, or path to the datamodel.
+
+    Returns
+    -------
+    modelout : RampModel
+        Input datamodel with NaN values replaced.
+    """
+
+    datamodel = open_filetype(datafile)
+    modelout = datamodel.copy()
+    # Find pixels where either the flux or error is NaN-valued.
+    ind = (~np.isfinite(datamodel.data)) | (~np.isfinite(datamodel.err))
+    # Set the flux to zero.
+    modelout.data[ind] = 0
+    # Set the error to an arbitrarily high value.
+    modelout.err[ind] = np.nanmedian(datamodel.err) * 10
+    # Mark the DQ array to not use these pixels.
+    modelout.dq[ind] += 1
+
+    return modelout
+
+
+def save_extracted_spectra(filename, wl1, wu1, f1, e1, wl2, wu2, f2, e2, t,
+                           header_dict=None, header_comments=None,
+                           save_results=True):
     """Pack stellar spectra into a fits file.
 
     Parameters
@@ -764,59 +788,6 @@ def pack_spectra(filename, wl1, wu1, f1, e1, wl2, wu2, f2, e2, t,
     return param_dict
 
 
-def parse_config(config_file):
-    """Parse a yaml config file.
-
-    Parameters
-    ----------
-    config_file : str
-        Path to config file.
-
-    Returns
-    -------
-    config : dict
-        Dictionary of config parameters.
-    """
-
-    with open(config_file) as f:
-        config = yaml.load(f, Loader=yaml.FullLoader)
-
-    for key in config.keys():
-        if config[key] == 'None':
-            config[key] = None
-
-    return config
-
-
-def remove_nans(datafile):
-    """Remove any NaN values remaining in a datamodel, either in the flux or
-    flux error arrays, before passing to an ATOCA extraction.
-
-    Parameters
-    ----------
-    datafile : str, RampModel
-        Datamodel, or path to the datamodel.
-
-    Returns
-    -------
-    modelout : RampModel
-        Input datamodel with NaN values replaced.
-    """
-
-    datamodel = open_filetype(datafile)
-    modelout = datamodel.copy()
-    # Find pixels where either the flux or error is NaN-valued.
-    ind = (~np.isfinite(datamodel.data)) | (~np.isfinite(datamodel.err))
-    # Set the flux to zero.
-    modelout.data[ind] = 0
-    # Set the error to an arbitrarily high value.
-    modelout.err[ind] = np.nanmedian(datamodel.err) * 10
-    # Mark the DQ array to not use these pixels.
-    modelout.dq[ind] += 1
-
-    return modelout
-
-
 def sigma_clip_lightcurves(flux, ferr, thresh=3, window=10):
     """Sigma clip outliers in time from final lightcurves.
 
@@ -848,7 +819,7 @@ def sigma_clip_lightcurves(flux, ferr, thresh=3, window=10):
         flux_clipped[:, wave][ii] = med[ii]
         clipsum += len(ii)
 
-    fancyprint('{0} pixels clipped ({1:.3f}%)'.format(clipsum, clipsum / nints / nwaves * 100))
+    fancyprint('{0} pixels clipped ({1:.3f}%)'.format(clipsum, clipsum/nints/nwaves*100))
 
     return flux_clipped
 
