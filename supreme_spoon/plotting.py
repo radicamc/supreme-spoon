@@ -124,6 +124,42 @@ def make_corner_plot(fit_params, results, posterior_names=None, outpdf=None,
         plt.show()
 
 
+def make_decontamination_plot(results, models, outfile=None, show_plot=True):
+    """Nine-pixel plot for ATOCA decontamination.
+    """
+
+    fancyprint('Doing diagnostic plot.')
+    results = np.atleast_1d(results)
+    for i, file in enumerate(results):
+        with utils.open_filetype(file) as datamodel:
+            if i == 0:
+                cube = datamodel.data
+                ecube = datamodel.err
+            else:
+                cube = np.concatenate([cube, datamodel.data])
+                ecube = np.concatenate([ecube, datamodel.err])
+
+    models = np.atleast_1d(models)
+    for i, model in enumerate(models):
+        if i == 0:
+            order1 = fits.getdata(model, 2)
+            order2 = fits.getdata(model, 3)
+        else:
+            order1 = np.concatenate([order1, fits.getdata(model, 2)])
+            order2 = np.concatenate([order2, fits.getdata(model, 3)])
+
+    ints = np.random.randint(0, np.shape(cube)[0], 9)
+    to_plot, to_write = [], []
+    for i in ints:
+        to_plot.append((cube[i] - order1[i] - order2[i]) / ecube[i])
+        to_write.append('({0})'.format(i))
+    kwargs = {'vmin': -5, 'vmax': 5}
+    nine_panel_plot(to_plot, to_write, outfile=outfile, show_plot=show_plot,
+                    **kwargs)
+    if outfile is not None:
+        fancyprint('Plot saved to {}'.format(outfile))
+
+
 def make_jump_location_plot(results, outfile=None, show_plot=True):
     """Show locations of detected jumps.
     """

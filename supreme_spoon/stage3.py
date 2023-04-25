@@ -19,7 +19,7 @@ from applesoss import applesoss
 from jwst import datamodels
 from jwst.pipeline import calwebb_spec2
 
-from supreme_spoon import utils
+from supreme_spoon import utils, plotting
 from supreme_spoon.utils import fancyprint
 
 
@@ -73,7 +73,8 @@ class Extract1DStep:
         self.extract_method = extract_method
 
     def run(self, soss_transform, soss_width=25, specprofile=None,
-            save_results=True, force_redo=False):
+            save_results=True, force_redo=False, do_plot=False,
+            show_plot=False):
         """Method to run the step.
         """
 
@@ -114,13 +115,27 @@ class Extract1DStep:
                 else:
                     raise ValueError('Invalid extraction method')
 
-            # Verify that filename is correct.
-            if save_results is True:
-                current_name = self.output_dir + res.meta.filename
-                if expected_file != current_name:
-                    res.close()
-                    os.rename(current_name, expected_file)
-                    res = datamodels.open(expected_file)
+                # Verify that filename is correct.
+                if save_results is True:
+                    current_name = self.output_dir + res.meta.filename
+                    if expected_file != current_name:
+                        res.close()
+                        os.rename(current_name, expected_file)
+                        res = datamodels.open(expected_file)
+
+            # Do step plot if requested.
+            if do_plot is True and self.extract_method == 'atoca':
+                if save_results is True:
+                    plot_file = self.output_dir + self.tag.replace(
+                        'fits', 'pdf')
+                else:
+                    plot_file = None
+                models = []
+                for name in self.fileroots:
+                    models.append(name+'SossExtractModel.fits')
+                plotting.make_decontamination_plot(self.datafiles, models,
+                                                   outfile=plot_file,
+                                                   show_plot=show_plot)
 
             results.append(res)
 
