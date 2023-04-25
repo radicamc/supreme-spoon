@@ -84,54 +84,6 @@ def fancyprint(message, msg_type='INFO'):
     print('{} - supreme-SPOON - {} - {}'.format(time, msg_type, message))
 
 
-def fix_filenames(old_files, to_remove, outdir, to_add=''):
-    """Hacky function to remove file extensions that get added when running a
-    default JWST DMS step after a custom one.
-
-    Parameters
-    ----------
-    old_files : array-like[str], array-like[jwst.datamodel]
-        List of datamodels or paths to datamodels.
-    to_remove : str
-        File name extension to be removed.
-    outdir : str
-        Directory to which to save results.
-    to_add : str
-        Extention to add to the file name.
-
-    Returns
-    -------
-    new_files : array-like[str]
-        New file names.
-    """
-
-    old_files = np.atleast_1d(old_files)
-    new_files = []
-    # Open datamodel and get file name.
-    for file in old_files:
-        if isinstance(file, str):
-            file = datamodels.open(file)
-        old_filename = file.meta.filename
-
-        # Remove the unwanted extention.
-        split = old_filename.split(to_remove)
-        new_filename = split[0] + '_' + split[1]
-        # Add extension if necessary.
-        if to_add != '':
-            temp = new_filename.split('.fits')
-            new_filename = temp[0] + '_' + to_add + '.fits'
-
-        # Save file with new filename
-        file.write(outdir + new_filename)
-        new_files.append(outdir + new_filename)
-        file.close()
-
-        # Get rid of old file.
-        os.remove(outdir + old_filename)
-
-    return new_files
-
-
 def format_out_frames(out_frames, occultation_type='transit'):
     """Create a mask of baseline flux frames for lightcurve normalization.
     Either out-of-transit integrations for transits or in-eclipse integrations
@@ -191,10 +143,7 @@ def get_default_header():
                    'Author': 'MCR',
                    'Contents': None,
                    'Method': 'Box Extraction',
-                   'Width': 25,
-                   'Transx': 0,
-                   'Transy': 0,
-                   'Transth': 0}
+                   'Width': 25}
     # Explanations of keywords.
     header_comments = {'Target': 'Name of the target',
                        'Inst': 'Instrument used to acquire the data',
@@ -203,10 +152,7 @@ def get_default_header():
                        'Author': 'File author',
                        'Contents': 'Description of file contents',
                        'Method': 'Type of 1D extraction',
-                       'Width': 'Box width',
-                       'Transx': 'SOSS transform dx',
-                       'Transy': 'SOSS transform dy',
-                       'Transth': 'SOSS transform dtheta'}
+                       'Width': 'Box width'}
 
     return header_dict, header_comments
 
@@ -374,36 +320,6 @@ def get_interp_box(data, box_size, i, j, dimx):
     box_properties = np.array([median, stddev])
 
     return box_properties
-
-
-def get_soss_estimate(atoca_spectra, output_dir):
-    """Convert the AtocaSpectra output of ATOCA into the format expected for a
-    soss_estimate.
-
-    Parameters
-    ----------
-    atoca_spectra : str, MultiSpecModel
-        AtocaSpectra datamodel, or path to the datamodel.
-    output_dir : str
-        Directory to which to save results.
-
-    Returns
-    -------
-    estimate_filename : str
-        Path to soss_estimate file.
-    """
-
-    # Open the AtocaSpectra file.
-    atoca_spec = datamodels.open(atoca_spectra)
-    # Get the spectrum.
-    for spec in atoca_spec.spec:
-        if spec.meta.soss_extract1d.type == 'OBSERVATION':
-            estimate = datamodels.SpecModel(spec_table=spec.spec_table)
-            break
-    # Save the spectrum as a soss_estimate file.
-    estimate_filename = estimate.save(output_dir + 'soss_estimate.fits')
-
-    return estimate_filename
 
 
 def get_trace_centroids(deepframe, tracetable, subarray, save_results=True,
@@ -656,35 +572,6 @@ def parse_config(config_file):
     return config
 
 
-def remove_nans(datafile):
-    """Remove any NaN values remaining in a datamodel, either in the flux or
-    flux error arrays, before passing to an ATOCA extraction.
-
-    Parameters
-    ----------
-    datafile : str, RampModel
-        Datamodel, or path to the datamodel.
-
-    Returns
-    -------
-    modelout : RampModel
-        Input datamodel with NaN values replaced.
-    """
-
-    datamodel = open_filetype(datafile)
-    modelout = datamodel.copy()
-    # Find pixels where either the flux or error is NaN-valued.
-    ind = (~np.isfinite(datamodel.data)) | (~np.isfinite(datamodel.err))
-    # Set the flux to zero.
-    modelout.data[ind] = 0
-    # Set the error to an arbitrarily high value.
-    modelout.err[ind] = np.nanmedian(datamodel.err) * 10
-    # Mark the DQ array to not use these pixels.
-    modelout.dq[ind] += 1
-
-    return modelout
-
-
 def save_extracted_spectra(filename, wl1, wu1, f1, e1, wl2, wu2, f2, e2, t,
                            header_dict=None, header_comments=None,
                            save_results=True):
@@ -855,6 +742,42 @@ def sort_datamodels(datafiles):
     return files_sorted
 
 
+def unpack_atoca_spectra(datafile,
+                         quantities=('WAVELENGTH', 'FLUX', 'FLUX_ERROR')):
+    """Unpack useful quantities from extract1d outputs.
+
+    Parameters
+    ----------
+    datafile : str, MultiSpecModel
+        Extract1d output, or path to the file.
+    quantities : tuple(str)
+        Quantities to unpack.
+
+    Returns
+    -------
+    all_spec : dict
+        Dictionary containing unpacked quantities for each order.
+    """
+
+    multi_spec = open_filetype(datafile)
+
+    # Initialize output dictionary.
+    all_spec = {sp_ord: {quantity: [] for quantity in quantities}
+                for sp_ord in [1, 2, 3]}
+    # Unpack desired quantities into dictionary.
+    for spec in multi_spec.spec:
+        sp_ord = spec.spectral_order
+        for quantity in quantities:
+            all_spec[sp_ord][quantity].append(spec.spec_table[quantity])
+    for sp_ord in all_spec:
+        for key in all_spec[sp_ord]:
+            all_spec[sp_ord][key] = np.array(all_spec[sp_ord][key])
+
+    multi_spec.close()
+
+    return all_spec
+
+
 def unpack_input_dir(indir, filetag='', exposure_type='CLEAR'):
     """Get all segment files of a specified exposure type from an input data
      directory.
@@ -909,41 +832,6 @@ def unpack_input_dir(indir, filetag='', exposure_type='CLEAR'):
         segments = segments[correct_order]
 
     return segments
-
-
-def unpack_spectra(datafile, quantities=('WAVELENGTH', 'FLUX', 'FLUX_ERROR')):
-    """Unpack useful quantities from extract1d outputs.
-
-    Parameters
-    ----------
-    datafile : str, MultiSpecModel
-        Extract1d output, or path to the file.
-    quantities : tuple(str)
-        Quantities to unpack.
-
-    Returns
-    -------
-    all_spec : dict
-        Dictionary containing unpacked quantities for each order.
-    """
-
-    multi_spec = open_filetype(datafile)
-
-    # Initialize output dictionary.
-    all_spec = {sp_ord: {quantity: [] for quantity in quantities}
-                for sp_ord in [1, 2, 3]}
-    # Unpack desired quantities into dictionary.
-    for spec in multi_spec.spec:
-        sp_ord = spec.spectral_order
-        for quantity in quantities:
-            all_spec[sp_ord][quantity].append(spec.spec_table[quantity])
-    for sp_ord in all_spec:
-        for key in all_spec[sp_ord]:
-            all_spec[sp_ord][key] = np.array(all_spec[sp_ord][key])
-
-    multi_spec.close()
-
-    return all_spec
 
 
 def verify_path(path):

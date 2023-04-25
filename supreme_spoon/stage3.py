@@ -12,7 +12,6 @@ from astropy.io import fits
 import glob
 import numpy as np
 import os
-import warnings
 
 from applesoss import applesoss
 
@@ -127,8 +126,7 @@ class Extract1DStep:
         # Do step plot if requested.
         if do_plot is True and self.extract_method == 'atoca':
             if save_results is True:
-                plot_file = self.output_dir + self.tag.replace(
-                    'fits', 'pdf')
+                plot_file = self.output_dir + self.tag.replace('fits', 'pdf')
             else:
                 plot_file = None
             models = []
@@ -188,7 +186,7 @@ def format_extracted_spectra(datafiles, times, extract_params,
     # Open the datafiles, and pack the wavelength, flux, and flux error
     # information into data cubes.
     for i, file in enumerate(datafiles):
-        segment = utils.unpack_spectra(file)
+        segment = utils.unpack_atoca_spectra(file)
         if i == 0:
             wave2d_o1 = segment[1]['WAVELENGTH']
             flux_o1 = segment[1]['FLUX']
