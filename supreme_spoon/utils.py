@@ -11,10 +11,12 @@ Miscellaneous pipeline tools.
 from astropy.io import fits
 import bottleneck as bn
 from datetime import datetime
+from exofile.archive import ExoFile
 import glob
 import numpy as np
 import os
 import pandas as pd
+from scipy.interpolate import RegularGridInterpolator
 from scipy.ndimage import median_filter
 import warnings
 import yaml
@@ -66,6 +68,69 @@ def do_replacement(frame, badpix_map, dq=None, box_size=5):
                 dq_out[j, i] = 0
 
     return frame_out, dq_out
+
+
+def download_stellar_spectra(st_teff, st_logg, st_met, outdir):
+    """Download a grid of PHOENIX model stellar spectra.
+
+    Parameters
+    ----------
+    st_teff : float
+        Stellar effective temperature.
+    st_logg : float
+        Stellar log surface gravity.
+    st_met : float
+        Stellar metallicity as [Fe/H].
+    outdir : str
+        Output directory.
+
+    Returns
+    -------
+    wfile : str
+        Path to wavelength file.
+    ffiles : list[str]
+        Path to model stellar spectrum files.
+    """
+
+    fpath = 'ftp://phoenix.astro.physik.uni-goettingen.de/'
+
+    # Get wavelength grid.
+    wave_file = 'WAVE_PHOENIX-ACES-AGSS-COND-2011.fits'
+    wfile = '{}/{}'.format(outdir, wave_file)
+    if not os.path.exists(wfile):
+        fancyprint('Downloading file {}.'.format(wave_file))
+        cmd = 'wget -q -O {0} {1}HiResFITS/{2}'.format(wfile, fpath, wave_file)
+        os.system(cmd)
+    else:
+        fancyprint('File {} already downloaded.'.format(wfile))
+
+    # Get stellar spectrum grid points.
+    teffs, loggs, mets = get_stellar_param_grid(st_teff, st_logg, st_met)
+
+    # Construct filenames to retrieve
+    ffiles = []
+    for teff in teffs:
+        for logg in loggs:
+            for met in mets:
+                if met > 0:
+                    basename = 'lte0{0}-{1}0+{2}.PHOENIX-ACES-AGSS-COND-2011-HiRes.fits'
+                else:
+                    basename = 'lte0{0}-{1}0{2}.PHOENIX-ACES-AGSS-COND-2011-HiRes.fits'
+                thisfile = basename.format(teff, logg, met)
+
+                ffile = '{}/{}'.format(outdir, thisfile)
+                ffiles.append(ffile)
+                if not os.path.exists(ffile):
+                    fancyprint('Downloading file {}.'.format(thisfile))
+                    if met > 0:
+                        cmd = 'wget -q -O {0} {1}HiResFITS/PHOENIX-ACES-AGSS-COND-2011/Z+{2}/{3}'.format(ffile, fpath, met, thisfile)
+                    else:
+                        cmd = 'wget -q -O {0} {1}HiResFITS/PHOENIX-ACES-AGSS-COND-2011/Z{2}/{3}'.format(ffile, fpath, met, thisfile)
+                    os.system(cmd)
+                else:
+                    fancyprint('File {} already downloaded.'.format(ffile))
+
+    return wfile, ffiles
 
 
 def fancyprint(message, msg_type='INFO'):
@@ -322,6 +387,55 @@ def get_interp_box(data, box_size, i, j, dimx):
     return box_properties
 
 
+def get_stellar_param_grid(st_teff, st_logg, st_met):
+    """Given a set of stellar parameters, determine the neighbouring grid
+    points based on the PHOENIX grid steps.
+
+    Parameters
+    ----------
+    st_teff : float
+        Stellar effective temperature.
+    st_logg : float
+        Stellar log surface gravity.
+    st_met : float
+        Stellar metallicity as [Fe/H].
+
+    Returns
+    -------
+    teffs : list[float]
+        Effective temperature grid bounds.
+    loggs : list[float]
+        Surface gravity grid bounds.
+    mets : list[float]
+        Metallicity grid bounds.
+    """
+
+    # Determine lower and upper teff steps (step size of 100K).
+    teff_lw = int(np.floor(st_teff / 100) * 100)
+    teff_up = int(np.ceil(st_teff / 100) * 100)
+    if teff_lw == teff_up:
+        teffs = [teff_lw]
+    else:
+        teffs = [teff_lw, teff_up]
+
+    # Determine lower and upper logg step (step size of 0.5).
+    logg_lw = np.floor(st_logg / 0.5) * 0.5
+    logg_up = np.ceil(st_logg / 0.5) * 0.5
+    if logg_lw == logg_up:
+        loggs = [logg_lw]
+    else:
+        loggs = [logg_lw, logg_up]
+
+    # Determine lower and upper metallicity steps (step size of 1).
+    met_lw, met_up = np.floor(st_met), np.ceil(st_met)
+    if met_lw == met_up:
+        mets = [met_lw]
+    else:
+        mets = [met_lw, met_up]
+
+    return teffs, loggs, mets
+
+
 def get_trace_centroids(deepframe, tracetable, subarray, save_results=True,
                         save_filename=''):
     """Get the trace centroids for all three orders via the edgetrigger method.
@@ -434,6 +548,53 @@ def get_wavebin_limits(wave):
     bin_up = np.insert(bin_up, 0, 2*bin_up[0] - bin_up[1])
 
     return bin_low, bin_up
+
+
+def interpolate_stellar_model_grid(model_files, st_teff, st_logg, st_met):
+    """Given a grid of stellar spectrum files, interpolate the model spectra
+    to a set of stellar parameters.
+
+    Parameters
+    ----------
+    model_files : list[str]
+        List of paths to stellar spectra at grid points.
+    st_teff : float
+        Stellar effective temperature.
+    st_logg : float
+        Stellar log surface gravity.
+    st_met : float
+        Stellar metallicity as [Fe/H].
+
+    Returns
+    -------
+    model_interp : array-like(float)
+        Model stellar spectrum interpolated to the input paramaters.
+    """
+
+    # Get stellar spectrum grid points.
+    teffs, loggs, mets = get_stellar_param_grid(st_teff, st_logg, st_met)
+    pts = (np.array(teffs), np.array(loggs), np.array(mets))
+
+    # Read in models.
+    specs = []
+    for model in model_files:
+        specs.append(fits.getdata(model))
+
+    # Create stellar model grid
+    vals = np.zeros((len(teffs), len(loggs), len(mets), len(specs[0])))
+    I = 0
+    for i in range(pts[0].shape[0]):
+        for j in range(pts[1].shape[0]):
+            for k in range(pts[2].shape[0]):
+                vals[i, j, k] = specs[I]
+                I += 1
+
+    # Interpolate grid
+    grid = RegularGridInterpolator(pts, vals)
+    planet = [st_teff, st_logg, st_met]
+    model_interp = grid(planet)[0]
+
+    return model_interp
 
 
 def make_deepstack(cube):
@@ -572,6 +733,50 @@ def parse_config(config_file):
     return config
 
 
+def retrieve_stellar_params(pl_name, st_teff=None, st_logg=None, st_met=None):
+    """
+
+    Parameters
+    ----------
+    pl_name : str
+        Planet name.
+    st_teff : float, None
+        Stellar effective temperature.
+    st_logg : float, None
+        Stellar log surface gravity.
+    st_met : float, None
+        Stellar metallicity as [Fe/H].
+
+    Returns
+    -------
+    st_teff : float, None
+        Stellar effective temperature.
+    st_logg : float, None
+        Stellar log surface gravity.
+    st_met : float, None
+        Stellar metallicity as [Fe/H].
+    """
+
+    retrieved_params = []
+    # Use exofile to grab stellar parameters.
+    data = ExoFile.load()
+    for param, key in zip([st_teff, st_logg, st_met],
+                          ['st_teff', 'st_logg', 'st_met']):
+        if param is not None:
+            retrieved_params.append(param)
+        else:
+            param_ret = data.by_pl_name(pl_name)[key].value
+            # If value cannot be retrived, return None.
+            if param_ret.mask[0] == True:
+                retrieved_params.append(None)
+            else:
+                retrieved_params.append(param_ret.data[0])
+
+    st_teff, st_logg, st_met = retrieved_params
+
+    return st_teff, st_logg, st_met
+
+
 def save_extracted_spectra(filename, wl1, wu1, f1, e1, wl2, wu2, f2, e2, t,
                            header_dict=None, header_comments=None,
                            save_results=True):
@@ -669,7 +874,7 @@ def save_extracted_spectra(filename, wl1, wu1, f1, e1, wl2, wu2, f2, e2, t,
         hdul.writeto(filename, overwrite=True)
 
     param_dict = {'Wave Low O1': wl1, 'Wave Up O1': wu1, 'Flux O1': f1,
-                  'Flux Err O1': e1, 'Wave Low O2': wl2, 'Wave UP O2': wu2,
+                  'Flux Err O1': e1, 'Wave Low O2': wl2, 'Wave Up O2': wu2,
                   'Flux O2': f2, 'Flux Err O2': e2, 'Time': t}
 
     return param_dict

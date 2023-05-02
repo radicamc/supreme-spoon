@@ -8,9 +8,12 @@ Created on Thurs Jul 21 17:33 2022
 Custom JWST DMS pipeline steps for Stage 3 (1D spectral extraction).
 """
 
+from astropy.convolution import Gaussian1DKernel, convolve
 from astropy.io import fits
 import glob
 import numpy as np
+from scipy.interpolate import interp1d
+from scipy.signal import butter, filtfilt
 import os
 
 from applesoss import applesoss
@@ -62,7 +65,8 @@ class Extract1DStep:
     custom modifications.
     """
 
-    def __init__(self, input_data, extract_method, output_dir='./'):
+    def __init__(self, input_data, extract_method, st_teff=None, st_logg=None,
+                 st_met=None, planet_letter='b', output_dir='./'):
         """Step initializer.
         """
 
@@ -73,6 +77,8 @@ class Extract1DStep:
         self.extract_method = extract_method
         with utils.open_filetype(self.datafiles[0]) as datamodel:
             self.target_name = datamodel.meta.target.catalog_name
+        self.pl_name = self.target_name + ' ' + planet_letter
+        self.stellar_params = [st_teff, st_logg, st_met]
 
     def run(self, soss_width=25, specprofile=None, centroids=None,
             save_results=True, force_redo=False, do_plot=False,
@@ -122,7 +128,7 @@ class Extract1DStep:
                             os.rename(current_name, expected_file)
                             res = datamodels.open(expected_file)
                     results.append(res)
-            # Option 2: Sample aperture extraction.
+            # Option 2: Simple aperture extraction.
             elif self.extract_method == 'box':
                 if centroids is None:
                     msg = 'Centroids must be provided for box extraction'
@@ -157,9 +163,15 @@ class Extract1DStep:
                 else:
                     times = np.concatenate([times, this_time])
 
+            # Get throughput data.
+            step = calwebb_spec2.extract_1d_step.Extract1dStep()
+            thpt = step.get_reference_file(self.datafiles[0], 'spectrace')
+
             # Clip outliers and format extracted spectra.
+            st_teff, st_logg, st_met = self.stellar_params
             spectra = format_extracted_spectra(results, times, extract_params,
-                                               self.target_name,
+                                               self.pl_name, st_teff, st_logg,
+                                               st_met, throughput=thpt,
                                                output_dir=self.output_dir,
                                                save_results=save_results)
 
@@ -303,16 +315,76 @@ def box_extract(datafiles, centroids, soss_width):
     step = calwebb_spec2.extract_1d_step.Extract1dStep()
     wavemap = step.get_reference_file(datafiles[0], 'wavemap')
     # Remove 20 pixel padding that is there for some reason.
-    wave_o1 = fits.getdata(wavemap, 1)[20:-20]
-    wave_o2 = fits.getdata(wavemap, 2)[20:-20]
+    wave_o1 = np.mean(fits.getdata(wavemap, 1)[20:-20, 20:-20], axis=0)
+    wave_o2 = np.mean(fits.getdata(wavemap, 2)[20:-20, 20:-20], axis=0)
 
     return wave_o1, flux_o1, ferr_o1, wave_o2, flux_o2, ferr_o2
 
 
+def do_ccf(wave, flux, err, mod_flux, nsteps=1000):
+    """Perform a cross-correlation analysis between an extracted and model
+    stellar spectrum to determine the appropriate wavelength shift between
+    the two.
+
+    Parameters
+    ----------
+    wave : array-like[float]
+        Wavelength axis.
+    flux : array-like[float]
+        Extracted spectrum.
+    err : array-like[float]
+        Errors on extracted spectrum.
+    mod_flux : array-like[float]
+        Model spectrum.
+    nsteps : int
+        Number of wavelength steps to test.
+
+    Returns
+    -------
+    shift : float
+        Wavelength shift between the model and extracted spectrum in microns.
+    """
+
+    def highpass_filter(signal, order=3, freq=0.05):
+        """High pass filter."""
+        b, a = butter(order, freq, btype='high')
+        signal_filt = filtfilt(b, a, signal)
+        return signal_filt
+
+    ccf = np.zeros(nsteps)
+    # Trim edges off of input data to avoid interplation errors.
+    wav_a, flux_a, ferr_a = wave[50:-50], flux[50:-50], err[50:-50]
+    # Max-value normalize the model spectrum and initialize interpolation.
+    mod_norm = mod_flux / np.max(mod_flux)
+    f = interp1d(wave, mod_norm, kind='cubic')
+    # Max-value normalize and high-pass filter the data.
+    data = highpass_filter(flux_a / np.max(flux_a))
+    error = ferr_a / np.max(flux_a)
+
+    # Perform the CCF.
+    for j, jj in enumerate(np.linspace(-0.01, 0.01, nsteps)):
+        # Calculate new wavelength axis.
+        new_wave = wav_a + jj
+        # Interpolate model onto new axis and high-pass filter.
+        model_interp = f(new_wave)
+        model_interp = highpass_filter(model_interp)
+        # Calculate the CCF at this step.
+        ccf[j] = np.nansum(model_interp * data / error ** 2)
+
+    # Determine the peak of the CCF for each integration to get the
+    # best-fitting shift.
+    maxval = np.argmax(ccf)
+    shift = np.linspace(-0.01, 0.01, nsteps)[maxval]
+
+    return shift
+
+
 def format_extracted_spectra(datafiles, times, extract_params, target_name,
-                             output_dir='./', save_results=True):
-    """Upack the outputs of the 1D extraction and format them into lightcurves
-    at the native detector resolution.
+                             st_teff=None, st_logg=None, st_met=None,
+                             throughput=None, output_dir='./',
+                             save_results=True):
+    """Unpack the outputs of the 1D extraction and format them into
+    lightcurves at the native detector resolution.
 
     Parameters
     ----------
@@ -328,6 +400,14 @@ def format_extracted_spectra(datafiles, times, extract_params, target_name,
         Dictonary of parameters used for the 1D extraction.
     target_name : str
         Name of the target.
+    st_teff : float, None
+        Stellar effective temperature.
+    st_logg : float, None
+        Stellar log surface gravity.
+    st_met : float, None
+        Stellar metallicity as [Fe/H].
+    throughput : str
+        Path to JWST spectrace reference file.
 
     Returns
     -------
@@ -338,10 +418,10 @@ def format_extracted_spectra(datafiles, times, extract_params, target_name,
     fancyprint('Formatting extracted 1d spectra.')
     # Box extract outputs will just be a tuple of arrays.
     if isinstance(datafiles, tuple):
-        wave2d_o1 = datafiles[0]
+        wave1d_o1 = datafiles[0]
         flux_o1 = datafiles[1]
         ferr_o1 = datafiles[2]
-        wave2d_o2 = datafiles[3]
+        wave1d_o2 = datafiles[3]
         flux_o2 = datafiles[4]
         ferr_o2 = datafiles[5]
     # Whereas ATOCA extract outputs are in the atoca extract1dstep format.
@@ -365,8 +445,52 @@ def format_extracted_spectra(datafiles, times, extract_params, target_name,
                 wave2d_o2 = np.concatenate([wave2d_o2, segment[2]['WAVELENGTH']])
                 flux_o2 = np.concatenate([flux_o2, segment[2]['FLUX']])
                 ferr_o2 = np.concatenate([ferr_o2, segment[2]['FLUX_ERROR']])
-    # Create 1D wavelength axes from the 2D wavelength solution.
-    wave1d_o1, wave1d_o2 = wave2d_o1[0], wave2d_o2[0]
+        # Create 1D wavelength axes from the 2D wavelength solution.
+        wave1d_o1, wave1d_o2 = wave2d_o1[0], wave2d_o2[0]
+
+    # Refine wavelength solution.
+    st_teff, st_logg, st_met = utils.retrieve_stellar_params(target_name,
+                                                             st_teff, st_logg,
+                                                             st_met)
+    # If one or more of the stellar parameters cannot be retrieved, use the
+    # default wavelength solution.
+    if None in [st_teff, st_logg, st_met]:
+        fancyprint('Stellar parameters cannot be retrieved. '
+                   'Using default wavelength solution.', msg_type='WARNING')
+    else:
+        fancyprint('Refining the wavelength calibration.')
+        # Create a grid of stellar parameters, and download PHOENIX spectra
+        # for each grid point.
+        thisout = output_dir + 'stellar_models'
+        res = utils.download_stellar_spectra(st_teff, st_logg, st_met,
+                                             outdir=thisout)
+        wave_file, flux_files = res
+        # Interpolate model grid to correct stellar parameters.
+        # Reverse direction of both arrays since SOSS is extracted red to blue.
+        mod_flux = utils.interpolate_stellar_model_grid(flux_files, st_teff,
+                                                        st_logg, st_met)
+        mod_wave = fits.getdata(wave_file)/1e4
+
+        # Convolve model to lower resolution and interpolate to data
+        # wavelengths.
+        gauss = Gaussian1DKernel(stddev=500)
+        mod_flux = convolve(mod_flux, gauss)
+        mod_flux = np.interp(wave1d_o1[::-1], mod_wave, mod_flux)[::-1]
+        # Add throuput effects to model.
+        thpt = fits.open(throughput)
+        twave = thpt[1].data['WAVELENGTH']
+        thpt = thpt[1].data['THROUGHPUT']
+        thpt = np.interp(wave1d_o1[::-1], twave, thpt)[::-1]
+        mod_flux *= thpt
+
+        # Cross-correlate extracted spectrum with model to refine wavelength
+        # calibration.
+        x1d_flux = np.nansum(flux_o1, axis=0)
+        x1d_err = np.sqrt(np.nansum(ferr_o1**2, axis=0))
+        wave_shift = do_ccf(wave1d_o1, x1d_flux, x1d_err, mod_flux)
+        fancyprint('Found a wavelength shift of {}um'.format(wave_shift))
+        wave1d_o1 += wave_shift
+        wave1d_o2 += wave_shift
 
     # Clip remaining 3-sigma outliers.
     flux_o1_clip = utils.sigma_clip_lightcurves(flux_o1, ferr_o1)
@@ -374,7 +498,7 @@ def format_extracted_spectra(datafiles, times, extract_params, target_name,
 
     # Pack the lightcurves into the output format.
     # Put 1D extraction parameters in the output file header.
-    filename = output_dir + target_name + '_' + extract_params['method'] \
+    filename = output_dir + target_name[:-2] + '_' + extract_params['method'] \
         + '_spectra_fullres.fits'
     header_dict, header_comments = utils.get_default_header()
     header_dict['Target'] = target_name
