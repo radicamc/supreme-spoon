@@ -869,6 +869,7 @@ def save_extracted_spectra(filename, wl1, wu1, f1, e1, wl2, wu2, f2, e2, t,
     hdu10 = fits.ImageHDU(t, header=hdr)
 
     if save_results is True:
+        fancyprint('Spectra saved to {}'.format(filename))
         hdul = fits.HDUList([hdu1, hdu2, hdu3, hdu4, hdu5, hdu6, hdu7, hdu8,
                              hdu9, hdu10])
         hdul.writeto(filename, overwrite=True)

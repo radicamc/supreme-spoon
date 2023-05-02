@@ -8,14 +8,17 @@ Created on Wed Jul 20 11:12 2022
 Script to run JWST DMS with custom reduction steps.
 """
 
+from datetime import datetime
 import numpy as np
 import os
+import shutil
 import sys
 
 from supreme_spoon.stage1 import run_stage1
 from supreme_spoon.stage2 import run_stage2
 from supreme_spoon.stage3 import run_stage3
-from supreme_spoon.utils import fancyprint, parse_config, unpack_input_dir
+from supreme_spoon.utils import fancyprint, parse_config, unpack_input_dir, \
+    verify_path
 
 # Read config file.
 try:
@@ -28,6 +31,23 @@ config = parse_config(config_file)
 # Set CRDS cache path.
 os.environ['CRDS_PATH'] = config['crds_cache_path']
 os.environ['CRDS_SERVER_URL'] = 'https://jwst-crds.stsci.edu'
+
+# Save a copy of the config file.
+root_dir = 'pipeline_outputs_directory' + config['output_tag']
+verify_path(root_dir)
+i = 0
+copy_config = root_dir + '/' + config_file
+while os.path.exists(copy_config):
+    i += 1
+    copy_config = root_dir + '/' + config_file
+    root = copy_config.split('.yaml')[0]
+    copy_config = root + '_{}.yaml'.format(i)
+shutil.copy(config_file, copy_config)
+# Append time at which it was run.
+f = open(copy_config, 'a')
+time = datetime.utcnow().isoformat(sep=' ', timespec='minutes')
+f.write('\nFile run at {}'.format(time))
+f.close()
 
 # Unpack all files in the input directory.
 input_files = unpack_input_dir(config['input_dir'],
