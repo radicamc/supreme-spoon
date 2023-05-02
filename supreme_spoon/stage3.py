@@ -12,6 +12,7 @@ from astropy.convolution import Gaussian1DKernel, convolve
 from astropy.io import fits
 import glob
 import numpy as np
+import pandas as pd
 from scipy.interpolate import interp1d
 from scipy.signal import butter, filtfilt
 import os
@@ -74,6 +75,7 @@ class Extract1DStep:
         self.output_dir = output_dir
         self.datafiles = utils.sort_datamodels(input_data)
         self.fileroots = utils.get_filename_root(self.datafiles)
+        self.fileroot_noseg = utils.get_filename_root_noseg(self.fileroots)
         self.extract_method = extract_method
         with utils.open_filetype(self.datafiles[0]) as datamodel:
             self.target_name = datamodel.meta.target.catalog_name
@@ -131,8 +133,14 @@ class Extract1DStep:
             # Option 2: Simple aperture extraction.
             elif self.extract_method == 'box':
                 if centroids is None:
-                    msg = 'Centroids must be provided for box extraction'
-                    raise ValueError(msg)
+                    # Attempt to locate and open a centroids file.
+                    centroids = self.output_dir[:-2] + '2/' + \
+                                self.fileroot_noseg + 'centroids.csv'
+                    try:
+                        centroids = pd.read_csv(centroids, comment='#')
+                    except FileNotFoundError:
+                        msg = 'Centroids must be provided for box extraction'
+                        raise ValueError(msg)
                 results = box_extract(self.datafiles, centroids, soss_width)
             else:
                 raise ValueError('Invalid extraction method')

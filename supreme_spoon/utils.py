@@ -759,7 +759,9 @@ def retrieve_stellar_params(pl_name, st_teff=None, st_logg=None, st_met=None):
 
     retrieved_params = []
     # Use exofile to grab stellar parameters.
-    data = ExoFile.load()
+    with warnings.catch_warnings():
+        warnings.filterwarnings('ignore')
+        data = ExoFile.load()
     for param, key in zip([st_teff, st_logg, st_met],
                           ['st_teff', 'st_logg', 'st_met']):
         if param is not None:

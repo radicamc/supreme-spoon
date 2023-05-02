@@ -1366,7 +1366,7 @@ def soss_stability_pca(cube, n_components=10, outfile=None, do_plot=False,
 
 def run_stage2(results, background_model, baseline_ints, smoothed_wlc=None,
                save_results=True, force_redo=False,
-               calculate_stability_ccf=True, stability_params='ALL',
+               calculate_stability_ccf=True, stability_params_ccf='ALL',
                nthreads=4, calculate_stability_pca=True, pca_components=10,
                root_dir='./', output_tag='', occultation_type='transit',
                smoothing_scale=None, skip_steps=None, generate_lc=True,
@@ -1395,7 +1395,7 @@ def run_stage2(results, background_model, baseline_ints, smoothed_wlc=None,
     calculate_stability_ccf : bool
         If True, calculate the stability of the SOSS trace over the course of
         the TSO using a CCF method.
-    stability_params : str, array-like[str]
+    stability_params_ccf : str, array-like[str]
         List of parameters for which to calculate the stability. Any of: 'x',
         'y', and/or 'FWHM', or 'ALL' for all three.
     nthreads : int
@@ -1441,9 +1441,6 @@ def run_stage2(results, background_model, baseline_ints, smoothed_wlc=None,
     -------
     results : array-like[CubeModel]
         Datafiles for each segment processed through Stage 2.
-    deepframe : array-like[float]
-        Median stack of the baseline flux level integrations (i.e.,
-        out-of-transit or in-eclipse).
     """
 
     # ============== DMS Stage 2 ==============
@@ -1525,7 +1522,7 @@ def run_stage2(results, background_model, baseline_ints, smoothed_wlc=None,
     if 'TracingStep' not in skip_steps:
         step = TracingStep(results, deepframe=deepframe, output_dir=outdir)
         step_results = step.run(calculate_stability_ccf=calculate_stability_ccf,
-                                stability_params=stability_params,
+                                stability_params=stability_params_ccf,
                                 nthreads=nthreads,
                                 calculate_stability_pca=calculate_stability_pca,
                                 pca_components=pca_components,
@@ -1540,4 +1537,4 @@ def run_stage2(results, background_model, baseline_ints, smoothed_wlc=None,
                                 save_results=save_results, do_plot=do_plot,
                                 show_plot=show_plot)
 
-    return results, deepframe
+    return results
