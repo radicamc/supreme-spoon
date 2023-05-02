@@ -461,7 +461,8 @@ def format_extracted_spectra(datafiles, times, extract_params, target_name,
         fancyprint('Refining the wavelength calibration.')
         # Create a grid of stellar parameters, and download PHOENIX spectra
         # for each grid point.
-        thisout = output_dir + 'stellar_models'
+        thisout = output_dir + 'phoenix_models'
+        utils.verify_path(thisout)
         res = utils.download_stellar_spectra(st_teff, st_logg, st_met,
                                              outdir=thisout)
         wave_file, flux_files = res
@@ -526,9 +527,11 @@ def format_extracted_spectra(datafiles, times, extract_params, target_name,
 
 def run_stage3(results, save_results=True, root_dir='./', force_redo=False,
                extract_method='atoca', specprofile=None, centroids=None,
-               soss_width=25, output_tag='', do_plot=False, show_plot=False):
+               soss_width=25, st_teff=None, st_logg=None, st_met=None,
+               planet_letter='b', output_tag='', do_plot=False,
+               show_plot=False):
     """Run the supreme-SPOON Stage 3 pipeline: 1D spectral extraction, using
-    a combination of official STScI DMS and custom steps.
+    a combination of the official STScI DMS and custom steps.
 
     Parameters
     ----------
@@ -549,6 +552,14 @@ def run_stage3(results, save_results=True, root_dir='./', force_redo=False,
         box extractions.
     soss_width : int
         Width around the trace centroids, in pixels, for the 1D extraction.
+    st_teff : float, None
+        Stellar effective temperature.
+    st_logg : float, None
+        Stellar log surface gravity.
+    st_met : float, None
+        Stellar metallicity as [Fe/H].
+    planet_letter : str
+        Letter designation for the planet.
     output_tag : str
         Name tag to append to pipeline outputs directory.
     do_plot : bool
@@ -586,7 +597,8 @@ def run_stage3(results, save_results=True, root_dir='./', force_redo=False,
     # ===== 1D Extraction Step =====
     # Custom/default DMS step.
     step = Extract1DStep(results, extract_method=extract_method,
-                         output_dir=outdir)
+                         st_teff=st_teff, st_logg=st_logg, st_met=st_met,
+                         planet_letter=planet_letter,  output_dir=outdir)
     spectra = step.run(soss_width=soss_width, specprofile=specprofile,
                        centroids=centroids, save_results=save_results,
                        force_redo=force_redo, do_plot=do_plot,
