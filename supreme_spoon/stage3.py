@@ -49,7 +49,7 @@ class SpecProfileStep:
         expected_file = self.output_dir + 'APPLESOSS_ref_2D_profile_{}_os1_pad20.fits'.format(self.subarray)
         if expected_file in all_files and force_redo is False:
             fancyprint('File {} already exists.'.format(expected_file))
-            fancyprint('Skipping SpecProfile Reference Construction Step.\n')
+            fancyprint('Skipping SpecProfile Reference Construction Step.')
             specprofile = expected_file
         # If no output files are detected, run the step.
         else:
@@ -88,7 +88,7 @@ class Extract1DStep:
         """Method to run the step.
         """
 
-        fancyprint('\nStarting 1D extraction using the {} method.\n'.format(self.extract_method))
+        fancyprint('Starting 1D extraction using the {} method.'.format(self.extract_method))
 
         # Initialize loop and storange variables.
         all_files = glob.glob(self.output_dir + '*')
@@ -97,7 +97,7 @@ class Extract1DStep:
         # If an output file already exists, skip the step.
         if expected_file in all_files and force_redo is False:
             fancyprint('File {} already exists.'.format(expected_file))
-            fancyprint('Skipping Extract 1D Step.\n')
+            fancyprint('Skipping Extract 1D Step.')
             spectra = expected_file
         # If no output file is detected, run the step.
         else:
@@ -585,8 +585,8 @@ def run_stage3(results, save_results=True, root_dir='./', force_redo=False,
 
     # ============== DMS Stage 3 ==============
     # 1D spectral extraction.
-    fancyprint('\n\n**Starting supreme-SPOON Stage 3**')
-    fancyprint('1D spectral extraction\n\n')
+    fancyprint('\n**Starting supreme-SPOON Stage 3**')
+    fancyprint('1D spectral extraction...')
 
     if output_tag != '':
         output_tag = '_' + output_tag

@@ -55,7 +55,7 @@ class AssignWCSStep:
             expected_file = self.output_dir + self.fileroots[i] + self.tag
             if expected_file in all_files and force_redo is False:
                 fancyprint('File {} already exists.'.format(expected_file))
-                fancyprint('Skipping Assign WCS Step.\n')
+                fancyprint('Skipping Assign WCS Step.')
                 res = expected_file
             # If no output files are detected, run the step.
             else:
@@ -98,7 +98,7 @@ class SourceTypeStep:
             expected_file = self.output_dir + self.fileroots[i] + self.tag
             if expected_file in all_files and force_redo is False:
                 fancyprint('File {} already exists.'.format(expected_file))
-                fancyprint('Skipping Source Type Determination Step.\n')
+                fancyprint('Skipping Source Type Determination Step.')
                 res = expected_file
             # If no output files are detected, run the step.
             else:
@@ -208,7 +208,7 @@ class FlatFieldStep:
             expected_file = self.output_dir + self.fileroots[i] + self.tag
             if expected_file in all_files and force_redo is False:
                 fancyprint('File {} already exists.'.format(expected_file))
-                fancyprint('Skipping Flat Field Correction Step.\n')
+                fancyprint('Skipping Flat Field Correction Step.')
                 res = expected_file
             # If no output files are detected, run the step.
             else:
@@ -265,7 +265,7 @@ class BadPixStep:
                 deepframe = fits.getdata(expected_deep, 1)
         if do_step == 1 and force_redo is False:
             fancyprint('Output files already exist.')
-            fancyprint('Skipping Bad Pixel Correction Step.\n')
+            fancyprint('Skipping Bad Pixel Correction Step.')
         # If no output files are detected, run the step.
         else:
             step_results = badpixstep(self.datafiles,
@@ -314,8 +314,8 @@ class TracingStep:
         if expected_file in all_files and force_redo is False:
             fancyprint('Main output file already exists.')
             fancyprint('If you wish to still produce secondary outputs, run '
-                       'with force_redo=True.\n')
-            fancyprint('Skipping Tracing Step.\n')
+                       'with force_redo=True.')
+            fancyprint('Skipping Tracing Step.')
             centroids = pd.read_csv(expected_file, comment='#')
             tracemask, order0mask, smoothed_lc = None, None, None
         # If no output files are detected, run the step.
@@ -430,14 +430,14 @@ def backgroundstep(datafiles, background_model, output_dir='./',
     fancyprint('Calculating background model scaling.')
     model_scaled = np.zeros_like(deepstack)
     if scale1 is None:
-        fancyprint(' Scale factor(s):')
+        fancyprint('Scale factor(s):')
     else:
         fancyprint(' Using user-defined background scaling(s):')
         if scale2 is not None:
-            fancyprint('  Pre-step scale factor: {:.5f}'.format(scale1))
-            fancyprint('  Post-step scale factor: {:.5f}'.format(scale2))
+            fancyprint('Pre-step scale factor: {:.5f}'.format(scale1))
+            fancyprint('Post-step scale factor: {:.5f}'.format(scale2))
         else:
-            fancyprint('  Background scale factor: {:.5f}'.format(scale1))
+            fancyprint('Background scale factor: {:.5f}'.format(scale1))
     first_time = True
     for i in range(ngroup):
         if scale1 is None:
@@ -460,7 +460,7 @@ def backgroundstep(datafiles, background_model, output_dir='./',
             scale_factor = np.nanmedian(bkg_ratio[ii])
             if scale_factor < 0:
                 scale_factor = 0
-            fancyprint('  Background scale factor: {1:.5f}'.format(i + 1, scale_factor))
+            fancyprint('Background scale factor: {1:.5f}'.format(i+1, scale_factor))
             model_scaled[i] = background_model * scale_factor
         elif scale1 is not None and scale2 is None:
             # If using a user specified scaling for the whole frame.
@@ -576,7 +576,7 @@ def badpixstep(datafiles, baseline_ints, smoothed_wlc=None, thresh=15,
     newdq = np.copy(dq_cube)
 
     # Generate the deepstack.
-    fancyprint(' Generating a deep stack...')
+    fancyprint('Generating a deep stack...')
     deepframe_itl = utils.make_deepstack(newdata[baseline_ints])
 
     # Get locations of all hot pixels.
@@ -624,7 +624,7 @@ def badpixstep(datafiles, baseline_ints, smoothed_wlc=None, thresh=15,
     badpix = hotpix.astype(bool) | nanpix.astype(bool) | otherpix.astype(bool)
     badpix = badpix.astype(int)
 
-    fancyprint(' {0} hot, {1} negative, and {2} other deviant pixels '
+    fancyprint('{0} hot, {1} negative, and {2} other deviant pixels '
                'identified.'.format(hot, nan, other))
     # Replace the flagged pixels in the median integration.
     newdeep, deepdq = utils.do_replacement(deepframe_itl, badpix,
@@ -1445,8 +1445,8 @@ def run_stage2(results, background_model, baseline_ints, smoothed_wlc=None,
 
     # ============== DMS Stage 2 ==============
     # Spectroscopic processing.
-    fancyprint('\n\n**Starting supreme-SPOON Stage 2**')
-    fancyprint('Spectroscopic processing\n\n')
+    fancyprint('\n**Starting supreme-SPOON Stage 2**')
+    fancyprint('Spectroscopic processing')
 
     if output_tag != '':
         output_tag = '_' + output_tag

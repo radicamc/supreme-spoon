@@ -49,7 +49,7 @@ class GroupScaleStep:
             expected_file = self.output_dir + self.fileroots[i] + self.tag
             if expected_file in all_files and force_redo is False:
                 fancyprint('File {} already exists.'.format(expected_file))
-                fancyprint('Skipping Group Scale Step.\n')
+                fancyprint('Skipping Group Scale Step.')
                 res = expected_file
             # If no output files are detected, run the step.
             else:
@@ -95,7 +95,7 @@ class DQInitStep:
             expected_file = self.output_dir + self.fileroots[i] + self.tag
             if expected_file in all_files and force_redo is False:
                 fancyprint('File {} already exists.'.format(expected_file))
-                fancyprint('Skipping Data Quality Initialization Step.\n')
+                fancyprint('Skipping Data Quality Initialization Step.')
                 res = expected_file
             # If no output files are detected, run the step.
             else:
@@ -146,7 +146,7 @@ class SaturationStep:
             expected_file = self.output_dir + self.fileroots[i] + self.tag
             if expected_file in all_files and force_redo is False:
                 fancyprint('File {} already exists.'.format(expected_file))
-                fancyprint('Skipping Saturation Detection Step.\n')
+                fancyprint('Skipping Saturation Detection Step.')
                 res = expected_file
             # If no output files are detected, run the step.
             else:
@@ -190,7 +190,7 @@ class SuperBiasStep:
             expected_file = self.output_dir + self.fileroots[i] + self.tag
             if expected_file in all_files and force_redo is False:
                 fancyprint('File {} already exists.'.format(expected_file))
-                fancyprint('Skipping Superbias Subtraction Step.\n')
+                fancyprint('Skipping Superbias Subtraction Step.')
                 res = expected_file
                 do_plot = False
             # If no output files are detected, run the step.
@@ -243,7 +243,7 @@ class RefPixStep:
             expected_file = self.output_dir + self.fileroots[i] + self.tag
             if expected_file in all_files and force_redo is False:
                 fancyprint('File {} already exists.'.format(expected_file))
-                fancyprint('Skipping Reference Pixel Correction Step.\n')
+                fancyprint('Skipping Reference Pixel Correction Step.')
                 res = expected_file
             # If no output files are detected, run the step.
             else:
@@ -300,7 +300,7 @@ class OneOverFStep:
                 results.append(expected_file)
         if do_step == 1 and force_redo is False:
             fancyprint('Output files already exist.')
-            fancyprint('Skipping 1/f Correction Step.\n')
+            fancyprint('Skipping 1/f Correction Step.')
         # If no output files are detected, run the step.
         else:
             results = oneoverfstep(self.datafiles,
@@ -364,7 +364,7 @@ class LinearityStep:
             expected_file = self.output_dir + self.fileroots[i] + self.tag
             if expected_file in all_files and force_redo is False:
                 fancyprint('File {} already exists.'.format(expected_file))
-                fancyprint('Skipping Linearity Correction Step.\n')
+                fancyprint('Skipping Linearity Correction Step.')
                 res = expected_file
                 do_plot = False
             # If no output files are detected, run the step.
@@ -421,7 +421,7 @@ class JumpStep:
             expected_file = self.output_dir + self.fileroots[i] + self.tag
             if expected_file in all_files and force_redo is False:
                 fancyprint('File {} already exists.'.format(expected_file))
-                fancyprint('Skipping Jump Detection Step.\n')
+                fancyprint('Skipping Jump Detection Step.')
                 results.append(datamodels.open(expected_file))
                 do_plot = False
             # If no output files are detected, proceed.
@@ -496,7 +496,7 @@ class RampFitStep:
             expected_file = self.output_dir + self.fileroots[i] + self.tag
             if expected_file in all_files and force_redo is False:
                 fancyprint('File {} already exists.'.format(expected_file))
-                fancyprint('Skipping Ramp Fit Step.\n')
+                fancyprint('Skipping Ramp Fit Step.')
                 res = expected_file
             # If no output files are detected, run the step.
             else:
@@ -550,7 +550,7 @@ class GainScaleStep:
             expected_file = self.output_dir + self.fileroots[i] + self.tag
             if expected_file in all_files and force_redo is False:
                 fancyprint('File {} already exists.'.format(expected_file))
-                fancyprint('Skipping Gain Scale Correction Step.\n')
+                fancyprint('Skipping Gain Scale Correction Step.')
                 res = expected_file
             # If no output files are detected, run the step.
             else:
@@ -726,8 +726,8 @@ def jumpstep_in_time(datafile, window=10, thresh=10, fileroot=None,
                 # Add the jump detection flag.
                 dqcube[i, g][to_flag] += 4
                 count += int(np.sum(to_flag))
-    fancyprint(' {} jumps flagged'.format(count))
-    fancyprint(' and {} interpolated'.format(interp))
+    fancyprint('{} jumps flagged'.format(count))
+    fancyprint('and {} interpolated'.format(interp))
 
     datafile.data = cube
     datafile.groupdq = dqcube
@@ -869,10 +869,10 @@ def oneoverfstep(datafiles, baseline_ints, even_odd_rows=True,
 
         # Read in the outlier map - a (nints, dimy, dimx) 3D cube
         if pixel_masks is None:
-            fancyprint(' No outlier maps passed, ignoring outliers.')
+            fancyprint('No outlier maps passed, ignoring outliers.')
             outliers = np.zeros((nint, dimy, dimx))
         else:
-            fancyprint(' Using outlier map {}'.format(pixel_masks[n]))
+            fancyprint('Using outlier map {}'.format(pixel_masks[n]))
             outliers = fits.getdata(pixel_masks[n])
             # If the outlier map is 2D (dimy, dimx) extend to int dimension.
             if np.ndim(outliers) == 2:
@@ -1003,8 +1003,8 @@ def run_stage1(results, background_model, baseline_ints=None,
 
     # ============== DMS Stage 1 ==============
     # Detector level processing.
-    fancyprint('\n\n**Starting supreme-SPOON Stage 1**')
-    fancyprint('Detector level processing\n\n')
+    fancyprint('\n**Starting supreme-SPOON Stage 1**')
+    fancyprint('Detector level processing')
 
     if output_tag != '':
         output_tag = '_' + output_tag
