@@ -585,7 +585,7 @@ def run_stage3(results, save_results=True, root_dir='./', force_redo=False,
 
     # ============== DMS Stage 3 ==============
     # 1D spectral extraction.
-    fancyprint('\n**Starting supreme-SPOON Stage 3**')
+    fancyprint('**Starting supreme-SPOON Stage 3**')
     fancyprint('1D spectral extraction...')
 
     if output_tag != '':

@@ -725,7 +725,7 @@ def make_2d_lightcurve_plot(wave1, flux1, wave2=None, flux2=None, outpdf=None,
             plt.xticks(fontsize=12)
             plt.yticks(fontsize=12)
 
-            gs.update(wspace=0.1)
+            gs.update(wspace=0.15)
 
     if outpdf is not None:
         if isinstance(outpdf, matplotlib.backends.backend_pdf.PdfPages):

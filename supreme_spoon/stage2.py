@@ -1445,7 +1445,7 @@ def run_stage2(results, background_model, baseline_ints, smoothed_wlc=None,
 
     # ============== DMS Stage 2 ==============
     # Spectroscopic processing.
-    fancyprint('\n**Starting supreme-SPOON Stage 2**')
+    fancyprint('**Starting supreme-SPOON Stage 2**')
     fancyprint('Spectroscopic processing')
 
     if output_tag != '':

@@ -1003,7 +1003,7 @@ def run_stage1(results, background_model, baseline_ints=None,
 
     # ============== DMS Stage 1 ==============
     # Detector level processing.
-    fancyprint('\n**Starting supreme-SPOON Stage 1**')
+    fancyprint('**Starting supreme-SPOON Stage 1**')
     fancyprint('Detector level processing')
 
     if output_tag != '':
