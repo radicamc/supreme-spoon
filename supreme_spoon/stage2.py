@@ -709,7 +709,7 @@ def badpixstep(datafiles, baseline_ints, smoothed_wlc=None, thresh=15,
 
     if do_plot is True:
         if save_results is True:
-            outfile = 'badpixstep.pdf'
+            outfile = output_dir + 'badpixstep.pdf'
         else:
             outfile = None
         hotpix = np.where(hotpix != 0)
