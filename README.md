@@ -23,11 +23,8 @@ or the latest development version can be grabbed from GitHub:
     cd supreme_spoon
     python setup.py install
 
-If you plan on using the ATOCA extraction, it would be beneficial to have the atoca development version of the official jwst pipeline. Multiple critical functionalities have not yet been merged into the master pipeline, but will be soon. 
-This can be installed via:
-
-    pip install git+https://github.com/AntoineDarveau/jwst.git@atoca_1.6.0x
-
+Note that **supreme-SPOON** is currently compatible with v1.8.5 of the official JWST DMS. If you wish to run a 
+different version of jwst, certain functionalities of **supreme-SPOON** may not work.
 
 ## Usage Instructions
 The **supreme-SPOON** pipeline can be run in a similar fashion to the JWST DMS, by individually calling each step.
@@ -41,7 +38,7 @@ To use the light curve fitting capabilities, simply follow the same procedure wi
 Currently only transit light curve fits are supported, with eclipse fitting in development. 
 
 ## Citations
-If you make use of this code in your work, please cite [Radica et al. (2023)]() and [Feinstein et al. (2022)](https://ui.adsabs.harvard.edu/abs/2022arXiv221110493F/abstract). 
+If you make use of this code in your work, please cite [Radica et al. (2023)]() and [Feinstein et al. (2023)](https://ui.adsabs.harvard.edu/abs/2023Natur.614..670F/abstract). 
 
 ### Additional Citations
 If you use the ATOCA extraction algorithm, please also cite [Radica et al. (2022)](https://ui.adsabs.harvard.edu/abs/2022PASP..134j4502R/abstract) 

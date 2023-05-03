@@ -1,6 +1,26 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+### [1.1.0] -- 2023-05-03
+#### Added
+- Compatibility with jwst v1.8.5.
+- Major updates in nearly every step for speed and self-consistency.
+- Vastly simplified ATOCA extraction. 
+- Added plotting capabilities to most steps.
+- Added PCA method for assessing trace stability.
+- Automatic detection and masking of Order 0 contaminants if an F277W filter exposure is available.
+- New box extraction routine as jwst Extract1dStep has removed this functionality.
+- Refinement of wavelength solution.
+- When running pipeline via script, a copy of the config file will now be saved in the output directory.
+- Misc. bug fixes.
+
+#### Removed
+- LightCurveEstimateStep. Functionality now added to TracingStep.
+- Large wrapper around ATOCA extraction is removed.
+- SOSSSolverStep.
+- LightCurveStep. Functionality now added to Extract1dStep
+- Various now outdated utility functions.
+
 ### [1.0.0] -- 2023-03-13
 #### Added
 - Preparation for first release.
@@ -9,7 +29,7 @@ All notable changes to this project will be documented in this file.
 
 ### [0.4.0] -- 2023-03-02
 #### Added
-- Correction of bug pointing to throuhgputs for wrong order when calculating LD coefficients.
+- Correction of bug pointing to throughputs for wrong order when calculating LD coefficients.
 - Switch default stellar models to 3D grid for LD calculation.
 - Simplify LD coefficient calculation.
 - Misc. bug fixes. 
