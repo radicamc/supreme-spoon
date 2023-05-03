@@ -154,7 +154,7 @@ class Extract1DStep:
                     plot_file = None
                 models = []
                 for name in self.fileroots:
-                    models.append(name + 'SossExtractModel.fits')
+                    models.append(self.output_dir + name + 'SossExtractModel.fits')
                 plotting.make_decontamination_plot(self.datafiles, models,
                                                    outfile=plot_file,
                                                    show_plot=show_plot)
