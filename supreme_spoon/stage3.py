@@ -510,7 +510,7 @@ def format_extracted_spectra(datafiles, times, extract_params, target_name,
     filename = output_dir + target_name[:-2] + '_' + extract_params['method'] \
         + '_spectra_fullres.fits'
     header_dict, header_comments = utils.get_default_header()
-    header_dict['Target'] = target_name
+    header_dict['Target'] = target_name[:-2]
     header_dict['Contents'] = 'Full resolution stellar spectra'
     header_dict['Method'] = extract_params['method']
     header_dict['Width'] = extract_params['soss_width']
