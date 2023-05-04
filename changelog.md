@@ -1,7 +1,7 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
-### [1.1.0] -- 2023-05-03
+### [1.1.0] -- 2023-05-04
 #### Added
 - Compatibility with jwst v1.8.5.
 - Major updates in nearly every step for speed and self-consistency.

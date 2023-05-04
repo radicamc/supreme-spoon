@@ -6,11 +6,7 @@ The pipeline is divided into four stages:
  - Stage 1: Detector Level Processing 
  - Stage 2: Spectroscopic Processing
  - Stage 3: 1D Spectral Extraction
- - Stage 4: Lightcurve Fitting
- 
-A major advantage of **supreme-SPOON** over other available NIRISS/SOSS pipelines is the ability to carry out end-to-end reductions (uncalibrated to atmosphere spectra) without relying on intermediate outputs from the JWST DMS.
-Furthermore, **supreme-SPOON** is able to run the ATOCA extraction algorithm to explicitly model the order contamination that is known to affect SOSS observations.
-
+ - Stage 4: Light Curve Fitting
 
 ## Installation Instructions
 The latest release of **supreme-SPOON** can be downloaded from PyPI by running:

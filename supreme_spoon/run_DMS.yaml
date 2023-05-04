@@ -64,9 +64,9 @@ stage2_kwargs : {}
 
 # ===== Stage 3 Input Files & Parameters =====
 # Extraction method: box or atoca.
-extract_method : 'box'
+extract_method : 'atoca'
 # Box width to extract around the trace center.
-soss_width : 25
+soss_width : 30
 # Specprofile reference file for ATOCA (optional).
 specprofile : None
 # File with centroids for all three orders for box extraction (optional).
@@ -93,7 +93,7 @@ save_results : True
 force_redo : False
 # Integrations of ingress and egress.
 baseline_ints : [50, -50]
-# Type of occultation: 'transit', 'eclipse', or 'phase_curve'.
+# Type of occultation: 'transit' or 'eclipse'.
 occultation_type : 'transit'
 # If True, make diagnostic plots.
 do_plots : False
