@@ -133,7 +133,7 @@ def bin_at_resolution(inwave_low, inwave_up, flux, flux_err, res,
         raise ValueError(msg)
     else:
         fancyprint('Binning from an average resolution of '
-              'R={:.0f} to R={}'.format(average_input_res, res))
+                   'R={:.0f} to R={}'.format(average_input_res, res))
 
     # Make the binned wavelength grid.
     outwave_low = []
@@ -500,12 +500,12 @@ def run_juliet(priors, t_lc, y_lc, yerr_lc, out_folder,
         except KeyboardInterrupt as err:
             raise err
         except:
-            fancyprint('Exception encountered.', type='WARNING')
-            fancyprint('Skipping bin.', type='WARNING')
+            fancyprint('Exception encountered.', msg_type='WARNING')
+            fancyprint('Skipping bin.', msg_type='WARNING')
             res = None
     else:
-        fancyprint('NaN bin encountered.', type='WARNING')
-        fancyprint('Skipping bin.', type='WARNING')
+        fancyprint('NaN bin encountered.', msg_type='WARNING')
+        fancyprint('Skipping bin.', msg_type='WARNING')
         res = None
 
     return res

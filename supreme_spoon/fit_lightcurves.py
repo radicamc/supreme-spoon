@@ -10,16 +10,19 @@ Juliet light curve fitting script.
 
 from astropy.io import fits
 import copy
+from datetime import datetime
 import glob
 import juliet
 import matplotlib.backends.backend_pdf
 import numpy as np
+import os
 import pandas as pd
+import shutil
 import sys
 
 from supreme_spoon import stage4
 from supreme_spoon import plotting, utils
-from supreme_spoon.utils import fancyprint
+from supreme_spoon.utils import fancyprint, verify_path
 
 # Read config file.
 try:
@@ -54,6 +57,25 @@ elif config['res'] == 'pixel':
 else:
     fit_suffix += '_R{}'.format(config['res'])
     res_str = 'R = {}'.format(config['res'])
+
+# Save a copy of the config file.
+root_dir = 'pipeline_outputs_directory' + config['output_tag'] + '/config_files'
+verify_path(root_dir)
+i = 0
+copy_config = root_dir + '/' + config_file
+root = copy_config.split('.yaml')[0]
+copy_config = root + '{}.yaml'.format(fit_suffix)
+while os.path.exists(copy_config):
+    i += 1
+    copy_config = root_dir + '/' + config_file
+    root = copy_config.split('.yaml')[0]
+    copy_config = root + '{0}_{1}.yaml'.format(fit_suffix, i)
+shutil.copy(config_file, copy_config)
+# Append time at which it was run.
+f = open(copy_config, 'a')
+time = datetime.utcnow().isoformat(sep=' ', timespec='minutes')
+f.write('\nRun at {}.'.format(time))
+f.close()
 
 # Formatted parameter names for plotting.
 formatted_names = {'P_p1': r'$P$', 't0_p1': r'$T_0$', 'p_p1': r'$R_p/R_*$',
@@ -99,7 +121,7 @@ for order in config['orders']:
         outpdf = None
 
     # === Set Up Priors and Fit Parameters ===
-    fancyprint('\nFitting order {} at {}\n'.format(order, res_str))
+    fancyprint('Fitting order {} at {}.'.format(order, res_str))
     # Unpack wave, flux and error, cutting reference pixel columns.
     wave_low = fits.getdata(config['infile'],  1 + 4*(order - 1))[:, 5:-5]
     wave_up = fits.getdata(config['infile'], 2 + 4*(order - 1))[:, 5:-5]

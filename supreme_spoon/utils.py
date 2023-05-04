@@ -11,14 +11,13 @@ Miscellaneous pipeline tools.
 from astropy.io import fits
 import bottleneck as bn
 from datetime import datetime
+from exofile.archive import ExoFile
 import glob
 import numpy as np
 import os
 import pandas as pd
-import ray
-from scipy.interpolate import interp2d
+from scipy.interpolate import RegularGridInterpolator
 from scipy.ndimage import median_filter
-from scipy.optimize import curve_fit
 import warnings
 import yaml
 
@@ -71,7 +70,70 @@ def do_replacement(frame, badpix_map, dq=None, box_size=5):
     return frame_out, dq_out
 
 
-def fancyprint(message, type='INFO'):
+def download_stellar_spectra(st_teff, st_logg, st_met, outdir):
+    """Download a grid of PHOENIX model stellar spectra.
+
+    Parameters
+    ----------
+    st_teff : float
+        Stellar effective temperature.
+    st_logg : float
+        Stellar log surface gravity.
+    st_met : float
+        Stellar metallicity as [Fe/H].
+    outdir : str
+        Output directory.
+
+    Returns
+    -------
+    wfile : str
+        Path to wavelength file.
+    ffiles : list[str]
+        Path to model stellar spectrum files.
+    """
+
+    fpath = 'ftp://phoenix.astro.physik.uni-goettingen.de/'
+
+    # Get wavelength grid.
+    wave_file = 'WAVE_PHOENIX-ACES-AGSS-COND-2011.fits'
+    wfile = '{}/{}'.format(outdir, wave_file)
+    if not os.path.exists(wfile):
+        fancyprint('Downloading file {}.'.format(wave_file))
+        cmd = 'wget -q -O {0} {1}HiResFITS/{2}'.format(wfile, fpath, wave_file)
+        os.system(cmd)
+    else:
+        fancyprint('File {} already downloaded.'.format(wfile))
+
+    # Get stellar spectrum grid points.
+    teffs, loggs, mets = get_stellar_param_grid(st_teff, st_logg, st_met)
+
+    # Construct filenames to retrieve
+    ffiles = []
+    for teff in teffs:
+        for logg in loggs:
+            for met in mets:
+                if met > 0:
+                    basename = 'lte0{0}-{1}0+{2}.PHOENIX-ACES-AGSS-COND-2011-HiRes.fits'
+                else:
+                    basename = 'lte0{0}-{1}0{2}.PHOENIX-ACES-AGSS-COND-2011-HiRes.fits'
+                thisfile = basename.format(teff, logg, met)
+
+                ffile = '{}/{}'.format(outdir, thisfile)
+                ffiles.append(ffile)
+                if not os.path.exists(ffile):
+                    fancyprint('Downloading file {}.'.format(thisfile))
+                    if met > 0:
+                        cmd = 'wget -q -O {0} {1}HiResFITS/PHOENIX-ACES-AGSS-COND-2011/Z+{2}/{3}'.format(ffile, fpath, met, thisfile)
+                    else:
+                        cmd = 'wget -q -O {0} {1}HiResFITS/PHOENIX-ACES-AGSS-COND-2011/Z{2}/{3}'.format(ffile, fpath, met, thisfile)
+                    os.system(cmd)
+                else:
+                    fancyprint('File {} already downloaded.'.format(ffile))
+
+    return wfile, ffiles
+
+
+def fancyprint(message, msg_type='INFO'):
     """Fancy printing statement mimicking logging. Basically a hack to get
     around complications with the STScI pipeline logging.
 
@@ -79,58 +141,12 @@ def fancyprint(message, type='INFO'):
     ----------
     message : str
         Message to print.
+    msg_type : str
+        Type of message. Mirrors the jwst pipeline logging.
     """
 
     time = datetime.utcnow().isoformat(sep=' ', timespec='milliseconds')
-    print('{} - supreme-SPOON - {} - {}'.format(time, type, message))
-
-
-def fix_filenames(old_files, to_remove, outdir, to_add=''):
-    """Hacky function to remove file extensions that get added when running a
-    default JWST DMS step after a custom one.
-
-    Parameters
-    ----------
-    old_files : array-like[str], array-like[jwst.datamodel]
-        List of datamodels or paths to datamodels.
-    to_remove : str
-        File name extension to be removed.
-    outdir : str
-        Directory to which to save results.
-    to_add : str
-        Extention to add to the file name.
-
-    Returns
-    -------
-    new_files : array-like[str]
-        New file names.
-    """
-
-    old_files = np.atleast_1d(old_files)
-    new_files = []
-    # Open datamodel and get file name.
-    for file in old_files:
-        if isinstance(file, str):
-            file = datamodels.open(file)
-        old_filename = file.meta.filename
-
-        # Remove the unwanted extention.
-        split = old_filename.split(to_remove)
-        new_filename = split[0] + '_' + split[1]
-        # Add extension if necessary.
-        if to_add != '':
-            temp = new_filename.split('.fits')
-            new_filename = temp[0] + '_' + to_add + '.fits'
-
-        # Save file with new filename
-        file.write(outdir + new_filename)
-        new_files.append(outdir + new_filename)
-        file.close()
-
-        # Get rid of old file.
-        os.remove(outdir + old_filename)
-
-    return new_files
+    print('{} - supreme-SPOON - {} - {}'.format(time, msg_type, message))
 
 
 def format_out_frames(out_frames, occultation_type='transit'):
@@ -173,36 +189,6 @@ def format_out_frames(out_frames, occultation_type='transit'):
     return out_frames
 
 
-def get_dn2e(datafile):
-    """Determine the correct DN/s to e- conversion based on the integration
-    time and estimated gain.
-
-    Parameters
-    ----------
-    datafile : str, jwst.datamodel
-        Path to datamodel, or datamodel itself.
-
-    Returns
-    -------
-    dn2e : float
-        DN/s to e- conversion factor.
-    """
-
-    data = open_filetype(datafile)
-    # Get number of groups and group time (each group is one frame).
-    ngroup = data.meta.exposure.ngroups
-    frame_time = data.meta.exposure.frame_time
-    # Approximate gain factor. Gain varies across the detector, but is ~1.6
-    # on average.
-    gain_factor = 1.6
-    # Calculate the DN/s to e- conversion by multiplying by integration time
-    # and gain factor. Note that the integration time uses ngroup-1, due to
-    # up-the-ramp fitting.
-    dn2e = gain_factor * (ngroup - 1) * frame_time
-
-    return dn2e
-
-
 def get_default_header():
     """Format the default header for the lightcurve file.
 
@@ -222,10 +208,7 @@ def get_default_header():
                    'Author': 'MCR',
                    'Contents': None,
                    'Method': 'Box Extraction',
-                   'Width': 25,
-                   'Transx': 0,
-                   'Transy': 0,
-                   'Transth': 0}
+                   'Width': 25}
     # Explanations of keywords.
     header_comments = {'Target': 'Name of the target',
                        'Inst': 'Instrument used to acquire the data',
@@ -234,16 +217,67 @@ def get_default_header():
                        'Author': 'File author',
                        'Contents': 'Description of file contents',
                        'Method': 'Type of 1D extraction',
-                       'Width': 'Box width',
-                       'Transx': 'SOSS transform dx',
-                       'Transy': 'SOSS transform dy',
-                       'Transth': 'SOSS transform dtheta'}
+                       'Width': 'Box width'}
 
     return header_dict, header_comments
 
 
+def get_dq_flag_metrics(dq_map, flags):
+    """Take a data quality map and extract a map of pixels which are flagged
+    for a specific reason. A list of data quality flags can be found here:
+    https://jwst-reffiles.stsci.edu/source/data_quality.html.
+
+    Parameters
+    ----------
+    dq_map : array-like(float)
+        Map of data quality flags.
+    flags : list[str], str
+        Flag types to find.
+
+    Returns
+    -------
+    flagged : np.array(bool)
+        Boolean map where True values have the applicable flag.
+    """
+
+    flags = np.atleast_1d(flags)
+    dimy, dimx = np.shape(dq_map)
+
+    # From here: https://jwst-reffiles.stsci.edu/source/data_quality.html
+    flags_dict = {'DO_NOT_USE': 0, 'SATURATED': 1, 'JUMP_DET': 2,
+                  'DROPOUT': 3, 'OUTLIER': 4, 'PERSISTENCE': 5,
+                  'AD_FLOOR': 6, 'RESERVED': 7, 'UNRELIABLE_ERROR': 8,
+                  'NON_SCIENCE': 9, 'DEAD': 10, 'HOT': 11, 'WARM': 12,
+                  'LOW_QE': 13, 'RC': 14, 'TELEGRAPH': 15, 'NONLINEAR': 16,
+                  'BAD_REF_PIXEL': 17, 'NO_FLAT_FIELD': 18,
+                  'NO_GAIN_VALUE': 19,
+                  'NO_LIN_CORR': 20, 'NO_SAT_CHECK': 21, 'UNRELIABLE_BIAS': 22,
+                  'UNRELIABLE_DARK': 23, 'UNRELIABLE_SLOPE': 24,
+                  'UNRELIABLE_FLAT': 25, 'OPEN': 26, 'ADJ_OPEN': 27,
+                  'UNRELIABLE_RESET': 28, 'MSA_FAILED_OPEN': 29,
+                  'OTHER_BAD_PIXEL': 30, 'REFERENCE_PIXEL': 31}
+
+    flagged = np.zeros_like(dq_map).astype(bool)
+    # Get bit corresponding to the desired flags.
+    flag_bits = []
+    for flag in flags:
+        flag_bits.append(flags_dict[flag])
+
+    # Find pixels flagged for the selected reasons.
+    for x in range(dimx):
+        for y in range(dimy):
+            val = np.binary_repr(dq_map[y, x], width=32)[::-1]
+            for bit in flag_bits:
+                if val[bit] == '1':
+                    flagged[y, x] = True
+
+    return flagged
+
+
 def get_filename_root(datafiles):
-    """Get the file name roots for each segment.
+    """Get the file name roots for each segment. Assumes that file names
+    follow the default jwst pipeline structure and are in correct segment
+    order.
 
     Parameters
     ----------
@@ -257,27 +291,40 @@ def get_filename_root(datafiles):
     """
 
     fileroots = []
-    for file in datafiles:
-        # Open the datamodel.
-        if isinstance(file, str):
-            data = datamodels.open(file)
-            filename = data.meta.filename
-            data.close()
+    # Open the datamodel.
+    if isinstance(datafiles[0], str):
+        with datamodels.open(datafiles[0]) as data:
+            filename = data.meta.filename  # Get file name.
+            seg_start = data.meta.exposure.segment_number  # starting segment
+    else:
+        filename = datafiles[0].meta.filename
+        seg_start = datafiles[0].meta.exposure.segment_number
+    # Get the last part of the path, and split file name into chunks.
+    filename_split = filename.split('/')[-1].split('_')
+    fileroot = ''
+    # Get the filename before the step info and save.
+    for chunk in filename_split[:-1]:
+        fileroot += chunk + '_'
+    fileroots.append(fileroot)
+
+    # Now assuming everything is in chronological order, just increment the
+    # segment number.
+    split = fileroot.split('seg')
+    for segment in range(seg_start+1, len(datafiles)+1):
+        if segment < 10:
+            seg_no = 'seg00{}'.format(segment)
+        elif 10 <= segment < 99:
+            seg_no = 'seg0{}'.format(segment)
         else:
-            filename = file.meta.filename
-        # Get the last part of the path, and split file name into chunks.
-        filename_split = filename.split('/')[-1].split('_')
-        fileroot = ''
-        # Get the filename before the step info and save.
-        for chunk in filename_split[:-1]:
-            fileroot += chunk + '_'
-        fileroots.append(fileroot)
+            seg_no = 'seg{}'.format(segment)
+        thisroot = split[0] + seg_no + split[1][3:]
+        fileroots.append(thisroot)
 
     return fileroots
 
 
 def get_filename_root_noseg(fileroots):
-    """Get the file name root for a SOSS TSO woth noo segment information.
+    """Get the file name root for a SOSS TSO with no segment information.
 
     Parameters
     ----------
@@ -340,60 +387,53 @@ def get_interp_box(data, box_size, i, j, dimx):
     return box_properties
 
 
-def get_soss_estimate(atoca_spectra, output_dir):
-    """Convert the AtocaSpectra output of ATOCA into the format expected for a
-    soss_estimate.
+def get_stellar_param_grid(st_teff, st_logg, st_met):
+    """Given a set of stellar parameters, determine the neighbouring grid
+    points based on the PHOENIX grid steps.
 
     Parameters
     ----------
-    atoca_spectra : str, MultiSpecModel
-        AtocaSpectra datamodel, or path to the datamodel.
-    output_dir : str
-        Directory to which to save results.
+    st_teff : float
+        Stellar effective temperature.
+    st_logg : float
+        Stellar log surface gravity.
+    st_met : float
+        Stellar metallicity as [Fe/H].
 
     Returns
     -------
-    estimate_filename : str
-        Path to soss_estimate file.
+    teffs : list[float]
+        Effective temperature grid bounds.
+    loggs : list[float]
+        Surface gravity grid bounds.
+    mets : list[float]
+        Metallicity grid bounds.
     """
 
-    # Open the AtocaSpectra file.
-    atoca_spec = datamodels.open(atoca_spectra)
-    # Get the spectrum.
-    for spec in atoca_spec.spec:
-        if spec.meta.soss_extract1d.type == 'OBSERVATION':
-            estimate = datamodels.SpecModel(spec_table=spec.spec_table)
-            break
-    # Save the spectrum as a soss_estimate file.
-    estimate_filename = estimate.save(output_dir + 'soss_estimate.fits')
+    # Determine lower and upper teff steps (step size of 100K).
+    teff_lw = int(np.floor(st_teff / 100) * 100)
+    teff_up = int(np.ceil(st_teff / 100) * 100)
+    if teff_lw == teff_up:
+        teffs = [teff_lw]
+    else:
+        teffs = [teff_lw, teff_up]
 
-    return estimate_filename
+    # Determine lower and upper logg step (step size of 0.5).
+    logg_lw = np.floor(st_logg / 0.5) * 0.5
+    logg_up = np.ceil(st_logg / 0.5) * 0.5
+    if logg_lw == logg_up:
+        loggs = [logg_lw]
+    else:
+        loggs = [logg_lw, logg_up]
 
+    # Determine lower and upper metallicity steps (step size of 1).
+    met_lw, met_up = np.floor(st_met), np.ceil(st_met)
+    if met_lw == met_up:
+        mets = [met_lw]
+    else:
+        mets = [met_lw, met_up]
 
-def get_timestamps(datafiles):
-    """Get the mid-time stamp for each integration in BJD,
-
-    Parameters
-    ----------
-    datafiles : array-like[jwst.datamodel], jwst.datamodel
-        Datamodels for each segment in a TSO.
-
-    Returns
-    -------
-    times : array-like[float]
-        Mid-integration times for each integraton in BJD.
-    """
-
-    datafiles = np.atleast_1d(datafiles)
-    # Loop over all data files and get mid integration time stamps.
-    for i, data in enumerate(datafiles):
-        data = datamodels.open(data)
-        if i == 0:
-            times = data.int_times['int_mid_BJD_TDB']
-        else:
-            times = np.concatenate([times, data.int_times['int_mid_BJD_TDB']])
-
-    return times
+    return teffs, loggs, mets
 
 
 def get_trace_centroids(deepframe, tracetable, subarray, save_results=True,
@@ -510,6 +550,53 @@ def get_wavebin_limits(wave):
     return bin_low, bin_up
 
 
+def interpolate_stellar_model_grid(model_files, st_teff, st_logg, st_met):
+    """Given a grid of stellar spectrum files, interpolate the model spectra
+    to a set of stellar parameters.
+
+    Parameters
+    ----------
+    model_files : list[str]
+        List of paths to stellar spectra at grid points.
+    st_teff : float
+        Stellar effective temperature.
+    st_logg : float
+        Stellar log surface gravity.
+    st_met : float
+        Stellar metallicity as [Fe/H].
+
+    Returns
+    -------
+    model_interp : array-like(float)
+        Model stellar spectrum interpolated to the input paramaters.
+    """
+
+    # Get stellar spectrum grid points.
+    teffs, loggs, mets = get_stellar_param_grid(st_teff, st_logg, st_met)
+    pts = (np.array(teffs), np.array(loggs), np.array(mets))
+
+    # Read in models.
+    specs = []
+    for model in model_files:
+        specs.append(fits.getdata(model))
+
+    # Create stellar model grid
+    vals = np.zeros((len(teffs), len(loggs), len(mets), len(specs[0])))
+    I = 0
+    for i in range(pts[0].shape[0]):
+        for j in range(pts[1].shape[0]):
+            for k in range(pts[2].shape[0]):
+                vals[i, j, k] = specs[I]
+                I += 1
+
+    # Interpolate grid
+    grid = RegularGridInterpolator(pts, vals)
+    planet = [st_teff, st_logg, st_met]
+    model_interp = grid(planet)[0]
+
+    return model_interp
+
+
 def make_deepstack(cube):
     """Make deep stack of a TSO.
 
@@ -558,76 +645,6 @@ def open_filetype(datafile):
         raise ValueError('Invalid filetype: {}'.format(type(datafile)))
 
     return data
-
-
-def open_stage2_secondary_outputs(deep_file, centroid_file, smoothed_wlc_file,
-                                  output_tag='', root_dir='./'):
-    """Utlity to locate and read in secondary outputs from stage 2.
-
-    Parameters
-    ----------
-    deep_file : str, None
-        Path to deep frame file.
-    centroid_file : str, None
-        Path to centroids file.
-    smoothed_wlc_file : str, None
-        Path to smoothed wlc scaling file.
-    root_dir : str
-        Root directory.
-    output_tag : str
-        Tag given to pipeline_outputs_directory.
-
-    Returns
-    -------
-    deepframe : array-like[float]
-        Deep frame.
-    centroids : array-like[float]
-        Centroids foor all orders.
-    smoothed_wlc : array-like[float]
-        Smoothed wlc scaling.
-    """
-
-    input_dir = root_dir + 'pipeline_outputs_directory{}/Stage2/'.format(output_tag)
-    # Locate and read in the deepframe.
-    if deep_file is None:
-        deep_file = glob.glob(input_dir + '*deepframe*')
-        if len(deep_file) > 1:
-            msg = 'Multiple deep frame files detected.'
-            raise ValueError(msg)
-        elif len(deep_file) == 0:
-            msg = 'No deep frame file found.'
-            raise FileNotFoundError(msg)
-        else:
-            deep_file = deep_file[0]
-    deepframe = fits.getdata(deep_file)
-
-    # Locate and read in the centroids.
-    if centroid_file is None:
-        centroid_file = glob.glob(input_dir + '*centroids*')
-        if len(centroid_file) > 1:
-            msg = 'Multiple centroid files detected.'
-            raise ValueError(msg)
-        elif len(centroid_file) == 0:
-            msg = 'No centroid file found.'
-            raise FileNotFoundError(msg)
-        else:
-            centroid_file = centroid_file[0]
-    centroids = pd.read_csv(centroid_file, comment='#')
-
-    # Locate and read in the smoothed wlc.
-    if smoothed_wlc_file is None:
-        smoothed_wlc_file = glob.glob(input_dir + '*lcestimate*')
-        if len(smoothed_wlc_file) > 1:
-            msg = 'Multiple WLC scaling files detected.'
-            raise ValueError(msg)
-        elif len(smoothed_wlc_file) == 0:
-            msg = 'No WLC scaling file found.'
-            raise FileNotFoundError(msg)
-        else:
-            smoothed_wlc_file = smoothed_wlc_file[0]
-    smoothed_wlc = np.load(smoothed_wlc_file)
-
-    return deepframe, centroids, smoothed_wlc
 
 
 def outlier_resistant_variance(data):
@@ -692,8 +709,79 @@ def pack_ld_priors(wave, c1, c2, order, target, m_h, teff, logg, outdir):
     f.close()
 
 
-def pack_spectra(filename, wl1, wu1, f1, e1, wl2, wu2, f2, e2, t,
-                 header_dict=None, header_comments=None, save_results=True):
+def parse_config(config_file):
+    """Parse a yaml config file.
+
+    Parameters
+    ----------
+    config_file : str
+        Path to config file.
+
+    Returns
+    -------
+    config : dict
+        Dictionary of config parameters.
+    """
+
+    with open(config_file) as f:
+        config = yaml.load(f, Loader=yaml.FullLoader)
+
+    for key in config.keys():
+        if config[key] == 'None':
+            config[key] = None
+
+    return config
+
+
+def retrieve_stellar_params(pl_name, st_teff=None, st_logg=None, st_met=None):
+    """
+
+    Parameters
+    ----------
+    pl_name : str
+        Planet name.
+    st_teff : float, None
+        Stellar effective temperature.
+    st_logg : float, None
+        Stellar log surface gravity.
+    st_met : float, None
+        Stellar metallicity as [Fe/H].
+
+    Returns
+    -------
+    st_teff : float, None
+        Stellar effective temperature.
+    st_logg : float, None
+        Stellar log surface gravity.
+    st_met : float, None
+        Stellar metallicity as [Fe/H].
+    """
+
+    retrieved_params = []
+    # Use exofile to grab stellar parameters.
+    with warnings.catch_warnings():
+        warnings.filterwarnings('ignore')
+        data = ExoFile.load()
+    for param, key in zip([st_teff, st_logg, st_met],
+                          ['st_teff', 'st_logg', 'st_met']):
+        if param is not None:
+            retrieved_params.append(param)
+        else:
+            param_ret = data.by_pl_name(pl_name)[key].value
+            # If value cannot be retrived, return None.
+            if param_ret.mask[0] == True:
+                retrieved_params.append(None)
+            else:
+                retrieved_params.append(param_ret.data[0])
+
+    st_teff, st_logg, st_met = retrieved_params
+
+    return st_teff, st_logg, st_met
+
+
+def save_extracted_spectra(filename, wl1, wu1, f1, e1, wl2, wu2, f2, e2, t,
+                           header_dict=None, header_comments=None,
+                           save_results=True):
     """Pack stellar spectra into a fits file.
 
     Parameters
@@ -783,68 +871,16 @@ def pack_spectra(filename, wl1, wu1, f1, e1, wl2, wu2, f2, e2, t,
     hdu10 = fits.ImageHDU(t, header=hdr)
 
     if save_results is True:
+        fancyprint('Spectra saved to {}'.format(filename))
         hdul = fits.HDUList([hdu1, hdu2, hdu3, hdu4, hdu5, hdu6, hdu7, hdu8,
                              hdu9, hdu10])
         hdul.writeto(filename, overwrite=True)
 
     param_dict = {'Wave Low O1': wl1, 'Wave Up O1': wu1, 'Flux O1': f1,
-                  'Flux Err O1': e1, 'Wave Low O2': wl2, 'Wave UP O2': wu2,
+                  'Flux Err O1': e1, 'Wave Low O2': wl2, 'Wave Up O2': wu2,
                   'Flux O2': f2, 'Flux Err O2': e2, 'Time': t}
 
     return param_dict
-
-
-def parse_config(config_file):
-    """Parse a yaml config file.
-
-    Parameters
-    ----------
-    config_file : str
-        Path to config file.
-
-    Returns
-    -------
-    config : dict
-        Dictionary of config parameters.
-    """
-
-    with open(config_file) as f:
-        config = yaml.load(f, Loader=yaml.FullLoader)
-
-    for key in config.keys():
-        if config[key] == 'None':
-            config[key] = None
-
-    return config
-
-
-def remove_nans(datafile):
-    """Remove any NaN values remaining in a datamodel, either in the flux or
-    flux error arrays, before passing to an ATOCA extraction.
-
-    Parameters
-    ----------
-    datafile : str, RampModel
-        Datamodel, or path to the datamodel.
-
-    Returns
-    -------
-    modelout : RampModel
-        Input datamodel with NaN values replaced.
-    """
-
-    datamodel = open_filetype(datafile)
-    modelout = datamodel.copy()
-    # Find pixels where either the flux or error is NaN-valued.
-    ind = (~np.isfinite(datamodel.data)) | (~np.isfinite(datamodel.err))
-    # Set the flux to zero.
-    modelout.data[ind] = 0
-    # Set the error to an arbitrarily high value.
-    modelout.err[ind] = np.nanmedian(datamodel.err) * 10
-    # Mark the DQ array to not use these pixels.
-    modelout.dq[ind] += 1
-
-    return modelout
 
 
 def sigma_clip_lightcurves(flux, ferr, thresh=3, window=10):
@@ -878,235 +914,79 @@ def sigma_clip_lightcurves(flux, ferr, thresh=3, window=10):
         flux_clipped[:, wave][ii] = med[ii]
         clipsum += len(ii)
 
-    fancyprint('{0} pixels clipped ({1:.3f}%)'.format(clipsum, clipsum / nints / nwaves * 100))
+    fancyprint('{0} pixels clipped ({1:.3f}%)'.format(clipsum, clipsum/nints/nwaves*100))
 
     return flux_clipped
 
 
-def soss_stability(cube, nsteps=501, axis='x', nthreads=4,
-                   smoothing_scale=None):
-    """Perform a CCF analysis to track the movement of the SOSS trace
-        relative to the median stack over the course of a TSO.
+def sort_datamodels(datafiles):
+    """Sort a list of jwst datamodels or filenames in chronological order by
+    segment.
 
     Parameters
     ----------
-    cube : array-like[float]
-        Data cube. Should be 3D (ints, dimy, dimx).
-    nsteps : int
-        Number of CCF steps to test.
-    axis : str
-        Axis over which to calculate the CCF - either 'x', or 'y'.
-    nthreads : int
-        Number of CPUs for multiprocessing.
-    smoothing_scale : int
-        Length scale over which to smooth results.
+    datafiles : array-like(str), array-like(datamodel)
+        List of jwst datamodels or filenames.
 
     Returns
     -------
-    ccf : array-like[float]
-        The cross-correlation results.
+    files_sorted : np.array
+        Inputs sorted in chronological order.
     """
 
-    # Initialize ray with specified number of threads.
-    ray.shutdown()
-    ray.init(num_cpus=nthreads)
+    datafiles = np.atleast_1d(datafiles)
 
-    # Subtract integration-wise median from cube for CCF.
-    cube = cube - np.nanmedian(cube, axis=(1, 2))[:, None, None]
-    # Calculate median stack.
-    deep = bn.nanmedian(cube, axis=0)
-
-    # Divide total data cube into segments and run each segment in parallel
-    # with ray.
-    ii = 0
-    all_fits = []
-    nints = np.shape(cube)[0]
-    seglen = nints // nthreads
-    for i in range(nthreads):
-        if i == nthreads - 1:
-            cube_seg = cube[ii:]
-        else:
-            cube_seg = cube[ii:ii + seglen]
-
-        all_fits.append(soss_stability_run.remote(cube_seg, deep, seg_no=i+1,
-                                                  nsteps=nsteps, axis=axis))
-        ii += seglen
-
-    # Run the CCFs.
-    ray_results = ray.get(all_fits)
-
-    # Stack all the CCF results into a single array.
-    maxvals = []
-    for i in range(nthreads):
-        if i == 0:
-            maxvals = ray_results[i]
-        else:
-            maxvals = np.concatenate([maxvals, ray_results[i]])
-
-    # Smooth results if requested.
-    if smoothing_scale is not None:
-        ccf = median_filter(np.linspace(-0.01, 0.01, nsteps)[maxvals],
-                            smoothing_scale)
+    if isinstance(datafiles[0], str):
+        # If filenames are passed, just sort.
+        files_sorted = np.sort(datafiles)
     else:
-        ccf = np.linspace(-0.01, 0.01, nsteps)[maxvals]
-    ccf = ccf.reshape(nints)
+        # If jwst datamodels are passed, first get the filenames, then sort.
+        files_unsorted = []
+        for file in datafiles:
+            files_unsorted.append(file.meta.filename)
+        sort_inds = np.argsort(files_unsorted)
+        files_sorted = datafiles[sort_inds]
 
-    return ccf
+    return files_sorted
 
 
-def soss_stability_fwhm(cube, ycens_o1, nthreads=4, smoothing_scale=None):
-    """Estimate the FWHM of the trace over the course of a TSO by fitting a
-    Gaussian to each detector column.
+def unpack_atoca_spectra(datafile,
+                         quantities=('WAVELENGTH', 'FLUX', 'FLUX_ERROR')):
+    """Unpack useful quantities from extract1d outputs.
 
     Parameters
     ----------
-    cube : array-like[float]
-        Data cube. Should be 3D (ints, dimy, dimx).
-    ycens_o1 : arrray-like[float]
-        Y-centroid positions of the order 1 trace. Should have length dimx.
-    nthreads : int
-        Number of CPUs for multiprocessing.
-    smoothing_scale : int
-        Length scale over which to smooth results.
+    datafile : str, MultiSpecModel
+        Extract1d output, or path to the file.
+    quantities : tuple(str)
+        Quantities to unpack.
 
     Returns
     -------
-    fwhm : array-like[float]
-        FWHM estimates for each column at every integration.
+    all_spec : dict
+        Dictionary containing unpacked quantities for each order.
     """
 
-    # Initialize ray with specified number of threads.
-    ray.shutdown()
-    ray.init(num_cpus=nthreads)
+    multi_spec = open_filetype(datafile)
 
-    # Divide total data cube into segments and run each segment in parallel
-    # with ray.
-    ii = 0
-    all_fits = []
-    nints = np.shape(cube)[0]
-    seglen = nints // nthreads
-    for i in range(nthreads):
-        if i == nthreads - 1:
-            cube_seg = cube[ii:]
-        else:
-            cube_seg = cube[ii:ii + seglen]
+    # Initialize output dictionary.
+    all_spec = {sp_ord: {quantity: [] for quantity in quantities}
+                for sp_ord in [1, 2, 3]}
+    # Unpack desired quantities into dictionary.
+    for spec in multi_spec.spec:
+        sp_ord = spec.spectral_order
+        for quantity in quantities:
+            all_spec[sp_ord][quantity].append(spec.spec_table[quantity])
+    for sp_ord in all_spec:
+        for key in all_spec[sp_ord]:
+            all_spec[sp_ord][key] = np.array(all_spec[sp_ord][key])
 
-        all_fits.append(soss_stability_fwhm_run.remote(cube_seg, ycens_o1,
-                                                       seg_no=i+1))
-        ii += seglen
+    multi_spec.close()
 
-    # Run the CCFs.
-    ray_results = ray.get(all_fits)
-
-    # Stack all the CCF results into a single array.
-    fwhm = []
-    for i in range(nthreads):
-        if i == 0:
-            fwhm = ray_results[i]
-        else:
-            fwhm = np.concatenate([fwhm, ray_results[i]])
-
-    # Set median of trend to zero.
-    fwhm -= np.median(fwhm)
-    # Smooth the trend.
-    if smoothing_scale is None:
-        smoothing_scale = int(0.2*nints)
-    fwhm = median_filter(fwhm, smoothing_scale)
-
-    return fwhm
+    return all_spec
 
 
-@ray.remote
-def soss_stability_run(cube_sub, med, seg_no, nsteps=501, axis='x'):
-    """Wrapper to perform CCF calculations in parallel with ray.
-    """
-
-    # Get data dimensions.
-    nints, dimy, dimx = np.shape(cube_sub)
-
-    # Get integration numbers to show progress prints.
-    marks = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
-    locs = np.nanpercentile(np.arange(nints), marks)
-
-    # Initialize CCF variables.
-    ccf = np.zeros((nints, nsteps))
-    f = interp2d(np.arange(dimx), np.arange(dimy), med, kind='cubic')
-    # Perform cross-correlation over desired axis.
-    loc = 0
-    for i in range(nints):
-        # Progress print.
-        if i >= int(locs[loc]):
-            fancyprint('Slice {}: {}% complete.'.format(seg_no, marks[loc]))
-            loc += 1
-        for j, jj in enumerate(np.linspace(-0.01, 0.01, nsteps)):
-            if axis == 'x':
-                interp = f(np.arange(dimx) + jj, np.arange(dimy))
-            elif axis == 'y':
-                interp = f(np.arange(dimx), np.arange(dimy) + jj)
-            else:
-                msg = 'Unknown axis: {}'.format(axis)
-                raise ValueError(msg)
-            ccf[i, j] = np.nansum(cube_sub[i] * interp)
-
-    # Determine the peak of the CCF for each integration to get the
-    # best-fitting shift.
-    maxvals = []
-    for i in range(nints):
-        maxvals.append(np.where(ccf[i] == np.max(ccf[i]))[0])
-    maxvals = np.array(maxvals)
-    maxvals = maxvals.reshape(maxvals.shape[0])
-
-    return maxvals
-
-
-@ray.remote
-def soss_stability_fwhm_run(cube, ycens_o1, seg_no):
-    """Wrapper to perform FWHM calculations in parallel with ray.
-    """
-
-    def gauss(x, *p):
-        amp, mu, sigma = p
-        return amp * np.exp(-(x - mu) ** 2 / (2. * sigma ** 2))
-
-    # Get data dimensions.
-    nints, dimy, dimx = np.shape(cube)
-
-    # Get integration numbers to show progress prints.
-    marks = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
-    locs = np.nanpercentile(np.arange(nints), marks)
-
-    # Initialize storage array for widths.
-    fwhm = np.zeros((nints, dimx-254))
-    # Fit a Gaussian to the PSF in each detector column.
-    loc = 0
-    for j in range(nints):
-        # Progress print.
-        if j >= int(locs[loc]):
-            fancyprint('Slice {}: {}% complete.'.format(seg_no, marks[loc]))
-            loc += 1
-        # Cut out first 250 columns as there is order 2 contmination.
-        for i in range(250, dimx-4):
-            p0 = [1., ycens_o1[i], 1.]
-            data = np.copy(cube[j, :, i])
-            # Replace any NaN values with a median.
-            if np.isnan(data).any():
-                ii = np.where(np.isnan(data))
-                data[ii] = np.nanmedian(data)
-            # Fit a Gaussian to the profile, and save the FWHM.
-            try:
-                coeff, var_matrix = curve_fit(gauss, np.arange(dimy), data,
-                                              p0=p0)
-                fwhm[j, i-250] = coeff[2] * 2.355
-            except RuntimeError:
-                fwhm[j, i-250] = np.nan
-
-    # Get median FWHM per integration.
-    fwhm = np.nanmedian(fwhm, axis=1)
-
-    return fwhm
-
-
-def unpack_input_directory(indir, filetag='', exposure_type='CLEAR'):
+def unpack_input_dir(indir, filetag='', exposure_type='CLEAR'):
     """Get all segment files of a specified exposure type from an input data
      directory.
 
@@ -1160,41 +1040,6 @@ def unpack_input_directory(indir, filetag='', exposure_type='CLEAR'):
         segments = segments[correct_order]
 
     return segments
-
-
-def unpack_spectra(datafile, quantities=('WAVELENGTH', 'FLUX', 'FLUX_ERROR')):
-    """Unpack useful quantities from extract1d outputs.
-
-    Parameters
-    ----------
-    datafile : str, MultiSpecModel
-        Extract1d output, or path to the file.
-    quantities : tuple(str)
-        Quantities to unpack.
-
-    Returns
-    -------
-    all_spec : dict
-        Dictionary containing unpacked quantities for each order.
-    """
-
-    multi_spec = open_filetype(datafile)
-
-    # Initialize output dictionary.
-    all_spec = {sp_ord: {quantity: [] for quantity in quantities}
-                for sp_ord in [1, 2, 3]}
-    # Unpack desired quantities into dictionary.
-    for spec in multi_spec.spec:
-        sp_ord = spec.spectral_order
-        for quantity in quantities:
-            all_spec[sp_ord][quantity].append(spec.spec_table[quantity])
-    for sp_ord in all_spec:
-        for key in all_spec[sp_ord]:
-            all_spec[sp_ord][key] = np.array(all_spec[sp_ord][key])
-
-    multi_spec.close()
-
-    return all_spec
 
 
 def verify_path(path):

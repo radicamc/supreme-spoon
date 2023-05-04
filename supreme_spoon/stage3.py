@@ -8,18 +8,22 @@ Created on Thurs Jul 21 17:33 2022
 Custom JWST DMS pipeline steps for Stage 3 (1D spectral extraction).
 """
 
+from astropy.convolution import Gaussian1DKernel, convolve
 from astropy.io import fits
 import glob
 import numpy as np
-import warnings
+import pandas as pd
+from scipy.interpolate import interp1d
+from scipy.signal import butter, filtfilt
+import os
 
 from applesoss import applesoss
 
 from jwst import datamodels
-from jwst.extract_1d.soss_extract import soss_solver
+from jwst.extract_1d.soss_extract import soss_boxextract
 from jwst.pipeline import calwebb_spec2
 
-from supreme_spoon import utils
+from supreme_spoon import utils, plotting
 from supreme_spoon.utils import fancyprint
 
 
@@ -34,55 +38,27 @@ class SpecProfileStep:
         self.output_dir = output_dir
         self.datafiles = np.atleast_1d(datafiles)
         # Get subarray identifier.
-        temp_data = datamodels.open(datafiles[0])
-        if np.shape(temp_data.data)[0] == 96:
-            self.subarray = 'SUBSTRIP96'
-        else:
-            self.subarray = 'SUBSTRIP256'
-        temp_data.close()
+        self.subarray = fits.getheader(self.datafiles[0])['SUBARRAY']
 
-    def run(self, save_results=True, force_redo=False, empirical=True):
+    def run(self, force_redo=False, empirical=True):
         """Method to run the step.
         """
 
         all_files = glob.glob(self.output_dir + '*')
         # If an output file for this segment already exists, skip the step.
-        expected_file = self.output_dir + 'APPLESOSS_ref_2D_profile_{}_os1_pad0.fits'.format(self.subarray)
+        expected_file = self.output_dir + 'APPLESOSS_ref_2D_profile_{}_os1_pad20.fits'.format(self.subarray)
         if expected_file in all_files and force_redo is False:
-            fancyprint('Output file {} already exists.'.format(expected_file))
-            fancyprint('Skipping SpecProfile Reference Construction Step.\n')
-            specprofile = datamodels.open(expected_file)
-            filename = expected_file
+            fancyprint('File {} already exists.'.format(expected_file))
+            fancyprint('Skipping SpecProfile Reference Construction Step.')
+            specprofile = expected_file
         # If no output files are detected, run the step.
         else:
-            step_results = specprofilestep(self.datafiles,
-                                           save_results=save_results,
-                                           output_dir=self.output_dir,
-                                           empirical=empirical)
-            specprofile, filename = step_results
-            filename = self.output_dir + filename
+            specprofile = specprofilestep(self.datafiles,
+                                          output_dir=self.output_dir,
+                                          empirical=empirical)
+            specprofile = self.output_dir + specprofile
 
-        return specprofile, filename
-
-
-class SossSolverStep:
-    """Wrapper around custom SOSS Solver step.
-    """
-
-    def __init__(self, datafiles, deepframe):
-        """Step initializer.
-        """
-
-        self.datafiles = np.atleast_1d(datafiles)
-        self.deepframe = deepframe
-
-    def run(self):
-        """Method to run the step.
-        """
-
-        transform = sosssolverstep(self.datafiles[0], self.deepframe)
-
-        return transform
+        return specprofile
 
 
 class Extract1DStep:
@@ -90,371 +66,127 @@ class Extract1DStep:
     custom modifications.
     """
 
-    def __init__(self, input_data, extract_method, deepframe, smoothed_wlc,
-                 output_dir='./'):
+    def __init__(self, input_data, extract_method, st_teff=None, st_logg=None,
+                 st_met=None, planet_letter='b', output_dir='./'):
         """Step initializer.
         """
 
         self.tag = 'extract1dstep_{}.fits'.format(extract_method)
         self.output_dir = output_dir
-        self.datafiles = np.atleast_1d(input_data)
+        self.datafiles = utils.sort_datamodels(input_data)
         self.fileroots = utils.get_filename_root(self.datafiles)
+        self.fileroot_noseg = utils.get_filename_root_noseg(self.fileroots)
         self.extract_method = extract_method
-        self.scaled_deep = deepframe[None, :, :] * smoothed_wlc[:, None, None]
+        with utils.open_filetype(self.datafiles[0]) as datamodel:
+            self.target_name = datamodel.meta.target.catalog_name
+        self.pl_name = self.target_name + ' ' + planet_letter
+        self.stellar_params = [st_teff, st_logg, st_met]
 
-    def run(self, soss_transform, soss_width=25, specprofile=None,
-            soss_estimate=None, save_results=True, force_redo=False,
-            soss_tikfac=None):
+    def run(self, soss_width=25, specprofile=None, centroids=None,
+            save_results=True, force_redo=False, do_plot=False,
+            show_plot=False):
         """Method to run the step.
         """
 
-        fancyprint('\nStarting 1D extraction using the {} method.\n'.format(self.extract_method))
+        fancyprint('Starting 1D extraction using the {} method.'.format(self.extract_method))
 
         # Initialize loop and storange variables.
-        i = 0
-        redo = False
-        results = []
-        completed_segments, redo_segments = [], []
         all_files = glob.glob(self.output_dir + '*')
-
-        # Calculate time axis. For some reason the extrat1d outputs lose the
-        # timestamps, so this must be done before extracting.
-        times = utils.get_timestamps(self.datafiles)
-
-        # To accomodate the need to occasionally iteratively run the ATOCA
-        # extraction, extract segments as long as all segments are not
-        # extracted. This is irrelevant for box extractions.
-        while len(completed_segments) < len(self.datafiles):
-            # If the segment counter gets larger than the number of
-            # segments, reset it.
-            if i == len(self.datafiles):
-                i = i % len(self.datafiles)
-                redo = True
-            # If segment counter has been reset, but segment has already been
-            # successfully extracted, skip it.
-            if redo is True and i not in redo_segments:
-                i += 1
-                continue
-
-            segment = utils.open_filetype(self.datafiles[i])
-            # If an output file for this segment already exists, skip the step.
-            expected_file = self.output_dir + self.fileroots[i] + self.tag
-            if expected_file in all_files and force_redo is False:
-                fancyprint('Output file {} already exists.'.format(expected_file))
-                fancyprint('Skipping 1D Extraction Step.\n')
-                res = datamodels.open(expected_file)
-
-                if self.extract_method == 'atoca' and soss_estimate is None:
-                    atoca_spectra = self.output_dir + self.fileroots[i] + 'AtocaSpectra.fits'
-                    soss_estimate = utils.get_soss_estimate(atoca_spectra,
-                                                            output_dir=self.output_dir)
-
-            # If no output file is detected, run the step.
-            else:
-                # Initialize extraction parameters for ATOCA.
-                if self.extract_method == 'atoca':
-                    soss_atoca = True
-                    soss_modelname = self.fileroots[i][:-1]
-                    soss_bad_pix = 'model'
-                    segment = utils.remove_nans(segment)
-                elif self.extract_method == 'box':
-                    # Initialize extraction parameters for box.
-                    soss_atoca = False
-                    soss_modelname = None
-                    soss_bad_pix = 'masking'
-                    # Replace all remaining bad pixels using scaled median,
-                    # and set dq values to zero.
-                    istart = segment.meta.exposure.integration_start - 1
-                    iend = segment.meta.exposure.integration_end
-                    for ii, itg in enumerate(range(istart, iend)):
-                        to_replace = np.where(segment.dq[ii] != 0)
-                        segment.data[ii][to_replace] = self.scaled_deep[itg][to_replace]
-                        segment.dq[ii][to_replace] = 0
-                else:
-                    msg = ('Invalid extraction: {}'.format(self.extract_method))
+        expected_file = self.output_dir + self.target_name + '_' + \
+            self.extract_method + '_spectra_fullres.fits'
+        # If an output file already exists, skip the step.
+        if expected_file in all_files and force_redo is False:
+            fancyprint('File {} already exists.'.format(expected_file))
+            fancyprint('Skipping Extract 1D Step.')
+            spectra = expected_file
+        # If no output file is detected, run the step.
+        else:
+            # Option 1: ATOCA extraction.
+            if self.extract_method == 'atoca':
+                if specprofile is None:
+                    msg = 'specprofile reference file must be provided for ' \
+                          'ATOCA extraction.'
                     raise ValueError(msg)
-
-                # Perform the extraction.
-                step = calwebb_spec2.extract_1d_step.Extract1dStep()
-                try:
+                results = []
+                for i, segment in enumerate(self.datafiles):
+                    # Initialize extraction parameters for ATOCA.
+                    soss_modelname = self.fileroots[i][:-1]
+                    # Perform the extraction.
+                    step = calwebb_spec2.extract_1d_step.Extract1dStep()
                     res = step.call(segment, output_dir=self.output_dir,
                                     save_results=save_results,
-                                    soss_transform=[soss_transform[0],
-                                                    soss_transform[1],
-                                                    soss_transform[2]],
-                                    soss_atoca=soss_atoca,
+                                    soss_transform=[0, 0, 0],
                                     subtract_background=False,
-                                    soss_bad_pix=soss_bad_pix,
+                                    soss_bad_pix='model',
                                     soss_width=soss_width,
                                     soss_modelname=soss_modelname,
-                                    override_specprofile=specprofile,
-                                    soss_tikfac=soss_tikfac)
-                    # If the step ran successfully, and ATOCA was used, save
-                    # the AtocaSpectra output for potential use as the
-                    # soss_estimate for later segments.
-                    if self.extract_method == 'atoca' and soss_estimate is None:
-                        atoca_spectra = self.output_dir + self.fileroots[i] + 'AtocaSpectra.fits'
-                        soss_estimate = utils.get_soss_estimate(atoca_spectra,
-                                                                output_dir=self.output_dir)
-                # When using ATOCA, sometimes a very specific error pops up
-                # when an initial estimate of the stellar spectrum cannot be
-                # obtained. This is needed to establish the wavelength grid
-                # (which has a varying resolution to better capture sharp
-                # features in stellar spectra). In these cases, the SOSS
-                # estimate provides information to create a wavelength grid.
-                except Exception as err:
-                    if str(err) == '(m>k) failed for hidden m: fpcurf0:m=0':
-                        # If no soss estimate is available, skip this segment
-                        # and move to the next one. We will come back and deal
-                        # with it later.
-                        if soss_estimate is None:
-                            fancyprint('Initial flux estimate failed, and no '
-                                       'soss estimate provided. Moving to '
-                                       'next segment.', type='WARNING')
-                            redo_segments.append(i)
-                            i += 1
-                            # If all segments fail without a soss estimate,
-                            # just fail.
-                            if len(redo_segments) == len(self.datafiles):
-                                fancyprint('No segment can be correctly '
-                                           'processed.', type='ERROR')
-                                raise err
-                            continue
-                        # Retry extraction with soss estimate.
-                        fancyprint('\nInitial flux estimate failed, retrying '
-                                   'with soss_estimate.\n')
-                        res = step.call(segment, output_dir=self.output_dir,
-                                        save_results=save_results,
-                                        soss_transform=[soss_transform[0],
-                                                        soss_transform[1],
-                                                        soss_transform[2]],
-                                        soss_atoca=soss_atoca,
-                                        subtract_background=False,
-                                        soss_bad_pix=soss_bad_pix,
-                                        soss_width=soss_width,
-                                        soss_modelname=soss_modelname,
-                                        override_specprofile=specprofile,
-                                        soss_estimate=soss_estimate,
-                                        soss_tikfac=soss_tikfac)
-                    # If any other error pops up, raise it.
-                    else:
-                        raise err
-                # Hack to fix file names
-                res = utils.fix_filenames(res, '_badpixstep_', self.output_dir,
-                                          to_add=self.extract_method)[0]
-            results.append(utils.open_filetype(res))
-            # If segment was correctly processed, note the segment.
-            completed_segments.append(i)
-            i += 1
+                                    override_specprofile=specprofile)
 
-        # Sort the segments in chronological order, in case they were
-        # processed out of order.
-        seg_nums = [seg.meta.exposure.segment_number for seg in results]
-        ii = np.argsort(seg_nums)
-        results = np.array(results)[ii]
+                    # Verify that filename is correct.
+                    if save_results is True:
+                        current_name = self.output_dir + res.meta.filename
+                        if expected_file != current_name:
+                            res.close()
+                            os.rename(current_name, expected_file)
+                            res = datamodels.open(expected_file)
+                    results.append(res)
+            # Option 2: Simple aperture extraction.
+            elif self.extract_method == 'box':
+                if centroids is None:
+                    # Attempt to locate and open a centroids file.
+                    centroids = self.output_dir[:-2] + '2/' + \
+                                self.fileroot_noseg + 'centroids.csv'
+                    try:
+                        centroids = pd.read_csv(centroids, comment='#')
+                    except FileNotFoundError:
+                        msg = 'Centroids must be provided for box extraction'
+                        raise ValueError(msg)
+                results = box_extract(self.datafiles, centroids, soss_width)
+            else:
+                raise ValueError('Invalid extraction method')
 
-        # Save the final extraction parameters.
-        extract_params = {'transform_x': soss_transform[0],
-                          'transform_y': soss_transform[1],
-                          'transform_t': soss_transform[2],
-                          'soss_width': soss_width,
-                          'method': self.extract_method}
+            # Do step plot if requested - only for atoca.
+            if do_plot is True and self.extract_method == 'atoca':
+                if save_results is True:
+                    plot_file = self.output_dir + self.tag.replace('fits',
+                                                                   'pdf')
+                else:
+                    plot_file = None
+                models = []
+                for name in self.fileroots:
+                    models.append(self.output_dir + name + 'SossExtractModel.fits')
+                plotting.make_decontamination_plot(self.datafiles, models,
+                                                   outfile=plot_file,
+                                                   show_plot=show_plot)
 
-        return results, extract_params, times
+            # Save the final extraction parameters.
+            extract_params = {'soss_width': soss_width,
+                              'method': self.extract_method}
+            # Get timestamps.
+            for i, datafile in enumerate(self.datafiles):
+                with utils.open_filetype(datafile) as file:
+                    this_time = file.int_times['int_mid_BJD_TDB']
+                if i == 0:
+                    times = this_time
+                else:
+                    times = np.concatenate([times, this_time])
+
+            # Get throughput data.
+            step = calwebb_spec2.extract_1d_step.Extract1dStep()
+            thpt = step.get_reference_file(self.datafiles[0], 'spectrace')
+
+            # Clip outliers and format extracted spectra.
+            st_teff, st_logg, st_met = self.stellar_params
+            spectra = format_extracted_spectra(results, times, extract_params,
+                                               self.pl_name, st_teff, st_logg,
+                                               st_met, throughput=thpt,
+                                               output_dir=self.output_dir,
+                                               save_results=save_results)
+
+        return spectra
 
 
-class LightCurveStep:
-    """Wrapper around custom Light Curve Construction step.
-    """
-
-    def __init__(self, datafiles, extract_dict, baseline_ints, times,
-                 occultation_type='transit', output_dir='./'):
-        """Step initializer.
-        """
-
-        self.output_dir = output_dir
-        self.datafiles = np.atleast_1d(datafiles)
-        self.extract_dict = extract_dict
-        self.baseline_ints = baseline_ints
-        self.occultation_type = occultation_type
-        self.times = times
-
-    def run(self, save_results=True):
-        """Method to run the step.
-        """
-
-        stellar_spectra = lightcurvestep(self.datafiles, times=self.times,
-                                         extract_params=self.extract_dict,
-                                         baseline_ints=self.baseline_ints,
-                                         occultation_type=self.occultation_type,
-                                         save_results=save_results,
-                                         output_dir=self.output_dir)
-
-        return stellar_spectra
-
-
-def lightcurvestep(datafiles, times, baseline_ints, extract_params,
-                   output_dir='./', save_results=True,
-                   occultation_type='transit'):
-    """Upack the outputs of the 1D extraction and format them into lightcurves
-    at the native detector resolution.
-
-    Parameters
-    ----------
-    datafiles : array-like[str], array-like[MultiSpecModel]
-        Input extract1d data files.
-    times : array-like[float]
-        Time stamps corresponding to each integration.
-    baseline_ints : array-like[int]
-        Integrations of ingress and egress.
-    output_dir : str
-        Directory to which to save outputs.
-    save_results : bool
-        If True, save outputs to file.
-    extract_params : dict
-        Dictonary of parameters used for the 1D extraction.
-    occultation_type : str
-        Type of occultation, either 'transit' or 'eclipse'.
-
-    Returns
-    -------
-    stellar_spectra : dict
-        1D stellar spectra at the native detector resolution.
-    """
-
-    fancyprint('Constructing stellar spectra.')
-    datafiles = np.atleast_1d(datafiles)
-    # Format the baseline frames - either out-of-transit or in-eclipse.
-    baseline_ints = utils.format_out_frames(baseline_ints,
-                                            occultation_type)
-    # Calculate the DN/s to e- conversion factor for this TSO.
-    dn2e = utils.get_dn2e(datafiles[0])
-
-    # Open the datafiles, and pack the wavelength, flux, and flux error
-    # information into data cubes.
-    for i, file in enumerate(datafiles):
-        segment = utils.unpack_spectra(file)
-        if i == 0:
-            wave2d_o1 = segment[1]['WAVELENGTH']
-            flux_o1 = segment[1]['FLUX']*dn2e
-            ferr_o1 = segment[1]['FLUX_ERROR']*dn2e
-            wave2d_o2 = segment[2]['WAVELENGTH']
-            flux_o2 = segment[2]['FLUX']*dn2e
-            ferr_o2 = segment[2]['FLUX_ERROR']*dn2e
-        else:
-            wave2d_o1 = np.concatenate([wave2d_o1, segment[1]['WAVELENGTH']])
-            flux_o1 = np.concatenate([flux_o1, segment[1]['FLUX']*dn2e])
-            ferr_o1 = np.concatenate([ferr_o1, segment[1]['FLUX_ERROR']*dn2e])
-            wave2d_o2 = np.concatenate([wave2d_o2, segment[2]['WAVELENGTH']])
-            flux_o2 = np.concatenate([flux_o2, segment[2]['FLUX']*dn2e])
-            ferr_o2 = np.concatenate([ferr_o2, segment[2]['FLUX_ERROR']*dn2e])
-    # Create 1D wavelength axes from the 2D wavelength solution.
-    wave1d_o1, wave1d_o2 = wave2d_o1[0], wave2d_o2[0]
-
-    # Calculate the baseline flux level, and normalize light curves.
-    with warnings.catch_warnings():
-        warnings.filterwarnings('ignore')
-        norm_factor_o1 = np.nanmedian(flux_o1[baseline_ints], axis=0)
-        nflux_o1 = flux_o1 / norm_factor_o1
-        nferr_o1 = ferr_o1 / norm_factor_o1
-        norm_factor_o2 = np.nanmedian(flux_o2[baseline_ints], axis=0)
-        nflux_o2 = flux_o2 / norm_factor_o2
-        nferr_o2 = ferr_o2 / norm_factor_o2
-
-    # Clip remaining 3-sigma outliers.
-    nflux_o1_clip = utils.sigma_clip_lightcurves(nflux_o1, nferr_o1)
-    nflux_o2_clip = utils.sigma_clip_lightcurves(nflux_o2, nferr_o2)
-
-    # Return the light curves back to their un-normalized state.
-    flux_o1_clip = nflux_o1_clip * norm_factor_o1
-    flux_o2_clip = nflux_o2_clip * norm_factor_o2
-
-    # Pack the lightcurves into the output format.
-    # First get the target name from the orignal data file headers.
-    if isinstance(datafiles[0], str):
-        filename = datafiles[0]
-    else:
-        filename = output_dir + datamodels.open(datafiles[0]).meta.filename
-    old_header = fits.getheader(filename, 0)
-    target_name = old_header['TARGNAME']
-    # Pack 1D extraction parameters into the output file header.
-    filename = output_dir + target_name + '_' + extract_params['method'] + '_spectra_fullres.fits'
-    header_dict, header_comments = utils.get_default_header()
-    header_dict['Target'] = target_name
-    header_dict['Contents'] = 'Full resolution stellar spectra'
-    header_dict['Method'] = extract_params['method']
-    header_dict['Width'] = extract_params['soss_width']
-    header_dict['Transx'] = extract_params['transform_x']
-    header_dict['Transy'] = extract_params['transform_y']
-    header_dict['Transth'] = extract_params['transform_t']
-    # Calculate the limits of each wavelength bin.
-    nint = np.shape(flux_o1_clip)[0]
-    wl1, wu1 = utils.get_wavebin_limits(wave1d_o1)
-    wl2, wu2 = utils.get_wavebin_limits(wave1d_o2)
-    wl1 = np.repeat(wl1[np.newaxis, :], nint, axis=0)
-    wu1 = np.repeat(wu1[np.newaxis, :], nint, axis=0)
-    wl2 = np.repeat(wl2[np.newaxis, :], nint, axis=0)
-    wu2 = np.repeat(wu2[np.newaxis, :], nint, axis=0)
-
-    # Pack the stellar spectra and save to file if requested.
-    stellar_spectra = utils.pack_spectra(filename, wl1, wu1, flux_o1_clip,
-                                         ferr_o1, wl2, wu2, flux_o2_clip,
-                                         ferr_o2, times, header_dict,
-                                         header_comments,
-                                         save_results=save_results)
-
-    return stellar_spectra
-
-
-def sosssolverstep(datafile, deepframe):
-    """Determine the rotation, as well as vertical and horizontal offsets
-    necessary to match the observed trace to the reference files.
-
-    Parameters
-    ----------
-    deepframe : array-like[float]
-        Median baseline stack.
-    datafile : str, jwst.datamodel
-        Datamodel, or path to datamodel for one segment.
-
-    Returns
-    -------
-    transform : tuple
-        dx, dy, and dtheta transformation.
-    """
-
-    fancyprint('Solving the SOSS transform.')
-    # Get the spectrace reference file to extract the reference centroids.
-    step = calwebb_spec2.extract_1d_step.Extract1dStep()
-    spectrace_ref = step.get_reference_file(datafile, 'spectrace')
-    spec_trace = datamodels.SpecTraceModel(spectrace_ref)
-    # Extract the reference centroids for the first and second order.
-    xref_o1 = spec_trace.trace[0].data['X']
-    yref_o1 = spec_trace.trace[0].data['Y']
-    xref_o2 = spec_trace.trace[1].data['X']
-    yref_o2 = spec_trace.trace[1].data['Y']
-
-    # Determine the correct subarray identifier.
-    if np.shape(deepframe)[0] == 96:
-        subarray = 'SUBSTRIP96'
-    else:
-        subarray = 'SUBSTRIP256'
-    # Determine the necessary dx, dy, dtheta transform.
-    with warnings.catch_warnings():
-        warnings.filterwarnings('ignore')
-        transform = soss_solver.solve_transform(deepframe, np.isnan(deepframe),
-                                                xref_o1, yref_o1,
-                                                xref_o2, yref_o2,
-                                                soss_filter=subarray,
-                                                is_fitted=(True, True, True),
-                                                guess_transform=(0, 0, 0))
-    fancyprint('Determined a transform of:\nx = {}\ny = {}\ntheta = {}'.format(*transform))
-
-    return transform
-
-
-def specprofilestep(datafiles, save_results=True, empirical=True,
-                    output_dir='./'):
+def specprofilestep(datafiles, empirical=True, output_dir='./'):
     """Wrapper around the APPLESOSS module to construct a specprofile
     reference file tailored to the particular TSO being analyzed.
 
@@ -462,19 +194,16 @@ def specprofilestep(datafiles, save_results=True, empirical=True,
     ----------
     datafiles : array-like[str], array-like[jwst.RampModel]
         Input datamodels or paths to datamodels for each segment.
-    save_results : bool
-        If True, save results to file.
     empirical : bool
         If True, construct profiles using only the data. If False, fall back
         on WebbPSF for the trace wings. Note: The current WebbPSF wings are
-        known to not accurately match the. This mode is therefore not advised.
+        known to not accurately match observations. This mode is therefore not
+        advised.
     output_dir : str
         Directory to which to save outputs.
 
     Returns
     -------
-    spat_prof : applesoss.EmpiricalProfile object
-        Modelled spatial profiles for all orders.
     filename : str
         Name of the output file.
     """
@@ -501,49 +230,321 @@ def specprofilestep(datafiles, save_results=True, empirical=True,
 
     # Initialize and run the APPLESOSS module with the median stack.
     spat_prof = applesoss.EmpiricalProfile(deepstack, tracetable=tracetable,
-                                           wavemap=wavemap)
+                                           wavemap=wavemap, pad=20)
     if empirical is False:
         # Get the date of the observations to use the calculated WFE models
         # from that time.
         obs_date = fits.getheader(datafiles[0])['DATE-OBS']
-        spat_prof.build_empirical_profile(verbose=1, empirical=False,
+        spat_prof.build_empirical_profile(verbose=0, empirical=False,
                                           wave_increment=0.1,
                                           obs_date=obs_date)
     else:
-        spat_prof.build_empirical_profile(verbose=1)
+        spat_prof.build_empirical_profile(verbose=0)
 
-    # Save results to file if requested.
-    if save_results is True:
-        if np.shape(deepstack)[0] == 96:
-            subarray = 'SUBSTRIP96'
-        else:
-            subarray = 'SUBSTRIP256'
-        filename = spat_prof.write_specprofile_reference(subarray,
-                                                         output_dir=output_dir)
+    # Save results to file (non-optional).
+    if np.shape(deepstack)[0] == 96:
+        subarray = 'SUBSTRIP96'
     else:
-        filename = None
+        subarray = 'SUBSTRIP256'
+    filename = spat_prof.write_specprofile_reference(subarray,
+                                                     output_dir=output_dir)
 
-    return spat_prof, filename
+    return filename
 
 
-def run_stage3(results, deepframe, baseline_ints, smoothed_wlc,
-               save_results=True, root_dir='./', force_redo=False,
-               extract_method='box', specprofile=None, soss_estimate=None,
-               soss_width=25, output_tag='', use_applesoss=True,
-               occultation_type='transit', soss_tikfac=None):
+def box_extract(datafiles, centroids, soss_width):
+    """Perform a simple box aperture extraction on SOSS orders 1 and 2.
+
+    Parameters
+    ----------
+    datafiles : array-like[str], array-like[jwst.RampModel]
+        Input datamodels or paths to datamodels for each segment.
+    centroids : dict
+        Dictionary of centroid positions for all SOSS orders.
+    soss_width : int
+        Width of extraction box.
+
+    Returns
+    -------
+    wave_o1 : array_like[float]
+        2D wavelength solution for order 1.
+    flux_o1 : array_like[float]
+        2D extracted flux for order 1.
+    ferr_o1: array_like[float]
+        2D flux errors for order 1.
+    wave_o2 : array_like[float]
+        2D wavelength solution for order 2.
+    flux_o2 : array_like[float]
+        2D extracted flux for order 2.
+    ferr_o2 : array_like[float]
+        2D flux errors for order 2.
+    """
+
+    datafiles = np.atleast_1d(datafiles)
+    # Get flux and errors to extract.
+    for i, file in enumerate(datafiles):
+        with utils.open_filetype(file) as datamodel:
+            if i == 0:
+                cube = datamodel.data
+                ecube = datamodel.err
+            else:
+                cube = np.concatenate([cube, datamodel.data])
+                ecube = np.concatenate([ecube, datamodel.err])
+    nints, dimy, dimx = np.shape(cube)
+
+    # Get centroid positions
+    x1 = centroids['xpos'].values
+    y1, y2 = centroids['ypos o1'].values, centroids['ypos o2'].values
+    ii = np.where(np.isfinite(y2))
+    x2, y2 = x1[ii], y2[ii]
+
+    # Define the widths of the extraction boxes for orders 1 and 2.
+    weights = soss_boxextract.get_box_weights(y1, soss_width, (dimy, dimx),
+                                              cols=x1.astype(int))
+    weights2 = soss_boxextract.get_box_weights(y2, soss_width, (dimy, dimx),
+                                               cols=x2.astype(int))
+
+    flux_o1, ferr_o1 = np.zeros((nints, dimx)), np.zeros((nints, dimx))
+    flux_o2, ferr_o2 = np.zeros((nints, dimx)), np.zeros((nints, dimx))
+    # Loop over each integration and perform the box extraction.
+    fancyprint('Performing simple aperture extraction.')
+    for i in range(nints):
+        scimask = np.isnan(cube[i])
+        c, f, fe, npx = soss_boxextract.box_extract(cube[i], ecube[i], scimask,
+                                                    weights)
+        flux_o1[i] = f
+        ferr_o1[i] = fe
+        c, f, fe, npx = soss_boxextract.box_extract(cube[i], ecube[i], scimask,
+                                                    weights2)
+        flux_o2[i] = f
+        ferr_o2[i] = fe
+
+    # Get default wavelength solution.
+    step = calwebb_spec2.extract_1d_step.Extract1dStep()
+    wavemap = step.get_reference_file(datafiles[0], 'wavemap')
+    # Remove 20 pixel padding that is there for some reason.
+    wave_o1 = np.mean(fits.getdata(wavemap, 1)[20:-20, 20:-20], axis=0)
+    wave_o2 = np.mean(fits.getdata(wavemap, 2)[20:-20, 20:-20], axis=0)
+
+    return wave_o1, flux_o1, ferr_o1, wave_o2, flux_o2, ferr_o2
+
+
+def do_ccf(wave, flux, err, mod_flux, nsteps=1000):
+    """Perform a cross-correlation analysis between an extracted and model
+    stellar spectrum to determine the appropriate wavelength shift between
+    the two.
+
+    Parameters
+    ----------
+    wave : array-like[float]
+        Wavelength axis.
+    flux : array-like[float]
+        Extracted spectrum.
+    err : array-like[float]
+        Errors on extracted spectrum.
+    mod_flux : array-like[float]
+        Model spectrum.
+    nsteps : int
+        Number of wavelength steps to test.
+
+    Returns
+    -------
+    shift : float
+        Wavelength shift between the model and extracted spectrum in microns.
+    """
+
+    def highpass_filter(signal, order=3, freq=0.05):
+        """High pass filter."""
+        b, a = butter(order, freq, btype='high')
+        signal_filt = filtfilt(b, a, signal)
+        return signal_filt
+
+    ccf = np.zeros(nsteps)
+    # Trim edges off of input data to avoid interplation errors.
+    wav_a, flux_a, ferr_a = wave[50:-50], flux[50:-50], err[50:-50]
+    # Max-value normalize the model spectrum and initialize interpolation.
+    mod_norm = mod_flux / np.max(mod_flux)
+    f = interp1d(wave, mod_norm, kind='cubic')
+    # Max-value normalize and high-pass filter the data.
+    data = highpass_filter(flux_a / np.max(flux_a))
+    error = ferr_a / np.max(flux_a)
+
+    # Perform the CCF.
+    for j, jj in enumerate(np.linspace(-0.01, 0.01, nsteps)):
+        # Calculate new wavelength axis.
+        new_wave = wav_a + jj
+        # Interpolate model onto new axis and high-pass filter.
+        model_interp = f(new_wave)
+        model_interp = highpass_filter(model_interp)
+        # Calculate the CCF at this step.
+        ccf[j] = np.nansum(model_interp * data / error ** 2)
+
+    # Determine the peak of the CCF for each integration to get the
+    # best-fitting shift.
+    maxval = np.argmax(ccf)
+    shift = np.linspace(-0.01, 0.01, nsteps)[maxval]
+
+    return shift
+
+
+def format_extracted_spectra(datafiles, times, extract_params, target_name,
+                             st_teff=None, st_logg=None, st_met=None,
+                             throughput=None, output_dir='./',
+                             save_results=True):
+    """Unpack the outputs of the 1D extraction and format them into
+    lightcurves at the native detector resolution.
+
+    Parameters
+    ----------
+    datafiles : array-like[str], array-like[MultiSpecModel], tuple
+        Input extract1d data files.
+    times : array-like[float]
+        Time stamps corresponding to each integration.
+    output_dir : str
+        Directory to which to save outputs.
+    save_results : bool
+        If True, save outputs to file.
+    extract_params : dict
+        Dictonary of parameters used for the 1D extraction.
+    target_name : str
+        Name of the target.
+    st_teff : float, None
+        Stellar effective temperature.
+    st_logg : float, None
+        Stellar log surface gravity.
+    st_met : float, None
+        Stellar metallicity as [Fe/H].
+    throughput : str
+        Path to JWST spectrace reference file.
+
+    Returns
+    -------
+    spectra : dict
+        1D stellar spectra at the native detector resolution.
+    """
+
+    fancyprint('Formatting extracted 1d spectra.')
+    # Box extract outputs will just be a tuple of arrays.
+    if isinstance(datafiles, tuple):
+        wave1d_o1 = datafiles[0]
+        flux_o1 = datafiles[1]
+        ferr_o1 = datafiles[2]
+        wave1d_o2 = datafiles[3]
+        flux_o2 = datafiles[4]
+        ferr_o2 = datafiles[5]
+    # Whereas ATOCA extract outputs are in the atoca extract1dstep format.
+    else:
+        # Open the datafiles, and pack the wavelength, flux, and flux error
+        # information into data cubes.
+        datafiles = np.atleast_1d(datafiles)
+        for i, file in enumerate(datafiles):
+            segment = utils.unpack_atoca_spectra(file)
+            if i == 0:
+                wave2d_o1 = segment[1]['WAVELENGTH']
+                flux_o1 = segment[1]['FLUX']
+                ferr_o1 = segment[1]['FLUX_ERROR']
+                wave2d_o2 = segment[2]['WAVELENGTH']
+                flux_o2 = segment[2]['FLUX']
+                ferr_o2 = segment[2]['FLUX_ERROR']
+            else:
+                wave2d_o1 = np.concatenate([wave2d_o1, segment[1]['WAVELENGTH']])
+                flux_o1 = np.concatenate([flux_o1, segment[1]['FLUX']])
+                ferr_o1 = np.concatenate([ferr_o1, segment[1]['FLUX_ERROR']])
+                wave2d_o2 = np.concatenate([wave2d_o2, segment[2]['WAVELENGTH']])
+                flux_o2 = np.concatenate([flux_o2, segment[2]['FLUX']])
+                ferr_o2 = np.concatenate([ferr_o2, segment[2]['FLUX_ERROR']])
+        # Create 1D wavelength axes from the 2D wavelength solution.
+        wave1d_o1, wave1d_o2 = wave2d_o1[0], wave2d_o2[0]
+
+    # Refine wavelength solution.
+    st_teff, st_logg, st_met = utils.retrieve_stellar_params(target_name,
+                                                             st_teff, st_logg,
+                                                             st_met)
+    # If one or more of the stellar parameters cannot be retrieved, use the
+    # default wavelength solution.
+    if None in [st_teff, st_logg, st_met]:
+        fancyprint('Stellar parameters cannot be retrieved. '
+                   'Using default wavelength solution.', msg_type='WARNING')
+    else:
+        fancyprint('Refining the wavelength calibration.')
+        # Create a grid of stellar parameters, and download PHOENIX spectra
+        # for each grid point.
+        thisout = output_dir + 'phoenix_models'
+        utils.verify_path(thisout)
+        res = utils.download_stellar_spectra(st_teff, st_logg, st_met,
+                                             outdir=thisout)
+        wave_file, flux_files = res
+        # Interpolate model grid to correct stellar parameters.
+        # Reverse direction of both arrays since SOSS is extracted red to blue.
+        mod_flux = utils.interpolate_stellar_model_grid(flux_files, st_teff,
+                                                        st_logg, st_met)
+        mod_wave = fits.getdata(wave_file)/1e4
+
+        # Convolve model to lower resolution and interpolate to data
+        # wavelengths.
+        gauss = Gaussian1DKernel(stddev=500)
+        mod_flux = convolve(mod_flux, gauss)
+        mod_flux = np.interp(wave1d_o1[::-1], mod_wave, mod_flux)[::-1]
+        # Add throuput effects to model.
+        thpt = fits.open(throughput)
+        twave = thpt[1].data['WAVELENGTH']
+        thpt = thpt[1].data['THROUGHPUT']
+        thpt = np.interp(wave1d_o1[::-1], twave, thpt)[::-1]
+        mod_flux *= thpt
+
+        # Cross-correlate extracted spectrum with model to refine wavelength
+        # calibration.
+        x1d_flux = np.nansum(flux_o1, axis=0)
+        x1d_err = np.sqrt(np.nansum(ferr_o1**2, axis=0))
+        wave_shift = do_ccf(wave1d_o1, x1d_flux, x1d_err, mod_flux)
+        fancyprint('Found a wavelength shift of {}um'.format(wave_shift))
+        wave1d_o1 += wave_shift
+        wave1d_o2 += wave_shift
+
+    # Clip remaining 3-sigma outliers.
+    flux_o1_clip = utils.sigma_clip_lightcurves(flux_o1, ferr_o1)
+    flux_o2_clip = utils.sigma_clip_lightcurves(flux_o2, ferr_o2)
+
+    # Pack the lightcurves into the output format.
+    # Put 1D extraction parameters in the output file header.
+    filename = output_dir + target_name[:-2] + '_' + extract_params['method'] \
+        + '_spectra_fullres.fits'
+    header_dict, header_comments = utils.get_default_header()
+    header_dict['Target'] = target_name[:-2]
+    header_dict['Contents'] = 'Full resolution stellar spectra'
+    header_dict['Method'] = extract_params['method']
+    header_dict['Width'] = extract_params['soss_width']
+    # Calculate the limits of each wavelength bin.
+    nint = np.shape(flux_o1_clip)[0]
+    wl1, wu1 = utils.get_wavebin_limits(wave1d_o1)
+    wl2, wu2 = utils.get_wavebin_limits(wave1d_o2)
+    wl1 = np.repeat(wl1[np.newaxis, :], nint, axis=0)
+    wu1 = np.repeat(wu1[np.newaxis, :], nint, axis=0)
+    wl2 = np.repeat(wl2[np.newaxis, :], nint, axis=0)
+    wu2 = np.repeat(wu2[np.newaxis, :], nint, axis=0)
+
+    # Pack the stellar spectra and save to file if requested.
+    spectra = utils.save_extracted_spectra(filename, wl1, wu1, flux_o1_clip,
+                                           ferr_o1, wl2, wu2, flux_o2_clip,
+                                           ferr_o2, times, header_dict,
+                                           header_comments,
+                                           save_results=save_results)
+
+    return spectra
+
+
+def run_stage3(results, save_results=True, root_dir='./', force_redo=False,
+               extract_method='atoca', specprofile=None, centroids=None,
+               soss_width=25, st_teff=None, st_logg=None, st_met=None,
+               planet_letter='b', output_tag='', do_plot=False,
+               show_plot=False):
     """Run the supreme-SPOON Stage 3 pipeline: 1D spectral extraction, using
-    a combination of official STScI DMS and custom steps.
+    a combination of the official STScI DMS and custom steps.
 
     Parameters
     ----------
     results : array-like[str], array-like[CubeModel]
         supreme-SPOON Stage 2 outputs for each segment.
-    deepframe : array-like[float]
-        Median out-of-transit stack.
-    baseline_ints : array-like[int]
-        Integration number of ingress and egress.
-    smoothed_wlc : array-like[float]
-        Estimate of the normalized light curve.
     save_results : bool
         If True, save the results of each step to file.
     root_dir : str
@@ -553,32 +554,39 @@ def run_stage3(results, deepframe, baseline_ints, smoothed_wlc,
     extract_method : str
         Either 'box' or 'atoca'. Runs the applicable 1D extraction routine.
     specprofile : str, None
-        For ATOCA; specprofile reference file.
-    soss_estimate : str, None
-        For ATOCA; soss estimate file.
+        Specprofile reference file; only neceessary for ATOCA extractions.
+    centroids : dict
+        Dictionary of centroid positions for SOSS orders; only necessary for
+        box extractions.
     soss_width : int
         Width around the trace centroids, in pixels, for the 1D extraction.
+    st_teff : float, None
+        Stellar effective temperature.
+    st_logg : float, None
+        Stellar log surface gravity.
+    st_met : float, None
+        Stellar metallicity as [Fe/H].
+    planet_letter : str
+        Letter designation for the planet.
     output_tag : str
         Name tag to append to pipeline outputs directory.
-    use_applesoss : bool
-        If True, create a tailored specprofile reference file with the
-        applesoss module.
-    occultation_type : str
-        Type of occultation, either 'transit' or 'eclipse'.
-    soss_tikfac : int, None
-        Tikhonov regularization factor.
+    do_plot : bool
+        If True, make step diagnostic plot.
+    show_plot : bool
+        Only necessary if do_plot is True. Show the diagnostic plots in
+        addition to/instead of saving to file.
 
     Returns
     -------
-    stellar_specra : dict
+    specra : dict
         1D stellar spectra for each wavelength bin at the native detector
         resolution.
     """
 
     # ============== DMS Stage 3 ==============
     # 1D spectral extraction.
-    fancyprint('\n\n**Starting supreme-SPOON Stage 3**')
-    fancyprint('1D spectral extraction\n\n')
+    fancyprint('**Starting supreme-SPOON Stage 3**')
+    fancyprint('1D spectral extraction...')
 
     if output_tag != '':
         output_tag = '_' + output_tag
@@ -591,41 +599,17 @@ def run_stage3(results, deepframe, baseline_ints, smoothed_wlc,
     # Custom DMS step
     if extract_method == 'atoca':
         if specprofile is None:
-            if use_applesoss is True:
-                step = SpecProfileStep(results, output_dir=outdir)
-                specprofile = step.run(force_redo=force_redo)[1]
-            else:
-                msg = 'The default specprofile reference file will be used' \
-                      ' for extraction.\n' \
-                      'For optimal results, consider using a tailored' \
-                      ' specprofile reference'
-                fancyprint(msg)
-
-    # ===== SOSS Solver Step =====
-    # Custom DMS step.
-    if specprofile is not None:
-        soss_transform = [0, 0, 0]
-    else:
-        step = SossSolverStep(results, deepframe=deepframe)
-        soss_transform = step.run()
+            step = SpecProfileStep(results, output_dir=outdir)
+            specprofile = step.run(force_redo=force_redo)
 
     # ===== 1D Extraction Step =====
     # Custom/default DMS step.
-    step = Extract1DStep(results, deepframe=deepframe,
-                         smoothed_wlc=smoothed_wlc,
-                         extract_method=extract_method, output_dir=outdir)
-    step_results = step.run(soss_transform=soss_transform,
-                            soss_width=soss_width, specprofile=specprofile,
-                            soss_estimate=soss_estimate,
-                            save_results=save_results, force_redo=force_redo,
-                            soss_tikfac=soss_tikfac)
-    results, extract_params, times = step_results
+    step = Extract1DStep(results, extract_method=extract_method,
+                         st_teff=st_teff, st_logg=st_logg, st_met=st_met,
+                         planet_letter=planet_letter,  output_dir=outdir)
+    spectra = step.run(soss_width=soss_width, specprofile=specprofile,
+                       centroids=centroids, save_results=save_results,
+                       force_redo=force_redo, do_plot=do_plot,
+                       show_plot=show_plot)
 
-    # ===== Light Curve Construction Step =====
-    # Custom DMS step.
-    step = LightCurveStep(results, extract_dict=extract_params, times=times,
-                          baseline_ints=baseline_ints,
-                          occultation_type=occultation_type, output_dir=outdir)
-    stellar_spectra = step.run(save_results=save_results)
-
-    return stellar_spectra
+    return spectra
