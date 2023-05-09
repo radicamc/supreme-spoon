@@ -28,6 +28,7 @@ planet_letter : 'b'
 
 # ===== Fit Priors + Parameters =====
 # Fitting priors in juliet format.
+# For eclipse fits, must not pass q1_soss and q2_soss, and must pass t_secondary_p1 and fp_p1.
 params : ['P_p1', 't0_p1', 'p_p1', 'b_p1',
           'q1_SOSS', 'q2_SOSS', 'ecc_p1', 'omega_p1', 'a_p1',
           'mdilution_SOSS', 'mflux_SOSS', 'sigma_w_SOSS']

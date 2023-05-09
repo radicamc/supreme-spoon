@@ -85,7 +85,8 @@ formatted_names = {'P_p1': r'$P$', 't0_p1': r'$T_0$', 'p_p1': r'$R_p/R_*$',
                    'theta0_SOSS': r'$\theta_0$', 'theta1_SOSS': r'$\theta_1$',
                    'theta2_SOSS': r'$\theta_2$',
                    'GP_sigma_SOSS': r'$GP \sigma$',
-                   'GP_rho_SOSS': r'$GP \rho$', 'rho': r'$\rho$'}
+                   'GP_rho_SOSS': r'$GP \rho$', 'rho': r'$\rho$',
+                   't_secondary_p1': r'$T_{sec}$', 'fp_p1': r'$F_p/F_*$'}
 
 # === Get Detrending Quantities ===
 # Get time axis
@@ -98,6 +99,15 @@ if config['lm_file'] is not None:
     for i, key in enumerate(config['lm_parameters']):
         lm_param = lm_data[key]
         lm_quantities[:, i] = (lm_param - np.mean(lm_param)) / np.sqrt(np.var(lm_param))
+# Eclipses must fit for a baseline, which is done via the linear detrending.
+# So add this term to the fits if not already included.
+if config['lm_file'] is None and config['occultation_type'] == 'eclipse':
+    lm_quantities = np.zeros((len(t), 1))
+    lm_quantities[:, 0] = np.ones_like(t)
+    config['params'].append('theta0_SOSS')
+    config['dists'].append('uniform')
+    config['hyperps'].append([-10, 10])
+
 # Quantity on which to train GP.
 if config['gp_file'] is not None:
     gp_data = pd.read_csv(config['gp_file'], comment='#')
@@ -168,13 +178,14 @@ for order in config['orders']:
         priors[param] = {}
         priors[param]['distribution'] = dist
         priors[param]['hyperparameters'] = hyperp
-    # Interpolate LD coefficients from stellar models.
-    if order == 1 and config['ldcoef_file_o1'] is not None:
-        q1, q2 = stage4.read_ld_coefs(config['ldcoef_file_o1'], wave_low,
-                                      wave_up)
-    if order == 2 and config['ldcoef_file_o2'] is not None:
-        q1, q2 = stage4.read_ld_coefs(config['ldcoef_file_o2'], wave_low,
-                                      wave_up)
+    # For transit fits, interpolate LD coefficients from stellar models.
+    if config['occultation_type'] == 'transit':
+        if order == 1 and config['ldcoef_file_o1'] is not None:
+            q1, q2 = stage4.read_ld_coefs(config['ldcoef_file_o1'], wave_low,
+                                          wave_up)
+        if order == 2 and config['ldcoef_file_o2'] is not None:
+            q1, q2 = stage4.read_ld_coefs(config['ldcoef_file_o2'], wave_low,
+                                          wave_up)
 
     # Pack fitting arrays and priors into dictionaries.
     data_dict, prior_dict = {}, {}
@@ -194,16 +205,17 @@ for order in config['orders']:
 
         # Prior dictionaries.
         prior_dict[thisbin] = copy.deepcopy(priors)
-        # Update the LD prior for this bin if available.
-        # Set prior width to 0.2 around the model value - based on findings of
-        # Patel & Espinoza 2022.
-        if config['ldcoef_file_o1'] is not None or config['ldcoef_file_o2'] is not None:
-            if np.isfinite(q1[wavebin]):
-                prior_dict[thisbin]['q1_SOSS']['distribution'] = 'truncatednormal'
-                prior_dict[thisbin]['q1_SOSS']['hyperparameters'] = [q1[wavebin], 0.2, 0.0, 1.0]
-            if np.isfinite(q2[wavebin]):
-                prior_dict[thisbin]['q2_SOSS']['distribution'] = 'truncatednormal'
-                prior_dict[thisbin]['q2_SOSS']['hyperparameters'] = [q2[wavebin], 0.2, 0.0, 1.0]
+        # For transit only; update the LD prior for this bin if available.
+        if config['occultation_type'] == 'transit':
+            # Set prior width to 0.2 around the model value - based on
+            # findings of Patel & Espinoza 2022.
+            if config['ldcoef_file_o1'] is not None or config['ldcoef_file_o2'] is not None:
+                if np.isfinite(q1[wavebin]):
+                    prior_dict[thisbin]['q1_SOSS']['distribution'] = 'truncatednormal'
+                    prior_dict[thisbin]['q1_SOSS']['hyperparameters'] = [q1[wavebin], 0.2, 0.0, 1.0]
+                if np.isfinite(q2[wavebin]):
+                    prior_dict[thisbin]['q2_SOSS']['distribution'] = 'truncatednormal'
+                    prior_dict[thisbin]['q2_SOSS']['hyperparameters'] = [q2[wavebin], 0.2, 0.0, 1.0]
 
     # === Do the Fit ===
     # Fit each light curve
@@ -343,7 +355,11 @@ orders = np.concatenate([2*np.ones_like(results_dict['order 2']['dppm']),
 infile_header = fits.getheader(config['infile'], 0)
 extract_type = infile_header['METHOD']
 target = infile_header['TARGET'] + config['planet_letter']
-filename = target + '_NIRISS_SOSS_transmission_spectrum' + fit_suffix + '.csv'
+if config['occultation_type'] == 'transit':
+    spec_type = 'transmission'
+else:
+    spec_type = 'emission'
+filename = target + '_NIRISS_SOSS_' + spec_type + '_spectrum' + fit_suffix + '.csv'
 # Get fit metadata.
 # Include fixed parameter values.
 fit_metadata = '#\n# Fit Metadata\n'
@@ -370,7 +386,8 @@ stage4.save_transmission_spectrum(waves, wave_errors, depths, errors, orders,
                                   outdir, filename=filename, target=target,
                                   extraction_type=extract_type,
                                   resolution=config['res'],
-                                  fit_meta=fit_metadata)
-fancyprint('Transmission spectrum saved to {}'.format(outdir+filename))
+                                  fit_meta=fit_metadata,
+                                  occultation_type=config['occultation_type'])
+fancyprint('{0} spectrum saved to {1}'.format(spec_type, outdir+filename))
 
 fancyprint('Done')
