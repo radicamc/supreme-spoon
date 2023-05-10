@@ -34,10 +34,11 @@ os.environ['CRDS_PATH'] = config['crds_cache_path']
 os.environ['CRDS_SERVER_URL'] = 'https://jwst-crds.stsci.edu'
 
 # Save a copy of the config file.
-if config['output_tag'][0] != '_':
-    root_dir = 'pipeline_outputs_directory' + '_' + config['output_tag'] + '/config_files'
+if config['output_tag'] != '':
+    output_tag = '_' + config['output_tag']
 else:
-    root_dir = 'pipeline_outputs_directory' + config['output_tag'] + '/config_files'
+    output_tag = config['output_tag']
+root_dir = 'pipeline_outputs_directory' + output_tag + '/config_files'
 verify_path(root_dir)
 i = 0
 copy_config = root_dir + '/' + config_file
