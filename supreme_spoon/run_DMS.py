@@ -38,7 +38,9 @@ if config['output_tag'] != '':
     output_tag = '_' + config['output_tag']
 else:
     output_tag = config['output_tag']
-root_dir = 'pipeline_outputs_directory' + output_tag + '/config_files'
+root_dir = 'pipeline_outputs_directory' + output_tag
+verify_path(root_dir)
+root_dir += 'config_files'
 verify_path(root_dir)
 i = 0
 copy_config = root_dir + '/' + config_file
