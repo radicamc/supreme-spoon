@@ -114,6 +114,8 @@ def download_stellar_spectra(st_teff, st_logg, st_met, outdir):
             for met in mets:
                 if met > 0:
                     basename = 'lte0{0}-{1}0+{2}.PHOENIX-ACES-AGSS-COND-2011-HiRes.fits'
+                elif met == 0:
+                    basename = 'lte0{0}-{1}0-{2}.PHOENIX-ACES-AGSS-COND-2011-HiRes.fits'
                 else:
                     basename = 'lte0{0}-{1}0{2}.PHOENIX-ACES-AGSS-COND-2011-HiRes.fits'
                 thisfile = basename.format(teff, logg, met)
@@ -124,6 +126,8 @@ def download_stellar_spectra(st_teff, st_logg, st_met, outdir):
                     fancyprint('Downloading file {}.'.format(thisfile))
                     if met > 0:
                         cmd = 'wget -q -O {0} {1}HiResFITS/PHOENIX-ACES-AGSS-COND-2011/Z+{2}/{3}'.format(ffile, fpath, met, thisfile)
+                    elif met == 0:
+                        cmd = 'wget -q -O {0} {1}HiResFITS/PHOENIX-ACES-AGSS-COND-2011/Z-{2}/{3}'.format(ffile, fpath, met, thisfile)
                     else:
                         cmd = 'wget -q -O {0} {1}HiResFITS/PHOENIX-ACES-AGSS-COND-2011/Z{2}/{3}'.format(ffile, fpath, met, thisfile)
                     os.system(cmd)
