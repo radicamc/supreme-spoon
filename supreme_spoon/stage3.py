@@ -38,7 +38,10 @@ class SpecProfileStep:
         self.output_dir = output_dir
         self.datafiles = np.atleast_1d(datafiles)
         # Get subarray identifier.
-        self.subarray = fits.getheader(self.datafiles[0])['SUBARRAY']
+        if isinstance(self.datafiles[0], str):
+            self.subarray = fits.getheader(self.datafiles[0])['SUBARRAY']
+        elif isinstance(self.datafiles[0], datamodels.CubeModel):
+            self.subarray = self.datafiles[0].meta.subarray.name
 
     def run(self, force_redo=False, empirical=True):
         """Method to run the step.

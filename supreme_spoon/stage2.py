@@ -1535,6 +1535,6 @@ def run_stage2(results, background_model, baseline_ints, smoothed_wlc=None,
                                 occultation_type=occultation_type,
                                 smoothing_scale=smoothing_scale,
                                 save_results=save_results, do_plot=do_plot,
-                                show_plot=show_plot)
+                                show_plot=show_plot, force_redo=force_redo)
 
     return results
