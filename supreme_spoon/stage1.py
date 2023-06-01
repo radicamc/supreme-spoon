@@ -704,7 +704,7 @@ def jumpstep_in_time(datafile, window=10, thresh=10, fileroot=None,
             ii = np.where(np.abs(cube[i, g] - local_med[g]) >= thresh * local_std[g])
             # If ngroup<=2, replace the pixel with the stack median so that a
             # ramp can still be fit.
-            if g < 2:
+            if ngroups <= 2:
                 # Do not want to interpolate pixels which are flagged for
                 # another reason, so only select good pixels or those which
                 # are flagged for jumps.

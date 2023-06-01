@@ -247,11 +247,17 @@ for order in config['orders']:
             order_results['dppm_err'].append(np.nan)
         # If not skipped, append median and 1-sigma bounds.
         else:
-            pp = fit_results[wavebin].posteriors['posterior_samples']['p_p1']
-            md, up, lw = juliet.utils.get_quantiles(pp)
-            order_results['dppm'].append((md**2)*1e6)
-            err_low = (md**2 - lw**2)*1e6
-            err_up = (up**2 - md**2)*1e6
+            post_samples = fit_results[wavebin].posteriors['posterior_samples']
+            if config['occultation_type'] == 'transit':
+                md, up, lw = juliet.utils.get_quantiles(post_samples['p_p1'])
+                order_results['dppm'].append((md**2)*1e6)
+                err_low = (md**2 - lw**2)*1e6
+                err_up = (up**2 - md**2)*1e6
+            else:
+                md, up, lw = juliet.utils.get_quantiles(post_samples['fp_p1'])
+                order_results['dppm'].append(md*1e6)
+                err_low = (md - lw)*1e6
+                err_up = (up - md)*1e6
             order_results['dppm_err'].append(np.mean([err_up, err_low]))
 
         # Make summary plots.
