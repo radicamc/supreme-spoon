@@ -903,7 +903,7 @@ def oneoverfstep(datafiles, baseline_ints, even_odd_rows=True,
                     # doesn't hurt to do it again.
                     dc = np.zeros_like(sub)
                     # For group-level corrections.
-                    if np.ndim(currentfile.data == 4):
+                    if np.ndim(currentfile.data) == 4:
                         dc[:, ::2] = bn.nanmedian(sub[:, ::2], axis=1)[:, None, :]
                         dc[:, 1::2] = bn.nanmedian(sub[:, 1::2], axis=1)[:, None, :]
                     # For integration-level corrections.
