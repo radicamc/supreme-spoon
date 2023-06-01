@@ -513,8 +513,8 @@ def run_juliet(priors, t_lc, y_lc, yerr_lc, out_folder,
 
 def save_transmission_spectrum(wave, wave_err, dppm, dppm_err, order, outdir,
                                filename, target, extraction_type, resolution,
-                               fit_meta=''):
-    """Write a transmission spectrum to file.
+                               fit_meta='', occultation_type='transit'):
+    """Write a transmission/emission spectrum to file.
 
     Parameters
     ----------
@@ -523,9 +523,9 @@ def save_transmission_spectrum(wave, wave_err, dppm, dppm_err, order, outdir,
     wave_err : array-like[float]
         Bin half-widths for each wavelength bin.
     dppm : array-like[float]
-        Transit depth in each bin.
+        Transit/eclipse depth in each bin.
     dppm_err : array-like[float]
-        Error on the transit depth in each bin.
+        Error on the transit/eclipse depth in each bin.
     order : array-like[int]
         SOSS order corresponding to each bin.
     outdir : str
@@ -540,6 +540,8 @@ def save_transmission_spectrum(wave, wave_err, dppm, dppm_err, order, outdir,
         Spectral resolution of spectrum.
     fit_meta: str
         Fitting metadata.
+    occultation_type : str
+        Type of occultation; either 'transit' or 'eclipse'.
     """
 
     # Pack the quantities into a dictionary.
@@ -565,8 +567,12 @@ def save_transmission_spectrum(wave, wave_err, dppm, dppm_err, order, outdir,
     f.write(fit_meta)
     f.write('# Column wave: Central wavelength of bin (micron)\n')
     f.write('# Column wave_err: Wavelength bin halfwidth (micron)\n')
-    f.write('# Column dppm: (Rp/R*)^2 (ppm)\n')
-    f.write('# Column dppm_err: Error in (Rp/R*)^2 (ppm)\n')
+    if occultation_type == 'transit':
+        f.write('# Column dppm: (Rp/R*)^2 (ppm)\n')
+        f.write('# Column dppm_err: Error in (Rp/R*)^2 (ppm)\n')
+    else:
+        f.write('# Column dppm: (Fp/F*) (ppm)\n')
+        f.write('# Column dppm_err: Error in (Fp/F*) (ppm)\n')
     f.write('# Column order: SOSS diffraction order\n')
     f.write('#\n')
     df.to_csv(f, index=False)

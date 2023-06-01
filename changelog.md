@@ -1,6 +1,11 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+### [1.1.1] -- 2023-06-01
+#### Added
+- Support for eclipse fitting.
+- Misc. bug fixes. 
+
 ### [1.1.0] -- 2023-05-04
 #### Added
 - Compatibility with jwst v1.8.5.
