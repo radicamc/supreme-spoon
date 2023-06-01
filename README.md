@@ -31,7 +31,6 @@ Alternatively, Stages 1 to 3 can be run at once via the ```run_DMS.py``` script.
 3. Once happy with the input parameters, enter ```python run_DMS.py run_DMS.yaml``` in the terminal.
 
 To use the light curve fitting capabilities, simply follow the same procedure with the fit_lightcurves.py and .yaml files. 
-Currently only transit light curve fits are supported, with eclipse fitting in development. 
 
 ## Citations
 If you make use of this code in your work, please cite [Radica et al. (2023)](https://ui.adsabs.harvard.edu/abs/2023arXiv230517001R/abstract) and [Feinstein et al. (2023)](https://ui.adsabs.harvard.edu/abs/2023Natur.614..670F/abstract). 
