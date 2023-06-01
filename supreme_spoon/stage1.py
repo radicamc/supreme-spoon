@@ -693,7 +693,7 @@ def jumpstep_in_time(datafile, window=10, thresh=10, fileroot=None,
     for i in tqdm(range(nints)):
         # Create a stack of the integrations before and after the current
         # integration.
-        up = np.min([nints, i + window + 1])
+        up = np.min([nints, i + window])
         low = np.max([0, i - window])
         stack = np.concatenate([cube[low:i], cube[(i + 1):up]])
         # Get median and standard deviation of the stack.
@@ -701,19 +701,20 @@ def jumpstep_in_time(datafile, window=10, thresh=10, fileroot=None,
         local_std = np.nanstd(stack, axis=0)
         for g in range(ngroups):
             # Find deviant pixels.
-            ii = np.where(np.abs(cube[i, g] - local_med[g]) >= thresh * local_std[g])
+            ii = np.abs(cube[i, g] - local_med[g]) >= thresh * local_std[g]
             # If ngroup<=2, replace the pixel with the stack median so that a
             # ramp can still be fit.
             if ngroups <= 2:
                 # Do not want to interpolate pixels which are flagged for
                 # another reason, so only select good pixels or those which
                 # are flagged for jumps.
-                jj = np.where((dqcube[i, g][ii] == 0) | (dqcube[i, g][ii] == 4))
+                jj = (dqcube[i, g] == 0) | (dqcube[i, g] == 4)
                 # Replace these pixels with the stack median and remove the
                 # dq flag.
-                cube[i, g][ii][jj] = local_med[g][ii][jj]
-                dqcube[i, g][ii][jj] = 0
-                interp += len(jj[0])
+                replace = ii & jj
+                cube[i, g][replace] = local_med[g][replace]
+                dqcube[i, g][replace] = 0
+                interp += np.sum(replace)
             # If ngroup>2, flag the pixel as having a jump.
             else:
                 # Want to ignore pixels which are already flagged for a jump.
