@@ -49,11 +49,17 @@ def bin_at_pixel(flux, error, wave, npix):
         Error on binned depth.
     """
 
-    # Calculate number of bins ginve wavelength grid and npix value.
+    # Calculate number of bins given wavelength grid and npix value.
     nint, nwave = np.shape(flux)
+    # If the number of pixels does not bin evenly, trim from beginning and end.
     if nwave % npix != 0:
-        msg = 'Bin size cannot be conserved.'
-        raise ValueError(msg)
+        cut = nwave % npix
+        cut_s = int(np.floor(cut/2))
+        cut_e = -1*(cut - cut_s)
+        flux = flux[:, cut_s:cut_e]
+        error = error[:, cut_s:cut_e]
+        wave = wave[:, cut_s:cut_e]
+        nint, nwave = np.shape(flux)
     nbin = int(nwave / npix)
 
     # Sum flux in bins and calculate resulting errors.

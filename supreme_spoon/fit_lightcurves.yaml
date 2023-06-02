@@ -1,11 +1,11 @@
-# ======================= BEGIN LIGHTCURVE FIT CONFIG FILE ===========================
+# ======================= BEGIN LIGHT CURVE FIT CONFIG FILE ===========================
 #
 # This is the configuration file for fit_lightcurves.py.
 #
 # ===== Fit Metadata =====
 # Name tag for output file directory.
 output_tag : ''
-# File containing lightcurves to fit.
+# File containing light curves to fit.
 infile : ''
 # Orders to fit.
 orders : [1, 2]
@@ -21,8 +21,10 @@ do_plots : True
 include_corner : False
 # Number of cores for multiprocessing.
 ncores : 4
-# Spectral resolution at which to fit lightcurves.
-res : 'native'
+# Spectral resolution at which to fit light curves.
+res : 'pixel'
+# Alternatively, number of pixel columns to bin before light curve fitting
+npix : None
 # Planet identifier.
 planet_letter : 'b'
 
@@ -50,4 +52,4 @@ lm_parameters : ['x']
 gp_file : None
 # Key name for GP training parametrer.
 gp_parameter : ''
-# ======================= END LIGHTCURVE FIT CONFIG FILE ===========================
+# ======================= END LIGHT CURVE FIT CONFIG FILE ===========================

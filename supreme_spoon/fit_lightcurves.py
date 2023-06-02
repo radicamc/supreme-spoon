@@ -47,16 +47,20 @@ if config['fit_suffix'] != '':
     fit_suffix = '_' + config['fit_suffix']
 else:
     fit_suffix = config['fit_suffix']
-# Add resolution info to the fit tag.
-if config['res'] == 'native':
-    fit_suffix += '_native'
-    res_str = 'native resolution'
-elif config['res'] == 'pixel':
-    fit_suffix += '_pixel'
-    res_str = 'pixel resolution'
+# Add resolution/binning info to the fit tag.
+if config['res'] is not None:
+    if config['res'] == 'pixel':
+        fit_suffix += '_pixel'
+        res_str = 'pixel resolution'
+    else:
+        fit_suffix += '_R{}'.format(config['res'])
+        res_str = 'R = {}'.format(config['res'])
+elif config['npix'] is not None:
+    fit_suffix += '_{}pix'.format(config['npix'])
+    res_str = 'npix = {}'.format(config['npix'])
 else:
-    fit_suffix += '_R{}'.format(config['res'])
-    res_str = 'R = {}'.format(config['res'])
+    msg = 'Number of columns to bin or spectral resolution must be provided.'
+    raise ValueError(msg)
 
 # Save a copy of the config file.
 root_dir = 'pipeline_outputs_directory' + config['output_tag'] + '/config_files'
