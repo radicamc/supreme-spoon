@@ -39,10 +39,12 @@ def bin_at_pixel(flux, error, wave, npix):
 
     Returns
     -------
-    wout : np.ndarray[float]
-        Wavelength of the given bin.
-    werrout : list[float]
-        Width of the wavelength bin.
+    wave_bin : np.ndarray[float]
+        Central bin wavelength.
+    wave_low : np.ndarray[float]
+        Lower edge of wavelength bin.
+    wave_up : np.ndarray[float]
+        Upper edge of wavelength bin.
     dout : np.ndarray[float]
         Binned depth.
     derrout : np.ndarray[float]

@@ -150,20 +150,20 @@ for order in config['orders']:
         wave, wave_low, wave_up = wave[:, ii], wave_low[:, ii], wave_up[:, ii]
 
     # Bin input spectra to desired resolution.
-    if config['res'] == 'pixel':
-        wave, wave_low, wave_up = wave[0], wave_low[0], wave_up[0]
-    elif config['res'] == 'native':
-        binned_vals = stage4.bin_at_pixel(flux, err, wave, npix=2)
+    if config['res'] is not None:
+        if config['res'] == 'pixel':
+            wave, wave_low, wave_up = wave[0], wave_low[0], wave_up[0]
+        else:
+            binned_vals = stage4.bin_at_resolution(wave_low[0], wave_up[0],
+                                                   flux.T, err.T,
+                                                   res=config['res'])
+            wave, wave_err, flux, err = binned_vals
+            flux, err = flux.T, err.T
+            wave_low, wave_up = wave - wave_err, wave + wave_err
+    else:
+        binned_vals = stage4.bin_at_pixel(flux, err, wave, npix=config['npix'])
         wave, wave_low, wave_up, flux, err = binned_vals
         wave, wave_low, wave_up = wave[0], wave_low[0], wave_up[0]
-    else:
-        binned_vals = stage4.bin_at_resolution(wave_low[0], wave_up[0],
-                                               flux.T, err.T,
-                                               res=config['res'])
-        wave, wave_err, flux, err = binned_vals
-        flux, err = flux.T, err.T
-        wave_low, wave_up = wave - wave_err, wave + wave_err
-
     nints, nbins = np.shape(flux)
 
     # Sort input arrays in order of increasing wavelength.
