@@ -432,6 +432,9 @@ def get_stellar_param_grid(st_teff, st_logg, st_met):
 
     # Determine lower and upper metallicity steps (step size of 1).
     met_lw, met_up = np.floor(st_met), np.ceil(st_met)
+    # Hack to stop met_up being -0.0 if -1<st_met<0.
+    if -1 < st_met < 0:
+        met_up = 0.0
     if met_lw == met_up:
         mets = [met_lw]
     else:
