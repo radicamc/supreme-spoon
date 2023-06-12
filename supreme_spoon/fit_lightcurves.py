@@ -89,8 +89,10 @@ formatted_names = {'P_p1': r'$P$', 't0_p1': r'$T_0$', 'p_p1': r'$R_p/R_*$',
                    'theta0_SOSS': r'$\theta_0$', 'theta1_SOSS': r'$\theta_1$',
                    'theta2_SOSS': r'$\theta_2$',
                    'GP_sigma_SOSS': r'$GP \sigma$',
-                   'GP_rho_SOSS': r'$GP \rho$', 'rho': r'$\rho$',
-                   't_secondary_p1': r'$T_{sec}$', 'fp_p1': r'$F_p/F_*$'}
+                   'GP_rho_SOSS': r'$GP \rho$', 'GP_S0_SOSS': r'$GP S0$',
+                   'GO_omega0_SOSS': r'$GP \Omega_0$', 'GP_Q_SOSS': r'$GP Q$',
+                   'rho': r'$\rho$', 't_secondary_p1': r'$T_{sec}$',
+                   'fp_p1': r'$F_p/F_*$'}
 
 # === Get Detrending Quantities ===
 # Get time axis
@@ -375,7 +377,10 @@ filename = target + '_NIRISS_SOSS_' + spec_type + '_spectrum' + fit_suffix + '.c
 fit_metadata = '#\n# Fit Metadata\n'
 for param, dist, hyper in zip(config['params'], config['dists'], config['hyperps']):
     if dist == 'fixed' and param not in ['mdilution_SOSS', 'mflux_SOSS']:
-        fit_metadata += '# {}: {}\n'.format(formatted_names[param], hyper)
+        try:
+            fit_metadata += '# {}: {}\n'.format(formatted_names[param], hyper)
+        except KeyError:
+            fit_metadata += '# {}: {}\n'.format(param, hyper)
 # Append info on detrending via linear models or GPs.
 if len(config['lm_parameters']) != 0:
     fit_metadata += '# Linear Model: '
