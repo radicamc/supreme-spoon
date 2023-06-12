@@ -202,10 +202,10 @@ for order in config['orders']:
                     'flux': norm_flux[:, wavebin],
                     'error': np.zeros_like(norm_err[:, wavebin])}
         # If linear models are to be included.
-        if 'theta0_SOSS' in priors.keys():
+        if config['lm_file'] is not None:
             bin_dict['lm_parameters'] = lm_quantities
         # If GPs are to be inclided.
-        if 'GP_sigma_SOSS' in priors.keys():
+        if config['gp_file'] is not None:
             bin_dict['GP_parameters'] = gp_quantities
         data_dict[thisbin] = bin_dict
 
