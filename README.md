@@ -50,5 +50,6 @@ Please also see the ExoTiC-LD documentation for information on the types of stel
 
 Lastly, you should cite the libraries upon which this code is built, namely:
 [numpy](https://ui.adsabs.harvard.edu/abs/2020Natur.585..357H/abstract), 
-[scipy](https://ui.adsabs.harvard.edu/abs/2020NatMe..17..261V/abstract), and
-[astropy](https://ui.adsabs.harvard.edu/abs/2013A%26A...558A..33A/abstract).
+[scipy](https://ui.adsabs.harvard.edu/abs/2020NatMe..17..261V/abstract),
+[astropy](https://ui.adsabs.harvard.edu/abs/2013A%26A...558A..33A/abstract), and of course
+[jwst](https://zenodo.org/record/7038885/export/hx).
