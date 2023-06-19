@@ -469,11 +469,13 @@ def backgroundstep(datafiles, background_model, output_dir='./',
             # If using seperate pre- and post- step scalings.
             # Locate the step position using the gradient of the background.
             grad_bkg = np.gradient(background_model, axis=1)
-            step_pos = np.argmax(grad_bkg[:, 10:-10], axis=1)
+            # The boundary between the left and right scalings
+            # actually happens before the step (-4).
+            step_pos = np.argmax(grad_bkg[:, 10:-10], axis=1) + 10 - 4
             # Seperately scale both sides of the step.
             for j in range(dimy):
-                model_scaled[i, j, :(step_pos[j]+8)] = background_model[j, :(step_pos[j]+8)] * scale1
-                model_scaled[i, j, (step_pos[j]+8):] = background_model[j, (step_pos[j]+8):] * scale2
+                model_scaled[i, j, :(step_pos[j])] = background_model[j, :(step_pos[j])] * scale1
+                model_scaled[i, j, (step_pos[j]):] = background_model[j, (step_pos[j]):] * scale2
 
     # Loop over all segments in the exposure and subtract the background from
     # each of them.
