@@ -218,50 +218,6 @@ class SuperBiasStep:
         return results
 
 
-class RefPixStep:
-    """Wrapper around default calwebb_detector1 Reference Pixel Correction
-    step.
-    """
-
-    def __init__(self, input_data, output_dir):
-        """Step initializer.
-        """
-
-        self.tag = 'refpixstep.fits'
-        self.output_dir = output_dir
-        self.datafiles = utils.sort_datamodels(input_data)
-        self.fileroots = utils.get_filename_root(self.datafiles)
-
-    def run(self, save_results=True, force_redo=False, **kwargs):
-        """Method to run the step.
-        """
-
-        results = []
-        all_files = glob.glob(self.output_dir + '*')
-        for i, segment in enumerate(self.datafiles):
-            # If an output file for this segment already exists, skip the step.
-            expected_file = self.output_dir + self.fileroots[i] + self.tag
-            if expected_file in all_files and force_redo is False:
-                fancyprint('File {} already exists.'.format(expected_file))
-                fancyprint('Skipping Reference Pixel Correction Step.')
-                res = expected_file
-            # If no output files are detected, run the step.
-            else:
-                step = calwebb_detector1.refpix_step.RefPixStep()
-                res = step.call(segment, output_dir=self.output_dir,
-                                save_results=save_results, **kwargs)
-                # Verify that filename is correct.
-                if save_results is True:
-                    current_name = self.output_dir + res.meta.filename
-                    if expected_file != current_name:
-                        res.close()
-                        os.rename(current_name, expected_file)
-                        res = datamodels.open(expected_file)
-            results.append(res)
-
-        return results
-
-
 class OneOverFStep:
     """Wrapper around custom 1/f Correction Step.
     """
@@ -1060,17 +1016,6 @@ def run_stage1(results, background_model, baseline_ints=None,
         step = SuperBiasStep(results, output_dir=outdir)
         results = step.run(save_results=save_results, force_redo=force_redo,
                            do_plot=do_plot, show_plot=show_plot, **step_kwargs)
-
-    # ===== Reference Pixel Correction Step =====
-    # Default DMS step.
-    if 'RefPixStep' not in skip_steps:
-        if 'RefPixStep' in kwargs.keys():
-            step_kwargs = kwargs['RefPixStep']
-        else:
-            step_kwargs = {}
-        step = RefPixStep(results, output_dir=outdir)
-        results = step.run(save_results=save_results, force_redo=force_redo,
-                           **step_kwargs)
 
     if 'OneOverFStep' not in skip_steps:
         # ===== Background Subtraction Step =====
