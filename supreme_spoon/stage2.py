@@ -1482,6 +1482,17 @@ def run_stage2(results, background_model, baseline_ints, smoothed_wlc=None,
         results = step.run(save_results=save_results, force_redo=force_redo,
                            **step_kwargs)
 
+    # ===== Flat Field Correction Step =====
+    # Default DMS step.
+    if 'FlatFieldStep' not in skip_steps:
+        if 'FlatFieldStep' in kwargs.keys():
+            step_kwargs = kwargs['FlatFieldStep']
+        else:
+            step_kwargs = {}
+        step = FlatFieldStep(results, output_dir=outdir)
+        results = step.run(save_results=save_results, force_redo=force_redo,
+                           **step_kwargs)
+
     # ===== Background Subtraction Step =====
     # Custom DMS step.
     if 'BackgroundStep' not in skip_steps:
@@ -1494,17 +1505,6 @@ def run_stage2(results, background_model, baseline_ints, smoothed_wlc=None,
         results = step.run(save_results=save_results, force_redo=force_redo,
                            do_plot=do_plot, show_plot=show_plot,
                            **step_kwargs)[0]
-
-    # ===== Flat Field Correction Step =====
-    # Default DMS step.
-    if 'FlatFieldStep' not in skip_steps:
-        if 'FlatFieldStep' in kwargs.keys():
-            step_kwargs = kwargs['FlatFieldStep']
-        else:
-            step_kwargs = {}
-        step = FlatFieldStep(results, output_dir=outdir)
-        results = step.run(save_results=save_results, force_redo=force_redo,
-                           **step_kwargs)
 
     # ===== Hot Pixel Correction Step =====
     # Custom DMS step.
