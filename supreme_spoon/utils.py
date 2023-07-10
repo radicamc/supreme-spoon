@@ -11,7 +11,6 @@ Miscellaneous pipeline tools.
 from astropy.io import fits
 import bottleneck as bn
 from datetime import datetime
-from exofile.archive import ExoFile
 import glob
 import numpy as np
 import os
@@ -571,12 +570,12 @@ def interpolate_stellar_model_grid(model_files, st_teff, st_logg, st_met):
 
     # Create stellar model grid
     vals = np.zeros((len(teffs), len(loggs), len(mets), len(specs[0])))
-    I = 0
+    tot_i = 0
     for i in range(pts[0].shape[0]):
         for j in range(pts[1].shape[0]):
             for k in range(pts[2].shape[0]):
-                vals[i, j, k] = specs[I]
-                I += 1
+                vals[i, j, k] = specs[tot_i]
+                tot_i += 1
 
     # Interpolate grid
     grid = RegularGridInterpolator(pts, vals)
@@ -720,52 +719,6 @@ def parse_config(config_file):
             config[key] = None
 
     return config
-
-
-def retrieve_stellar_params(pl_name, st_teff=None, st_logg=None, st_met=None):
-    """
-
-    Parameters
-    ----------
-    pl_name : str
-        Planet name.
-    st_teff : float, None
-        Stellar effective temperature.
-    st_logg : float, None
-        Stellar log surface gravity.
-    st_met : float, None
-        Stellar metallicity as [Fe/H].
-
-    Returns
-    -------
-    st_teff : float, None
-        Stellar effective temperature.
-    st_logg : float, None
-        Stellar log surface gravity.
-    st_met : float, None
-        Stellar metallicity as [Fe/H].
-    """
-
-    retrieved_params = []
-    # Use exofile to grab stellar parameters.
-    with warnings.catch_warnings():
-        warnings.filterwarnings('ignore')
-        data = ExoFile.load()
-    for param, key in zip([st_teff, st_logg, st_met],
-                          ['st_teff', 'st_logg', 'st_met']):
-        if param is not None:
-            retrieved_params.append(param)
-        else:
-            param_ret = data.by_pl_name(pl_name)[key].value
-            # If value cannot be retrived, return None.
-            if param_ret.mask[0] == True:
-                retrieved_params.append(None)
-            else:
-                retrieved_params.append(param_ret.data[0])
-
-    st_teff, st_logg, st_met = retrieved_params
-
-    return st_teff, st_logg, st_met
 
 
 def save_extracted_spectra(filename, wl1, wu1, f1, e1, wl2, wu2, f2, e2, t,

@@ -460,13 +460,10 @@ def format_extracted_spectra(datafiles, times, extract_params, target_name,
         wave1d_o1, wave1d_o2 = wave2d_o1[0], wave2d_o2[0]
 
     # Refine wavelength solution.
-    st_teff, st_logg, st_met = utils.retrieve_stellar_params(target_name,
-                                                             st_teff, st_logg,
-                                                             st_met)
-    # If one or more of the stellar parameters cannot be retrieved, use the
+    # If one or more of the stellar parameters are not provided, use the
     # default wavelength solution.
     if None in [st_teff, st_logg, st_met]:
-        fancyprint('Stellar parameters cannot be retrieved. '
+        fancyprint('Stellar parameters not provided. '
                    'Using default wavelength solution.', msg_type='WARNING')
     else:
         fancyprint('Refining the wavelength calibration.')
