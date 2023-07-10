@@ -265,7 +265,7 @@ for order in config['orders']:
                 order_results['dppm'].append(md*1e6)
                 err_low = (md - lw)*1e6
                 err_up = (up - md)*1e6
-            order_results['dppm_err'].append(np.mean([err_up, err_low]))
+            order_results['dppm_err'].append(np.max([err_up, err_low]))
 
         # Make summary plots.
         if skip is False and doplot is True:
