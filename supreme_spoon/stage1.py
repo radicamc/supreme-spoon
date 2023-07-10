@@ -223,8 +223,7 @@ class OneOverFStep:
     """
 
     def __init__(self, input_data, baseline_ints, output_dir,
-                 smoothed_wlc=None, pixel_masks=None, background=None,
-                 occultation_type='transit'):
+                 smoothed_wlc=None, pixel_masks=None, background=None):
         """Step initializer.
         """
 
@@ -234,7 +233,6 @@ class OneOverFStep:
         self.smoothed_wlc = smoothed_wlc
         self.pixel_masks = pixel_masks
         self.background = background
-        self.occultation_type = occultation_type
         self.datafiles = utils.sort_datamodels(input_data)
         self.fileroots = utils.get_filename_root(self.datafiles)
 
@@ -267,7 +265,6 @@ class OneOverFStep:
                                    save_results=save_results,
                                    pixel_masks=self.pixel_masks,
                                    fileroots=self.fileroots,
-                                   occultation_type=self.occultation_type,
                                    **kwargs)
             # Do step plots if requested.
             if do_plot is True:
@@ -281,13 +278,11 @@ class OneOverFStep:
                 plotting.make_oneoverf_plot(results,
                                             timeseries=self.smoothed_wlc,
                                             baseline_ints=self.baseline_ints,
-                                            occultation_type=self.occultation_type,
                                             outfile=plot_file1,
                                             show_plot=show_plot)
                 plotting.make_oneoverf_psd(results, self.datafiles,
                                            timeseries=self.smoothed_wlc,
                                            baseline_ints=self.baseline_ints,
-                                           occultation_type=self.occultation_type,
                                            pixel_masks=self.pixel_masks,
                                            outfile=plot_file2,
                                            show_plot=show_plot)
@@ -701,8 +696,7 @@ def jumpstep_in_time(datafile, window=10, thresh=10, fileroot=None,
 
 def oneoverfstep(datafiles, baseline_ints, even_odd_rows=True,
                  background=None, smoothed_wlc=None, output_dir=None,
-                 save_results=True, pixel_masks=None, fileroots=None,
-                 occultation_type='transit'):
+                 save_results=True, pixel_masks=None, fileroots=None):
     """Custom 1/f correction routine to be applied at the group level. A
     median stack is constructed using all out-of-transit integrations and
     subtracted from each individual integration. The column-wise median of
@@ -732,8 +726,6 @@ def oneoverfstep(datafiles, baseline_ints, even_odd_rows=True,
         3D (nints, dimy, dimx), or 2D (dimy, dimx).
     fileroots : array-like[str], None
         Root names for output files. Only necessary if saving results.
-    occultation_type : str
-        Type of occultation, either 'transit' or 'eclipse'.
 
     Returns
     -------
@@ -751,9 +743,8 @@ def oneoverfstep(datafiles, baseline_ints, even_odd_rows=True,
         if output_dir[-1] != '/':
             output_dir += '/'
 
-    # Format the baseline frames - either out-of-transit or in-eclipse.
-    baseline_ints = utils.format_out_frames(baseline_ints,
-                                            occultation_type)
+    # Format the baseline frames.
+    baseline_ints = utils.format_out_frames(baseline_ints)
 
     datafiles = np.atleast_1d(datafiles)
     # If outlier maps are passed, ensure that there is one for each segment.
@@ -903,8 +894,8 @@ def run_stage1(results, background_model, baseline_ints=None,
                smoothed_wlc=None, save_results=True, pixel_masks=None,
                force_redo=False, deepframe=None, rejection_threshold=15,
                flag_in_time=False, time_rejection_threshold=10,
-               root_dir='./', output_tag='', occultation_type='transit',
-               skip_steps=None, do_plot=False, show_plot=False, **kwargs):
+               root_dir='./', output_tag='', skip_steps=None, do_plot=False,
+               show_plot=False, **kwargs):
     """Run the supreme-SPOON Stage 1 pipeline: detector level processing,
     using a combination of official STScI DMS and custom steps. Documentation
     for the official DMS steps can be found here:
@@ -942,8 +933,6 @@ def run_stage1(results, background_model, baseline_ints=None,
         Directory from which all relative paths are defined.
     output_tag : str
         Name tag to append to pipeline outputs directory.
-    occultation_type : str
-        Type of occultation: transit or eclipse.
     skip_steps : array-like[str], None
         Step names to skip (if any).
     do_plot : bool
@@ -1034,8 +1023,7 @@ def run_stage1(results, background_model, baseline_ints=None,
         step = OneOverFStep(results, baseline_ints=baseline_ints,
                             output_dir=outdir, pixel_masks=pixel_masks,
                             smoothed_wlc=smoothed_wlc,
-                            background=background_model,
-                            occultation_type=occultation_type)
+                            background=background_model)
         results = step.run(save_results=save_results, force_redo=force_redo,
                            do_plot=do_plot, show_plot=show_plot, **step_kwargs)
 

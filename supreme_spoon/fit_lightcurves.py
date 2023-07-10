@@ -121,8 +121,7 @@ if config['gp_file'] is not None:
     gp_quantities = gp_data[config['gp_parameter']].values
 
 # Format the baseline frames - either out-of-transit or in-eclipse.
-baseline_ints = utils.format_out_frames(config['baseline_ints'],
-                                        config['occultation_type'])
+baseline_ints = utils.format_out_frames(config['baseline_ints'])
 
 # === Fit Light Curves ===
 # Start the light curve fitting.

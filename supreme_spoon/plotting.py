@@ -460,8 +460,7 @@ def make_linearity_plot(results, old_results, outfile=None, show_plot=True):
 
 
 def make_oneoverf_plot(results, baseline_ints, timeseries=None,
-                       occultation_type='transit', outfile=None,
-                       show_plot=True):
+                       outfile=None, show_plot=True):
     """make nine-panel plot of dataframes after 1/f correction.
     """
 
@@ -475,8 +474,7 @@ def make_oneoverf_plot(results, baseline_ints, timeseries=None,
                 cube = np.concatenate([cube, datamodel.data])
 
     # Format the baseline frames - either out-of-transit or in-eclipse.
-    baseline_ints = utils.format_out_frames(baseline_ints,
-                                            occultation_type)
+    baseline_ints = utils.format_out_frames(baseline_ints)
     # Make deepstack using baseline integrations.
     deep = utils.make_deepstack(cube[baseline_ints])
 
@@ -510,8 +508,7 @@ def make_oneoverf_plot(results, baseline_ints, timeseries=None,
 
 
 def make_oneoverf_psd(results, old_results, timeseries, baseline_ints,
-                      nsample=25,  pixel_masks=None,
-                      occultation_type='transit', tframe=5.494, tpix=1e-5,
+                      nsample=25,  pixel_masks=None, tframe=5.494, tpix=1e-5,
                       tgap=1.2e-4, outfile=None, show_plot=True):
     """Make a PSD plot to see PSD of background before and after 1/f removal.
     """
@@ -542,7 +539,7 @@ def make_oneoverf_psd(results, old_results, timeseries, baseline_ints,
         mask_cube = None
 
     nints, ngroups, dimy, dimx = np.shape(cube)
-    baseline_ints = utils.format_out_frames(baseline_ints, occultation_type)
+    baseline_ints = utils.format_out_frames(baseline_ints)
     old_deep = bn.nanmedian(old_cube[baseline_ints], axis=0)
     deep = bn.nanmedian(cube[baseline_ints], axis=0)
 

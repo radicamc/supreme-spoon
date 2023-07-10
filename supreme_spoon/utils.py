@@ -153,42 +153,24 @@ def fancyprint(message, msg_type='INFO'):
     print('{} - supreme-SPOON - {} - {}'.format(time, msg_type, message))
 
 
-def format_out_frames(out_frames, occultation_type='transit'):
+def format_out_frames(out_frames):
     """Create a mask of baseline flux frames for lightcurve normalization.
-    Either out-of-transit integrations for transits or in-eclipse integrations
-    for eclipses.
 
     Parameters
     ----------
     out_frames : array-like[int]
         Integration numbers of ingress and egress.
-    occultation_type : str
-        Type of occultation, either 'transit', 'eclipse', or 'phase curve'.
 
     Returns
     -------
     baseline_ints : array-like[int]
-        Array of out-of-transit, or in-eclipse frames for transits and
-        eclipses respectively.
-
-    Raises
-    ------
-    ValueError
-        If an unknown occultation type is passed.
+        Array of out-of-transit frames.
     """
 
-    if occultation_type == 'transit':
-        # Format the out-of-transit integration numbers.
-        out_frames = np.abs(out_frames)
-        out_frames = np.concatenate([np.arange(out_frames[0]),
-                                     np.arange(out_frames[1]) - out_frames[1]])
-    elif occultation_type == 'eclipse' or occultation_type == 'phase_curve':
-        # Format the in-eclpse integration numbers.
-        out_frames = np.linspace(out_frames[0], out_frames[1],
-                                 out_frames[1] - out_frames[0] + 1).astype(int)
-    else:
-        msg = 'Unknown Occultaton Type: {}'.format(occultation_type)
-        raise ValueError(msg)
+    # Format the out-of-transit integration numbers.
+    out_frames = np.abs(out_frames)
+    out_frames = np.concatenate([np.arange(out_frames[0]),
+                                 np.arange(out_frames[1]) - out_frames[1]])
 
     return out_frames
 

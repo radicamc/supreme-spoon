@@ -86,7 +86,6 @@ if 1 in config['run_stages']:
                                 flag_in_time=config['flag_in_time'],
                                 time_rejection_threshold=config['time_rejection_threshold'],
                                 output_tag=config['output_tag'],
-                                occultation_type=config['occultation_type'],
                                 skip_steps=config['stage1_skip'],
                                 do_plot=config['do_plots'],
                                 **config['stage1_kwargs'])
@@ -107,7 +106,6 @@ if 2 in config['run_stages']:
                                 calculate_stability_pca=config['calculate_stability_pca'],
                                 pca_components=config['pca_components'],
                                 output_tag=config['output_tag'],
-                                occultation_type=config['occultation_type'],
                                 smoothing_scale=config['smoothing_scale'],
                                 skip_steps=config['stage2_skip'],
                                 generate_lc=config['generate_lc'],

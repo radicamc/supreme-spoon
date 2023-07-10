@@ -232,7 +232,7 @@ class BadPixStep:
     """
 
     def __init__(self, input_data, smoothed_wlc, baseline_ints,
-                 output_dir='./', occultation_type='transit'):
+                 output_dir='./'):
         """Step initializer.
         """
 
@@ -240,7 +240,6 @@ class BadPixStep:
         self.output_dir = output_dir
         self.smoothed_wlc = smoothed_wlc
         self.baseline_ints = baseline_ints
-        self.occultation_type = occultation_type
         self.datafiles = utils.sort_datamodels(input_data)
         self.fileroots = utils.get_filename_root(self.datafiles)
         self.fileroot_noseg = utils.get_filename_root_noseg(self.fileroots)
@@ -275,7 +274,6 @@ class BadPixStep:
                                       save_results=save_results,
                                       fileroots=self.fileroots,
                                       fileroot_noseg=self.fileroot_noseg,
-                                      occultation_type=self.occultation_type,
                                       thresh=thresh, box_size=box_size,
                                       do_plot=do_plot, show_plot=show_plot)
             results, deepframe = step_results
@@ -302,8 +300,8 @@ class TracingStep:
             calculate_stability_ccf=True, stability_params='ALL', nthreads=4,
             calculate_stability_pca=True, pca_components=10,
             save_results=True, force_redo=False, generate_lc=True,
-            baseline_ints=None, occultation_type='transit',
-            smoothing_scale=None, do_plot=False, show_plot=False):
+            baseline_ints=None, smoothing_scale=None, do_plot=False,
+            show_plot=False):
         """Method to run the step.
         """
 
@@ -345,7 +343,6 @@ class TracingStep:
                                        generate_order0_mask=generate_order0_mask,
                                        f277w=f277w, generate_lc=generate_lc,
                                        baseline_ints=baseline_ints,
-                                       occultation_type=occultation_type,
                                        smoothing_scale=smoothing_scale,
                                        output_dir=self.output_dir,
                                        save_results=save_results,
@@ -503,8 +500,7 @@ def backgroundstep(datafiles, background_model, output_dir='./',
 
 def badpixstep(datafiles, baseline_ints, smoothed_wlc=None, thresh=15,
                box_size=5, output_dir='./', save_results=True, fileroots=None,
-               fileroot_noseg='', occultation_type='transit', do_plot=False,
-               show_plot=False):
+               fileroot_noseg='', do_plot=False, show_plot=False):
     """Identify and correct hot pixels remaining in the dataset. Find outlier
     pixels in the median stack and correct them via the median of a box of
     surrounding pixels. Then replace these pixels in each integration via the
@@ -531,8 +527,6 @@ def badpixstep(datafiles, baseline_ints, smoothed_wlc=None, thresh=15,
         Root names for output files.
     fileroot_noseg : str
         Root file name with no segment information.
-    occultation_type : str
-        Type of occultation, either 'transit' or 'eclipse'.
     do_plot : bool
         If True, do the step diagnostic plot.
     show_plot : bool
@@ -555,9 +549,8 @@ def badpixstep(datafiles, baseline_ints, smoothed_wlc=None, thresh=15,
             output_dir += '/'
 
     datafiles = np.atleast_1d(datafiles)
-    # Format the baseline frames - either out-of-transit or in-eclipse.
-    baseline_ints = utils.format_out_frames(baseline_ints,
-                                            occultation_type)
+    # Format the baseline frames.
+    baseline_ints = utils.format_out_frames(baseline_ints)
 
     # Load in datamodels from all segments.
     for i, file in enumerate(datafiles):
@@ -728,9 +721,9 @@ def tracingstep(datafiles, deepframe=None, calculate_stability_ccf=True,
                 calculate_stability_pca=True, pca_components=10,
                 generate_tracemask=True, mask_width=45, pixel_flags=None,
                 generate_order0_mask=False, f277w=None, generate_lc=True,
-                baseline_ints=None, occultation_type='transit',
-                smoothing_scale=None, output_dir='./', save_results=True,
-                fileroot_noseg='', do_plot=False, show_plot=False):
+                baseline_ints=None, smoothing_scale=None, output_dir='./',
+                save_results=True, fileroot_noseg='', do_plot=False,
+                show_plot=False):
     """A multipurpose step to perform some initial analysis of the 2D
     dataframes and produce products which can be useful in further reduction
     iterations. The five functionalities are detailed below:
@@ -782,9 +775,6 @@ def tracingstep(datafiles, deepframe=None, calculate_stability_ccf=True,
         If True, also produce a smoothed order 1 white light curve.
     baseline_ints : array-like[int]
         Integrations of ingress and egress. Only necessary if generate_lc=True.
-    occultation_type : str
-        Type of occultation, either 'transit' or 'eclipse'. Only necessary if
-        generate_lc=True.
     smoothing_scale : int, None
         Timescale on which to smooth the lightcurve. Only necessary if
         generate_lc=True.
@@ -1022,10 +1012,9 @@ def tracingstep(datafiles, deepframe=None, calculate_stability_ccf=True,
     smoothed_lc = None
     if generate_lc is True:
         fancyprint('Generating a smoothed light curve')
-        # Format the baseline frames - either out-of-transit or in-eclipse.
+        # Format the baseline frames.
         assert baseline_ints is not None
-        baseline_ints = utils.format_out_frames(baseline_ints,
-                                                occultation_type)
+        baseline_ints = utils.format_out_frames(baseline_ints)
 
         # Use an area centered on the peak of the order 1 blaze to estimate the
         # photometric light curve.
@@ -1370,11 +1359,10 @@ def run_stage2(results, background_model, baseline_ints, smoothed_wlc=None,
                save_results=True, force_redo=False,
                calculate_stability_ccf=True, stability_params_ccf='ALL',
                nthreads=4, calculate_stability_pca=True, pca_components=10,
-               root_dir='./', output_tag='', occultation_type='transit',
-               smoothing_scale=None, skip_steps=None, generate_lc=True,
-               generate_tracemask=True, mask_width=45, pixel_flags=None,
-               generate_order0_mask=True, f277w=None, do_plot=False,
-               show_plot=False, **kwargs):
+               root_dir='./', output_tag='', smoothing_scale=None,
+               skip_steps=None, generate_lc=True, generate_tracemask=True,
+               mask_width=45, pixel_flags=None, generate_order0_mask=True,
+               f277w=None, do_plot=False, show_plot=False, **kwargs):
     """Run the supreme-SPOON Stage 2 pipeline: spectroscopic processing,
     using a combination of official STScI DMS and custom steps. Documentation
     for the official DMS steps can be found here:
@@ -1411,8 +1399,6 @@ def run_stage2(results, background_model, baseline_ints, smoothed_wlc=None,
         Directory from which all relative paths are defined.
     output_tag : str
         Name tag to append to pipeline outputs directory.
-    occultation_type : str
-        Type of occultation: transit or eclipse.
     smoothing_scale : int, None
         Timescale on which to smooth the lightcurve.
     skip_steps : array-like[str], None
@@ -1510,8 +1496,7 @@ def run_stage2(results, background_model, baseline_ints, smoothed_wlc=None,
     # Custom DMS step.
     if 'BadPixStep' not in skip_steps:
         step = BadPixStep(results, baseline_ints=baseline_ints,
-                          smoothed_wlc=smoothed_wlc, output_dir=outdir,
-                          occultation_type=occultation_type)
+                          smoothed_wlc=smoothed_wlc, output_dir=outdir)
         step_results = step.run(save_results=save_results,
                                 force_redo=force_redo, do_plot=do_plot,
                                 show_plot=show_plot)
@@ -1534,7 +1519,6 @@ def run_stage2(results, background_model, baseline_ints, smoothed_wlc=None,
                                 f277w=f277w,
                                 generate_lc=generate_lc,
                                 baseline_ints=baseline_ints,
-                                occultation_type=occultation_type,
                                 smoothing_scale=smoothing_scale,
                                 save_results=save_results, do_plot=do_plot,
                                 show_plot=show_plot, force_redo=force_redo)
