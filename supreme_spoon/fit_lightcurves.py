@@ -28,8 +28,7 @@ from supreme_spoon.utils import fancyprint, verify_path
 try:
     config_file = sys.argv[1]
 except IndexError:
-    msg = 'Config file must be provided'
-    raise FileNotFoundError(msg)
+    raise FileNotFoundError('Config file must be provided')
 config = utils.parse_config(config_file)
 
 if config['output_tag'] != '':
@@ -59,8 +58,8 @@ elif config['npix'] is not None:
     fit_suffix += '_{}pix'.format(config['npix'])
     res_str = 'npix = {}'.format(config['npix'])
 else:
-    msg = 'Number of columns to bin or spectral resolution must be provided.'
-    raise ValueError(msg)
+    raise ValueError('Number of columns to bin or spectral resolution must '
+                     'be provided.')
 
 # Save a copy of the config file.
 root_dir = 'pipeline_outputs_directory' + config['output_tag'] + '/config_files'
@@ -215,7 +214,7 @@ for order in config['orders']:
         if config['occultation_type'] == 'transit':
             # Set prior width to 0.2 around the model value - based on
             # findings of Patel & Espinoza 2022.
-            if config['ldcoef_file_o1'] is not None or config['ldcoef_file_o2'] is not None:
+            if np.any([config['ldcoef_file_o1'], config['ldcoef_file_o2']]) is not None:
                 if np.isfinite(q1[wavebin]):
                     prior_dict[thisbin]['q1_SOSS']['distribution'] = 'truncatednormal'
                     prior_dict[thisbin]['q1_SOSS']['hyperparameters'] = [q1[wavebin], 0.2, 0.0, 1.0]
@@ -296,7 +295,7 @@ for order in config['orders']:
 
                 # Get systematics and transit models.
                 systematics = None
-                if config['gp_file'] is not None or config['lm_file'] is not None:
+                if np.any([config['gp_file'], config['lm_file']]) is not None:
                     if config['gp_file'] is not None:
                         gp_model = transit_model - comp['transit'] - comp['lm']
                     else:

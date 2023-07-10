@@ -91,7 +91,8 @@ class Extract1DStep:
         """Method to run the step.
         """
 
-        fancyprint('Starting 1D extraction using the {} method.'.format(self.extract_method))
+        fancyprint('Starting 1D extraction using the {} '
+                   'method.'.format(self.extract_method))
 
         # Initialize loop and storange variables.
         all_files = glob.glob(self.output_dir + '*')
@@ -107,9 +108,8 @@ class Extract1DStep:
             # Option 1: ATOCA extraction.
             if self.extract_method == 'atoca':
                 if specprofile is None:
-                    msg = 'specprofile reference file must be provided for ' \
-                          'ATOCA extraction.'
-                    raise ValueError(msg)
+                    raise ValueError('specprofile reference file must be '
+                                     'provided for ATOCA extraction.')
                 results = []
                 for i, segment in enumerate(self.datafiles):
                     # Initialize extraction parameters for ATOCA.
@@ -142,8 +142,8 @@ class Extract1DStep:
                     try:
                         centroids = pd.read_csv(centroids, comment='#')
                     except FileNotFoundError:
-                        msg = 'Centroids must be provided for box extraction'
-                        raise ValueError(msg)
+                        raise ValueError('Centroids must be provided for box '
+                                         'extraction')
                 results = box_extract(self.datafiles, centroids, soss_width)
             else:
                 raise ValueError('Invalid extraction method')

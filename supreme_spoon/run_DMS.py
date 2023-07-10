@@ -25,8 +25,7 @@ from supreme_spoon.utils import fancyprint, parse_config, unpack_input_dir, \
 try:
     config_file = sys.argv[1]
 except IndexError:
-    msg = 'Config file must be provided'
-    raise FileNotFoundError(msg)
+    raise FileNotFoundError('Config file must be provided')
 config = parse_config(config_file)
 
 # Set CRDS cache path.

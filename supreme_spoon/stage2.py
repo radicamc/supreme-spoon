@@ -619,7 +619,7 @@ def badpixstep(datafiles, baseline_ints, smoothed_wlc=None, thresh=15,
     badpix = hotpix.astype(bool) | nanpix.astype(bool) | otherpix.astype(bool)
     badpix = badpix.astype(int)
 
-    fancyprint('{0} hot, {1} negative, and {2} other deviant pixels '
+    fancyprint('{0} hot, {1} negative, and {2} other deviant pixels ' 
                'identified.'.format(hot, nan, other))
     # Replace the flagged pixels in the median integration.
     newdeep, deepdq = utils.do_replacement(deepframe_itl, badpix,
@@ -631,9 +631,8 @@ def badpixstep(datafiles, baseline_ints, smoothed_wlc=None, thresh=15,
         try:
             smoothed_wlc = np.load(smoothed_wlc)
         except (ValueError, FileNotFoundError):
-            msg = 'Light curve file cannot be opened. ' \
-                  'It will be estimated from current data.'
-            fancyprint(msg, msg_type='WARNING')
+            fancyprint('Light curve file cannot be opened. It will be '
+                       'estimated from current data.', msg_type='WARNING')
             smoothed_wlc = None
     # If no lightcurve is provided, estimate it from the current data.
     if smoothed_wlc is None:
@@ -807,7 +806,7 @@ def tracingstep(datafiles, deepframe=None, calculate_stability_ccf=True,
     datafiles = np.atleast_1d(datafiles)
     # If no deepframe is passed, construct one. Also generate a datacube for
     # later white light curve or stability calculations.
-    if deepframe is None or generate_lc is True or calculate_stability_ccf is True or calculate_stability_pca is True:
+    if deepframe is None or np.any([generate_lc, calculate_stability_ccf, calculate_stability_pca]) is True:
         # Construct datacube from the data files.
         for i, file in enumerate(datafiles):
             if isinstance(file, str):
@@ -903,13 +902,12 @@ def tracingstep(datafiles, deepframe=None, calculate_stability_ccf=True,
             try:
                 f277w = np.load(f277w)
             except (ValueError, FileNotFoundError):
-                msg = 'F277W filter exposure file cannot be opened.'
-                fancyprint(msg, msg_type='WARNING')
+                fancyprint('F277W filter exposure file cannot be opened.',
+                           msg_type='WARNING')
                 f277w = None
         if f277w is None:
-            msg = 'No F277W filter exposure provided. ' \
-                  'Skipping the order 0 mask.'
-            fancyprint(msg, msg_type='WARNING')
+            fancyprint('No F277W filter exposure provided. Skipping the order '
+                       '0 mask.', msg_type='WARNING')
         else:
             order0mask = make_order0_mask_from_f277w(f277w)
 
@@ -1175,8 +1173,7 @@ def soss_stability_xy_run(cube_sub, med, seg_no, nsteps=501, axis='x'):
             elif axis == 'y':
                 interp = f(np.arange(dimx), np.arange(dimy) + jj)
             else:
-                msg = 'Unknown axis: {}'.format(axis)
-                raise ValueError(msg)
+                raise ValueError('Unknown axis: {}'.format(axis))
             ccf[i, j] = np.nansum(cube_sub[i] * interp)
 
     # Determine the peak of the CCF for each integration to get the

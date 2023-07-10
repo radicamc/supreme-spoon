@@ -128,8 +128,7 @@ def bin_at_resolution(inwave_low, inwave_up, flux, flux_err, res,
     # Sort quantities in order of increasing wavelength.
     waves = np.nanmean([inwave_low, inwave_up], axis=0)
     if np.ndim(waves) > 1:
-        msg = 'Input wavelength array must be 1D.'
-        raise ValueError(msg)
+        raise ValueError('Input wavelength array must be 1D.')
     ii = np.argsort(waves)
     waves, flux, flux_err = waves[ii], flux[ii], flux_err[ii]
     inwave_low, inwave_up = inwave_low[ii], inwave_up[ii]
@@ -137,8 +136,8 @@ def bin_at_resolution(inwave_low, inwave_up, flux, flux_err, res,
     # to a higher R.
     average_input_res = np.mean(waves[1:] / np.diff(waves))
     if res > average_input_res:
-        msg = 'You are trying to bin at a higher resolution than the input.'
-        raise ValueError(msg)
+        raise ValueError('You are trying to bin at a higher resolution than '
+                         'the input.')
     else:
         fancyprint('Binning from an average resolution of '
                    'R={:.0f} to R={}'.format(average_input_res, res))
@@ -389,7 +388,7 @@ def gen_ld_coefs(datafile, wavebin_low, wavebin_up, order, m_h, logg, teff,
     step = calwebb_spec2.extract_1d_step.Extract1dStep()
     spectrace_ref = step.get_reference_file(datafile, 'spectrace')
     spec_trace = datamodels.SpecTraceModel(spectrace_ref)
-    wavelengths = spec_trace.trace[order-1].data['WAVELENGTH']*10000
+    wavelengths = spec_trace.trace[order-1].data['WAVELENGTH'] * 10000
     throughputs = spec_trace.trace[order-1].data['THROUGHPUT']
     # Note that custom throughputs are used.
     mode = 'custom'
@@ -500,7 +499,7 @@ def run_juliet(priors, t_lc, y_lc, yerr_lc, out_folder,
                               yerr_lc=yerr_lc, out_folder=out_folder,
                               GP_regressors_lc=gp_regressors_lc,
                               linear_regressors_lc=linear_regressors_lc)
-        kwargs = {'maxiter': 25000, 'print_progress': False}
+        kwargs = {'print_progress': False}
 
         # Run the fit.
         try:

@@ -768,9 +768,8 @@ def oneoverfstep(datafiles, baseline_ints, even_odd_rows=True,
 
     # Generate the 3D deep stack (ngroup, dimy, dimx) using only
     # baseline integrations.
-    msg = 'Generating a deep stack for each group using baseline' \
-          ' integrations...'
-    fancyprint(msg)
+    fancyprint('Generating a deep stack for each group using baseline '
+               'integrations...')
     deepstack = utils.make_deepstack(cube[baseline_ints])
 
     # In order to subtract off the trace as completely as possible, the median
@@ -781,9 +780,8 @@ def oneoverfstep(datafiles, baseline_ints, even_odd_rows=True,
         try:
             smoothed_wlc = np.load(smoothed_wlc)
         except (ValueError, FileNotFoundError):
-            msg = 'Light curve file cannot be opened. ' \
-                  'It will be estimated from current data.'
-            fancyprint(msg, msg_type='WARNING')
+            fancyprint('Light curve file cannot be opened. It will be '
+                       'estimated from current data.', msg_type='WARNING')
             smoothed_wlc = None
     # If no lightcurve is provided, estimate it from the current data.
     if smoothed_wlc is None:
