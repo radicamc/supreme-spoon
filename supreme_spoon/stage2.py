@@ -806,7 +806,7 @@ def tracingstep(datafiles, deepframe=None, calculate_stability_ccf=True,
     datafiles = np.atleast_1d(datafiles)
     # If no deepframe is passed, construct one. Also generate a datacube for
     # later white light curve or stability calculations.
-    if deepframe is None or np.any([generate_lc, calculate_stability_ccf, calculate_stability_pca]) is True:
+    if deepframe is None or np.any([generate_lc, calculate_stability_ccf, calculate_stability_pca]) == True:
         # Construct datacube from the data files.
         for i, file in enumerate(datafiles):
             if isinstance(file, str):
