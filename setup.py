@@ -4,7 +4,7 @@
 from setuptools import setup
 
 setup(name='supreme_spoon',
-      version='1.1.3',
+      version='1.1.4',
       license='MIT',
       author='Michael Radica',
       author_email='michael.radica@umontreal.ca',
@@ -18,7 +18,8 @@ setup(name='supreme_spoon',
                         'pandas', 'opencv-python', 'ray', 'scikit-learn',
                         'scipy', 'tqdm', 'pyyaml'],
       python_requires='==3.10',
-      extras_require={'stage4': ['dynesty==1.2.2', 'exotic_ld', 'juliet'],
+      extras_require={'stage4': ['supreme_spoon', 'cython', 'dynesty==1.2.2',
+                                 'exotic_ld', 'juliet'],
                        'webbpsf': ['webbpsf>=1.1.1']},
       classifiers=[
         'Development Status :: 3 - Alpha',
