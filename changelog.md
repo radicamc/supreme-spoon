@@ -1,6 +1,10 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+### [1.1.6] -- 2023-07-24
+#### Added
+- Streamline installation process.
+
 ### [1.1.2] -- 2023-07-24
 #### Added
 - Swap order of FlatFieldStep and BackgroundStep, which were somehow backwards.

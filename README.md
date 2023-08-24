@@ -6,14 +6,20 @@ The pipeline is divided into four stages:
  - Stage 1: Detector Level Processing 
  - Stage 2: Spectroscopic Processing
  - Stage 3: 1D Spectral Extraction
- - Stage 4: Light Curve Fitting
+ - Stage 4: Light Curve Fitting (optional)
 
 ## Installation Instructions
 The latest release of **supreme-SPOON** can be downloaded from PyPI by running:
 
     pip install supreme_spoon
 
-or the latest development version can be grabbed from GitHub:
+The default pip installation only includes Stages 1 to 3. Stage 4 can be included via specifying the following option during installation:
+
+    pip install supreme_spoon[stage4]
+
+Note that the radvel package may fail to build during the installation of Stage4. If so, simply run ```pip install cython```, and then proceed with the **supreme-SPOON** installation as before.
+
+The latest development version can be grabbed from GitHub (inlcludes all pipeline stages):
 
     git clone https://github.com/radicamc/supreme-spoon
     cd supreme_spoon
@@ -30,7 +36,7 @@ Alternatively, Stages 1 to 3 can be run at once via the ```run_DMS.py``` script.
 2. Fill out the yaml file with the appropriate inputs.
 3. Once happy with the input parameters, enter ```python run_DMS.py run_DMS.yaml``` in the terminal.
 
-To use the light curve fitting capabilities, simply follow the same procedure with the fit_lightcurves.py and .yaml files. 
+To use the light curve fitting capabilities (if installed), simply follow the same procedure with the fit_lightcurves.py and .yaml files. 
 
 ## Citations
 If you make use of this code in your work, please cite [Radica et al. (2023)](https://ui.adsabs.harvard.edu/abs/2023arXiv230517001R/abstract) and [Feinstein et al. (2023)](https://ui.adsabs.harvard.edu/abs/2023Natur.614..670F/abstract). 

@@ -4,7 +4,7 @@
 from setuptools import setup
 
 setup(name='supreme_spoon',
-      version='1.1.5',
+      version='1.1.6',
       license='MIT',
       author='Michael Radica',
       author_email='michael.radica@umontreal.ca',
@@ -13,7 +13,7 @@ setup(name='supreme_spoon',
       url='https://github.com/radicamc/supreme-spoon',
       description='Tools for Reduction of NIRISS/SOSS TSOs',
       package_data={'': ['README.md', 'LICENSE']},
-      install_requires=['applesoss==2.0.1', 'astropy', 'bottleneck', 'corner',
+      install_requires=['applesoss==2.0.2', 'astropy', 'bottleneck', 'corner',
                         'jwst==1.8.5', 'matplotlib', 'more_itertools', 'numpy',
                         'pandas', 'opencv-python', 'ray', 'scikit-learn',
                         'scipy', 'tqdm', 'pyyaml'],
