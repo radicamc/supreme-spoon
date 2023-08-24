@@ -1,6 +1,16 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+### [1.1.2] -- 2023-07-24
+#### Added
+- Swap order of FlatFieldStep and BackgroundStep, which were somehow backwards.
+- Corrected calculation of errors in transit/eclipse fitting.
+- Misc. bug fixes. 
+
+#### Removed
+- RefPixStep. Functionality is redundant. 
+- Buggy automatic stellar parameter searching.
+
 ### [1.1.1] -- 2023-06-01
 #### Added
 - Support for eclipse fitting.

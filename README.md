@@ -19,7 +19,7 @@ or the latest development version can be grabbed from GitHub:
     cd supreme_spoon
     python setup.py install
 
-Note that **supreme-SPOON** is currently compatible with v1.8.5 of the official JWST DMS. If you wish to run a 
+Note that **supreme-SPOON** is currently compatible with python 3.10.4 and v1.8.5 of the official JWST DMS. If you wish to run a 
 different version of jwst, certain functionalities of **supreme-SPOON** may not work.
 
 ## Usage Instructions
@@ -45,7 +45,7 @@ If you make use of the light curve fitting routines, also include the following 
 [dynesty](https://ui.adsabs.harvard.edu/abs/2020MNRAS.493.3132S/abstract), and 
 [Kipping et al. (2013)](https://ui.adsabs.harvard.edu/abs/2013MNRAS.435.2152K/abstract) for the limb-darkening sampling. 
 If you use Gaussian Processes please cite [celerite](https://ui.adsabs.harvard.edu/abs/2017AJ....154..220F/abstract), 
-and if you use ExoTiC-LD for limb darkening priors cite [Laginja & Wakeford (2020)](https://ui.adsabs.harvard.edu/abs/2020JOSS....5.2281L/abstract). 
+and if you use ExoTiC-LD for limb darkening priors cite [Grant & Wakeford (2022)](https://doi.org/10.5281/zenodo.7437681). 
 Please also see the ExoTiC-LD documentation for information on the types of stellar grids available and ensure to correctly download and cite the desired models.
 
 Lastly, you should cite the libraries upon which this code is built, namely:
