@@ -91,7 +91,8 @@ class Extract1DStep:
         """Method to run the step.
         """
 
-        fancyprint('Starting 1D extraction using the {} method.'.format(self.extract_method))
+        fancyprint('Starting 1D extraction using the {} '
+                   'method.'.format(self.extract_method))
 
         # Initialize loop and storange variables.
         all_files = glob.glob(self.output_dir + '*')
@@ -107,9 +108,8 @@ class Extract1DStep:
             # Option 1: ATOCA extraction.
             if self.extract_method == 'atoca':
                 if specprofile is None:
-                    msg = 'specprofile reference file must be provided for ' \
-                          'ATOCA extraction.'
-                    raise ValueError(msg)
+                    raise ValueError('specprofile reference file must be '
+                                     'provided for ATOCA extraction.')
                 results = []
                 for i, segment in enumerate(self.datafiles):
                     # Initialize extraction parameters for ATOCA.
@@ -142,8 +142,8 @@ class Extract1DStep:
                     try:
                         centroids = pd.read_csv(centroids, comment='#')
                     except FileNotFoundError:
-                        msg = 'Centroids must be provided for box extraction'
-                        raise ValueError(msg)
+                        raise ValueError('Centroids must be provided for box '
+                                         'extraction')
                 results = box_extract(self.datafiles, centroids, soss_width)
             else:
                 raise ValueError('Invalid extraction method')
@@ -460,13 +460,10 @@ def format_extracted_spectra(datafiles, times, extract_params, target_name,
         wave1d_o1, wave1d_o2 = wave2d_o1[0], wave2d_o2[0]
 
     # Refine wavelength solution.
-    st_teff, st_logg, st_met = utils.retrieve_stellar_params(target_name,
-                                                             st_teff, st_logg,
-                                                             st_met)
-    # If one or more of the stellar parameters cannot be retrieved, use the
+    # If one or more of the stellar parameters are not provided, use the
     # default wavelength solution.
     if None in [st_teff, st_logg, st_met]:
-        fancyprint('Stellar parameters cannot be retrieved. '
+        fancyprint('Stellar parameters not provided. '
                    'Using default wavelength solution.', msg_type='WARNING')
     else:
         fancyprint('Refining the wavelength calibration.')

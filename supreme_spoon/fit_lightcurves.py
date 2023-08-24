@@ -28,8 +28,7 @@ from supreme_spoon.utils import fancyprint, verify_path
 try:
     config_file = sys.argv[1]
 except IndexError:
-    msg = 'Config file must be provided'
-    raise FileNotFoundError(msg)
+    raise FileNotFoundError('Config file must be provided')
 config = utils.parse_config(config_file)
 
 if config['output_tag'] != '':
@@ -59,8 +58,8 @@ elif config['npix'] is not None:
     fit_suffix += '_{}pix'.format(config['npix'])
     res_str = 'npix = {}'.format(config['npix'])
 else:
-    msg = 'Number of columns to bin or spectral resolution must be provided.'
-    raise ValueError(msg)
+    raise ValueError('Number of columns to bin or spectral resolution must '
+                     'be provided.')
 
 # Save a copy of the config file.
 root_dir = 'pipeline_outputs_directory' + config['output_tag'] + '/config_files'
@@ -103,6 +102,7 @@ if config['lm_file'] is not None:
     lm_quantities = np.zeros((len(t), len(config['lm_parameters'])+1))
     lm_quantities[:, 0] = np.ones_like(t)
     for i, key in enumerate(config['lm_parameters']):
+        i += 1
         lm_param = lm_data[key]
         lm_quantities[:, i] = (lm_param - np.mean(lm_param)) / np.sqrt(np.var(lm_param))
 # Eclipses must fit for a baseline, which is done via the linear detrending.
@@ -120,8 +120,7 @@ if config['gp_file'] is not None:
     gp_quantities = gp_data[config['gp_parameter']].values
 
 # Format the baseline frames - either out-of-transit or in-eclipse.
-baseline_ints = utils.format_out_frames(config['baseline_ints'],
-                                        config['occultation_type'])
+baseline_ints = utils.format_out_frames(config['baseline_ints'])
 
 # === Fit Light Curves ===
 # Start the light curve fitting.
@@ -215,7 +214,7 @@ for order in config['orders']:
         if config['occultation_type'] == 'transit':
             # Set prior width to 0.2 around the model value - based on
             # findings of Patel & Espinoza 2022.
-            if config['ldcoef_file_o1'] is not None or config['ldcoef_file_o2'] is not None:
+            if np.any([config['ldcoef_file_o1'], config['ldcoef_file_o2']]) is not None:
                 if np.isfinite(q1[wavebin]):
                     prior_dict[thisbin]['q1_SOSS']['distribution'] = 'truncatednormal'
                     prior_dict[thisbin]['q1_SOSS']['hyperparameters'] = [q1[wavebin], 0.2, 0.0, 1.0]
@@ -264,7 +263,7 @@ for order in config['orders']:
                 order_results['dppm'].append(md*1e6)
                 err_low = (md - lw)*1e6
                 err_up = (up - md)*1e6
-            order_results['dppm_err'].append(np.mean([err_up, err_low]))
+            order_results['dppm_err'].append(np.max([err_up, err_low]))
 
         # Make summary plots.
         if skip is False and doplot is True:
@@ -296,7 +295,7 @@ for order in config['orders']:
 
                 # Get systematics and transit models.
                 systematics = None
-                if config['gp_file'] is not None or config['lm_file'] is not None:
+                if np.any([config['gp_file'], config['lm_file']]) is not None:
                     if config['gp_file'] is not None:
                         gp_model = transit_model - comp['transit'] - comp['lm']
                     else:

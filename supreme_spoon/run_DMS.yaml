@@ -93,8 +93,6 @@ save_results : True
 force_redo : False
 # Integrations of ingress and egress.
 baseline_ints : [50, -50]
-# Type of occultation: 'transit' or 'eclipse'.
-occultation_type : 'transit'
 # If True, make diagnostic plots.
 do_plots : False
 # ========================= END DMS CONFIG FILE =============================
