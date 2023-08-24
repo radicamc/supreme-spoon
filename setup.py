@@ -17,7 +17,7 @@ setup(name='supreme_spoon',
                         'jwst==1.8.5', 'matplotlib', 'more_itertools', 'numpy',
                         'pandas', 'opencv-python', 'ray', 'scikit-learn',
                         'scipy', 'tqdm', 'pyyaml'],
-      python_requires='3.10.4',
+      python_requires='==3.10.4',
       extras_requires={'Stage4': ['corner', 'dynesty==1.2.2', 'exotic_ld',
                                   'juliet']},
       classifiers=[
