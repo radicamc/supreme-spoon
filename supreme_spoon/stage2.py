@@ -418,8 +418,9 @@ def backgroundstep(datafiles, background_model, output_dir='./',
         stack = stack.reshape(1, dimy, dimx)
     ngroup, dimy, dimx = np.shape(stack)
     # Ensure if user-defined scalings are provided that there is one per group.
-    scale1 = np.atleast_1d(scale1)
-    assert len(scale1) == ngroup
+    if scale1 is not None:
+        scale1 = np.atleast_1d(scale1)
+        assert len(scale1) == ngroup
 
     fancyprint('Calculating background model scaling.')
     model_scaled = np.zeros_like(stack)
