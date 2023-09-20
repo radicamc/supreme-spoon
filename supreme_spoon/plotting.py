@@ -792,6 +792,9 @@ def nine_panel_plot(data, text=None, outfile=None, show_plot=True, **kwargs):
                 else:
                     max_percentile = kwargs['max_percentile']
                 vmax = np.nanpercentile(data[frame], max_percentile)
+                while vmax <= vmin:
+                    max_percentile += 5
+                    vmax = np.nanpercentile(data[frame], max_percentile)
             else:
                 vmax = kwargs['vmax']
             ax.imshow(data[frame], aspect='auto', origin='lower', vmin=vmin,
