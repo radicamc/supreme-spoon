@@ -8,6 +8,8 @@ Created on Thurs Jul 21 17:33 2022
 Custom JWST DMS pipeline steps for Stage 3 (1D spectral extraction).
 """
 
+# TODO: Make box extraction default
+# TODO: Rewrite box to subtract 1/f in window around trace before extraction.
 from astropy.convolution import Gaussian1DKernel, convolve
 from astropy.io import fits
 import glob

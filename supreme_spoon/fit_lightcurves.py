@@ -8,6 +8,7 @@ Created on Wed Jul 27 14:35 2022
 Juliet light curve fitting script.
 """
 
+# TODO: Save best fitting models by default
 from astropy.io import fits
 import copy
 from datetime import datetime

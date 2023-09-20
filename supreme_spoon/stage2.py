@@ -8,6 +8,7 @@ Created on Thurs Jul 21 17:33 2022
 Custom JWST DMS pipeline steps for Stage 2 (Spectroscopic processing).
 """
 
+# TODO: For atoca extractions, redo 1/f correction after bad pixel correction
 from astropy.io import fits
 import bottleneck as bn
 import glob
@@ -160,15 +161,13 @@ class BackgroundStep:
                 scale1, scale2 = None, None
                 if 'scale1' in kwargs.keys():
                     scale1 = kwargs['scale1']
-                if 'scale2' in kwargs.keys():
-                    scale2 = kwargs['scale2']
                 step_results = backgroundstep(self.datafiles,
                                               self.background_model,
                                               output_dir=self.output_dir,
                                               save_results=save_results,
                                               fileroots=self.fileroots,
                                               fileroot_noseg=self.fileroot_noseg,
-                                              scale1=scale1, scale2=scale2)
+                                              scale1=scale1)
                 results, background_models = step_results
 
             # Do step plot if requested.
@@ -355,13 +354,13 @@ class TracingStep:
 
 def backgroundstep(datafiles, background_model, output_dir='./',
                    save_results=True, fileroots=None, fileroot_noseg='',
-                   scale1=None, scale2=None):
+                   scale1=None):
     """Background subtraction must be carefully treated with SOSS observations.
     Due to the extent of the PSF wings, there are very few, if any,
     non-illuminated pixels to serve as a sky region. Furthermore, the zodi
     background has a unique stepped shape, which would render a constant
     background subtraction ill-advised. Therefore, a background subtracton is
-    performed by scaling a model background to the countns level of a median
+    performed by scaling a model background to the counts level of a median
     stack of the exposure. This scaled model background is then subtracted
     from each integration.
 
@@ -380,14 +379,9 @@ def backgroundstep(datafiles, background_model, output_dir='./',
         Root names for output files.
     fileroot_noseg : str
         Root name with no segment information.
-    scale1 : float, None
-        Scaling value to apply to background model to match data. Will take
-        precedence over calculated scaling value. If only scale1 is provided,
-        this will multiply the entire frame. If scale2 is also provided, this
-        will be the "pre-stp" scaling.
-    scale2 : float, None
-        "Post-step" scaling value. scale1 must also be passed if this
-        parameter is not None.
+    scale1 : float, array-like[float], None
+        Scaling value(s) to apply to background model to match data. Will take
+        precedence over calculated scaling value.
 
     Returns
     -------
@@ -416,30 +410,23 @@ def backgroundstep(datafiles, background_model, output_dir='./',
     # Make median stack of all integrations to use for background scaling.
     # This is to limit the influence of cosmic rays, which can greatly effect
     # the background scaling factor calculated for an individual inegration.
-    fancyprint('Generating a deep stack using all integrations.')
-    deepstack = utils.make_deepstack(cube)
-    # If applied at the integration level, reshape deepstack to 3D.
-    if np.ndim(deepstack) != 3:
-        dimy, dimx = np.shape(deepstack)
-        deepstack = deepstack.reshape(1, dimy, dimx)
-    ngroup, dimy, dimx = np.shape(deepstack)
+    fancyprint('Generating a median stack using all integrations.')
+    stack = utils.make_deepstack(cube)
+    # If applied at the integration level, reshape median stack to 3D.
+    if np.ndim(stack) != 3:
+        dimy, dimx = np.shape(stack)
+        stack = stack.reshape(1, dimy, dimx)
+    ngroup, dimy, dimx = np.shape(stack)
+    # Ensure if user-defined scalings are provided that there is one per group.
+    scale1 = np.atleast_1d(scale1)
+    assert len(scale1) == ngroup
 
     fancyprint('Calculating background model scaling.')
-    model_scaled = np.zeros_like(deepstack)
-    if scale1 is None:
-        fancyprint('Scale factor(s):')
-    else:
-        fancyprint(' Using user-defined background scaling(s):')
-        if scale2 is not None:
-            fancyprint('Pre-step scale factor: {:.5f}'.format(scale1))
-            fancyprint('Post-step scale factor: {:.5f}'.format(scale2))
-        else:
-            fancyprint('Background scale factor: {:.5f}'.format(scale1))
+    model_scaled = np.zeros_like(stack)
     first_time = True
     for i in range(ngroup):
         if scale1 is None:
-            # Calculate the scaling of the model background to the median
-            # stack.
+            # Calculate scaling of model background to median stack.
             if dimy == 96:
                 # Use area in bottom left corner of detector for SUBSTRIP96.
                 xl, xu = 5, 21
@@ -448,7 +435,7 @@ def backgroundstep(datafiles, background_model, output_dir='./',
                 # Use area in the top left corner of detector for SUBSTRIP256
                 xl, xu = 210, 250
                 yl, yu = 250, 500
-            bkg_ratio = deepstack[i, xl:xu, yl:yu] / background_model[xl:xu, yl:yu]
+            bkg_ratio = stack[i, xl:xu, yl:yu] / background_model[xl:xu, yl:yu]
             # Instead of a straight median, use the median of the 2nd quartile
             # to limit the effect of any remaining illuminated pixels.
             q1 = np.nanpercentile(bkg_ratio, 25)
@@ -457,22 +444,14 @@ def backgroundstep(datafiles, background_model, output_dir='./',
             scale_factor = np.nanmedian(bkg_ratio[ii])
             if scale_factor < 0:
                 scale_factor = 0
-            fancyprint('Background scale factor: {1:.5f}'.format(i+1, scale_factor))
+            fancyprint('Using calculated background scale factor: '
+                       '{:.5f}'.format(scale_factor))
             model_scaled[i] = background_model * scale_factor
-        elif scale1 is not None and scale2 is None:
-            # If using a user specified scaling for the whole frame.
-            model_scaled[i] = background_model * scale1
         else:
-            # If using seperate pre- and post- step scalings.
-            # Locate the step position using the gradient of the background.
-            grad_bkg = np.gradient(background_model, axis=1)
-            # The boundary between the left and right scalings
-            # actually happens before the step (-4).
-            step_pos = np.argmax(grad_bkg[:, 10:-10], axis=1) + 10 - 4
-            # Seperately scale both sides of the step.
-            for j in range(dimy):
-                model_scaled[i, j, :(step_pos[j])] = background_model[j, :(step_pos[j])] * scale1
-                model_scaled[i, j, (step_pos[j]):] = background_model[j, (step_pos[j]):] * scale2
+            # If using a user specified scaling for the whole frame.
+            fancyprint('Using user-defined background scaling: '
+                       '{:.5f}'.format(scale1[i]))
+            model_scaled[i] = background_model * scale1[i]
 
     # Loop over all segments in the exposure and subtract the background from
     # each of them.

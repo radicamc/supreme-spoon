@@ -66,6 +66,8 @@ for file in input_files:
 
 # Open some of the input files.
 background_model = np.load(config['background_file'])
+if np.ndim(background_model) == 3:
+    background_model = background_model[0]
 if config['smoothed_wlc'] is not None:
     config['smoothed_wlc'] = np.load(config['smoothed_wlc'])
 if config['centroids'] is not None:
