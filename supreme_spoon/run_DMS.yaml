@@ -64,7 +64,7 @@ stage2_kwargs : {}
 
 # ===== Stage 3 Input Files & Parameters =====
 # Extraction method: box or atoca.
-extract_method : 'atoca'
+extract_method : 'box'
 # Box width to extract around the trace center.
 soss_width : 30
 # Specprofile reference file for ATOCA (optional).

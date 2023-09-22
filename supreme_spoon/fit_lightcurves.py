@@ -8,7 +8,6 @@ Created on Wed Jul 27 14:35 2022
 Juliet light curve fitting script.
 """
 
-# TODO: Save best fitting models by default
 from astropy.io import fits
 import copy
 from datetime import datetime
@@ -235,7 +234,7 @@ for order in config['orders']:
     # make summary plots if necessary.
     fancyprint('Summarizing fit results.')
     data = np.ones((nints, nbins)) * np.nan
-    models = np.ones((nints, nbins)) * np.nan
+    models = np.ones((2, nints, nbins)) * np.nan
     residuals = np.ones((nints, nbins)) * np.nan
     order_results = {'dppm': [], 'dppm_err': [], 'wave': wave,
                      'wave_err': np.mean([wave - wave_low, wave_up - wave],
@@ -326,11 +325,16 @@ for order in config['orders']:
                                               outpdf=outpdf)
 
                 data[:, i] = norm_flux[:, i]
-                models[:, i] = transit_model
+                models[0, :, i] = transit_model
+                if systematics is not None:
+                    models[1, :, i] = systematics
                 residuals[:, i] = norm_flux[:, i] - transit_model
             except:
                 pass
     results_dict['order {}'.format(order)] = order_results
+    # Save best-fitting light curve models.
+    np.save(outdir + 'speclightcurve{0}/'
+                     '_models_order{1}.npy'.format(fit_suffix, order), models)
     # Plot 2D lightcurves.
     if doplot is True:
         plotting.make_2d_lightcurve_plot(wave, data, outpdf=outpdf,

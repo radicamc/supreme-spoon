@@ -8,7 +8,6 @@ Created on Thurs Jul 21 17:33 2022
 Custom JWST DMS pipeline steps for Stage 2 (Spectroscopic processing).
 """
 
-# TODO: For atoca extractions, redo 1/f correction after bad pixel correction
 from astropy.io import fits
 import bottleneck as bn
 import glob
