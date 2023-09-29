@@ -982,7 +982,7 @@ def tracingstep(datafiles, deepframe=None, calculate_stability_ccf=True,
                    ' This might take a while.')
         assert save_results is True, 'save_results must be True to run ' \
                                      'soss_stability_pca'
-
+    // TODO #27
     # Calculate the trace stability using PCA.
     outfile = output_dir + 'soss_stability_pca.pdf'
     pcs, var = soss_stability_pca(cube, n_components=pca_components,
