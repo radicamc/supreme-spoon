@@ -95,6 +95,10 @@ else:
 
 # ===== Run Stage 2 =====
 if 2 in config['run_stages']:
+    if config['soss_width'] <= 40:
+        mask_width = 45
+    else:
+        mask_width = config['soss_width'] + 5
     stage2_results = run_stage2(stage1_results,
                                 background_model=background_model,
                                 baseline_ints=config['baseline_ints'],
@@ -111,7 +115,7 @@ if 2 in config['run_stages']:
                                 skip_steps=config['stage2_skip'],
                                 generate_lc=config['generate_lc'],
                                 generate_tracemask=config['generate_tracemask'],
-                                mask_width=config['mask_width'],
+                                mask_width=mask_width,
                                 pixel_flags=config['outlier_maps'],
                                 generate_order0_mask=config['generate_order0_mask'],
                                 f277w=config['f277w'],

@@ -31,9 +31,6 @@ stage1_kwargs : {}
 # ===== Stage 2 Input Files & Parameters =====
 # If True, create a mask of the target trace orders.
 generate_tracemask : True
-# Size of box to mask around the trace - should be wider than extraction box.
-# Only necessary if generate_tracemask is True.
-mask_width : 45
 # If True, calculate the stability of the SOSS trace over the course of the
 # TSO using a CCF analysis.
 calculate_stability_ccf : False
@@ -66,7 +63,7 @@ stage2_kwargs : {}
 # Extraction method: box or atoca.
 extract_method : 'box'
 # Box width to extract around the trace center.
-soss_width : 30
+soss_width : 40
 # Specprofile reference file for ATOCA (optional).
 specprofile : None
 # File with centroids for all three orders for box extraction (optional).
