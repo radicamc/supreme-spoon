@@ -358,8 +358,8 @@ def get_interp_box(data, box_size, i, j, dimx):
     """
 
     # Get the box limits.
-    low_x = np.max([i - box_size, 0])
-    up_x = np.min([i + box_size, dimx - 1])
+    low_x = np.max([i - box_size, 5])
+    up_x = np.min([i + box_size, dimx - 5])
 
     # Calculate median and std deviation of box - excluding central pixel.
     box = np.concatenate([data[j, low_x:i], data[j, (i+1):up_x]])
