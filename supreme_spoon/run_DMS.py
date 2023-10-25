@@ -37,7 +37,7 @@ if config['output_tag'] != '':
     output_tag = '_' + config['output_tag']
 else:
     output_tag = config['output_tag']
-root_dir = 'pipeline_outputs_directory' + output_tag
+root_dir = config['root_dir'] + 'pipeline_outputs_directory' + output_tag
 verify_path(root_dir)
 root_dir += '/config_files'
 verify_path(root_dir)
@@ -52,7 +52,7 @@ shutil.copy(config_file, copy_config)
 # Append time at which it was run.
 f = open(copy_config, 'a')
 time = datetime.utcnow().isoformat(sep=' ', timespec='minutes')
-f.write('\nRun at {}.'.format(time))
+f.write('\n# Run at {}.'.format(time))
 f.close()
 
 # Unpack all files in the input directory.
@@ -81,6 +81,7 @@ if 1 in config['run_stages']:
                                 save_results=config['save_results'],
                                 pixel_masks=config['outlier_maps'],
                                 force_redo=config['force_redo'],
+                                root_dir=config['root_dir'],
                                 rejection_threshold=config['rejection_threshold'],
                                 flag_in_time=config['flag_in_time'],
                                 time_rejection_threshold=config['time_rejection_threshold'],
@@ -99,6 +100,7 @@ if 2 in config['run_stages']:
                                 smoothed_wlc=config['smoothed_wlc'],
                                 save_results=config['save_results'],
                                 force_redo=config['force_redo'],
+                                root_dir=config['root_dir'],
                                 calculate_stability_ccf=config['calculate_stability_ccf'],
                                 stability_params_ccf=config['stability_params_ccf'],
                                 nthreads=config['nthreads'],
@@ -123,6 +125,7 @@ if 3 in config['run_stages']:
     stage3_results = run_stage3(stage2_results,
                                 save_results=config['save_results'],
                                 force_redo=config['force_redo'],
+                                root_dir=config['root_dir'],
                                 extract_method=config['extract_method'],
                                 soss_width=config['soss_width'],
                                 specprofile=config['specprofile'],
