@@ -477,6 +477,7 @@ def backgroundstep(datafiles, background_model, output_dir='./',
     return results, model_scaled
 
 
+# TODO: just set negative pixels to zero
 def badpixstep(datafiles, baseline_ints, smoothed_wlc=None, thresh=15,
                box_size=5, output_dir='./', save_results=True, fileroots=None,
                fileroot_noseg='', do_plot=False, show_plot=False):

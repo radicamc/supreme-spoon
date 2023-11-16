@@ -11,7 +11,8 @@ input_dir : 'DMS_uncal/'
 input_filetag : 'uncal'
 
 # ===== Stage 1 Input Files & Parameters =====
-# Background model.
+# Background model. Default model available here:
+# https://jwst-docs.stsci.edu/jwst-near-infrared-imager-and-slitless-spectrograph/niriss-observing-strategies/niriss-soss-recommended-strategies
 background_file : 'model_background256.npy'
 # For 1/f correction; outlier pixel maps (optional).
 outlier_maps : None
