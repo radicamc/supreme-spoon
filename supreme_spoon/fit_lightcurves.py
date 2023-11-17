@@ -86,7 +86,7 @@ formatted_names = {'P_p1': r'$P$', 't0_p1': r'$T_0$', 'p_p1': r'$R_p/R_*$',
                    'ecc_p1': r'$e$', 'omega_p1': r'$\Omega$',
                    'a_p1': r'$a/R_*$', 'sigma_w_SOSS': r'$\sigma_w$',
                    'theta0_SOSS': r'$\theta_0$', 'theta1_SOSS': r'$\theta_1$',
-                   'theta2_SOSS': r'$\theta_2$',
+                   'theta2_SOSS': r'$\theta_2$', 'theta3_SOSS': r'$\theta_3$',
                    'GP_sigma_SOSS': r'$GP \sigma$',
                    'GP_rho_SOSS': r'$GP \rho$', 'GP_S0_SOSS': r'$GP S0$',
                    'GO_omega0_SOSS': r'$GP \Omega_0$', 'GP_Q_SOSS': r'$GP Q$',
@@ -214,10 +214,11 @@ for order in config['orders']:
         if config['occultation_type'] == 'transit':
             # Set prior width to 0.2 around the model value - based on
             # findings of Patel & Espinoza 2022.
-            if np.any([config['ldcoef_file_o1'], config['ldcoef_file_o2']]) is not None:
+            if config['ldcoef_file_o1'] is not None:
                 if np.isfinite(q1[wavebin]):
                     prior_dict[thisbin]['q1_SOSS']['distribution'] = 'truncatednormal'
                     prior_dict[thisbin]['q1_SOSS']['hyperparameters'] = [q1[wavebin], 0.2, 0.0, 1.0]
+            if config['ldcoef_file_o2'] is not None:
                 if np.isfinite(q2[wavebin]):
                     prior_dict[thisbin]['q2_SOSS']['distribution'] = 'truncatednormal'
                     prior_dict[thisbin]['q2_SOSS']['hyperparameters'] = [q2[wavebin], 0.2, 0.0, 1.0]
