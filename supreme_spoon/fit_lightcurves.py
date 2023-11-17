@@ -183,6 +183,7 @@ for order in config['orders']:
         priors[param] = {}
         priors[param]['distribution'] = dist
         priors[param]['hyperparameters'] = hyperp
+    # TODO: Should porbably just calculate these at the required resolution.
     # For transit fits, interpolate LD coefficients from stellar models.
     if config['occultation_type'] == 'transit':
         if order == 1 and config['ldcoef_file_o1'] is not None:
