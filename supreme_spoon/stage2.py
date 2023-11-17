@@ -477,7 +477,6 @@ def backgroundstep(datafiles, background_model, output_dir='./',
     return results, model_scaled
 
 
-# TODO: just set negative pixels to zero
 def badpixstep(datafiles, baseline_ints, smoothed_wlc=None, thresh=15,
                box_size=5, output_dir='./', save_results=True, fileroots=None,
                fileroot_noseg='', do_plot=False, show_plot=False):
@@ -560,11 +559,11 @@ def badpixstep(datafiles, baseline_ints, smoothed_wlc=None, thresh=15,
     hotpix = np.zeros_like(deepframe_itl)
     nanpix = np.zeros_like(deepframe_itl)
     otherpix = np.zeros_like(deepframe_itl)
-    nan, hot, other = 0, 0, 0
+    nan, hot, other, neg = 0, 0, 0, 0
     nint, dimy, dimx = np.shape(newdata)
     # Loop over whole deepstack and flag deviant pixels.
-    for i in tqdm(range(4, dimx-4)):
-        for j in range(dimy-4):
+    for i in tqdm(range(4, dimx - 4)):
+        for j in range(dimy - 4):
             # If the pixel is known to be hot, add it to list to interpolate.
             if hot_pix[j, i]:
                 hotpix[j, i] = 1
@@ -588,9 +587,12 @@ def badpixstep(datafiles, baseline_ints, smoothed_wlc=None, thresh=15,
                     nanpix[j, i] = 1
                     nan += 1
                 elif deepframe_itl[j, i] < 0:
+                    # Interpolate if bright, set to zero if dark.
                     if med >= np.nanpercentile(deepframe_itl, 10):
                         nanpix[j, i] = 1
-                        nan += 1
+                    else:
+                        deepframe_itl[j, i] = 0
+                    neg += 1
                 elif np.abs(deepframe_itl[j, i] - med) >= (thresh * std):
                     otherpix[j, i] = 1
                     other += 1
@@ -599,8 +601,8 @@ def badpixstep(datafiles, baseline_ints, smoothed_wlc=None, thresh=15,
     badpix = hotpix.astype(bool) | nanpix.astype(bool) | otherpix.astype(bool)
     badpix = badpix.astype(int)
 
-    fancyprint('{0} hot, {1} negative, and {2} other deviant pixels ' 
-               'identified.'.format(hot, nan, other))
+    fancyprint('{0} hot, {1} nan, {2} negative, and {3} deviant pixels '
+               'identified.'.format(hot, nan, neg, other))
     # Replace the flagged pixels in the median integration.
     newdeep, deepdq = utils.do_replacement(deepframe_itl, badpix,
                                            dq=np.ones_like(deepframe_itl),
@@ -632,12 +634,12 @@ def badpixstep(datafiles, baseline_ints, smoothed_wlc=None, thresh=15,
     deepdq = ~deepdq.astype(bool)
     newdq[:, deepdq] = 0
 
-    # Generate a final corrected deep frame for the baseline integrations.
-    deepframe_fnl = utils.make_deepstack(newdata[baseline_ints])
+    # Generate a temporary corrected deep frame.
+    deepframe_tmp = utils.make_deepstack(newdata[baseline_ints])
 
     # Final check along the time axis for outlier pixels.
     std_dev = bn.nanstd(newdata, axis=0)
-    scale = np.abs(newdata - deepframe_fnl)/std_dev
+    scale = np.abs(newdata - deepframe_tmp) / std_dev
     ii = np.where(scale > 5)
     mask = np.zeros_like(cube).astype(bool)
     mask[ii] = True
@@ -648,6 +650,11 @@ def badpixstep(datafiles, baseline_ints, smoothed_wlc=None, thresh=15,
     newdata[ii] = newdeep[ii]
     ii = np.where(np.isnan(err_cube))
     err_cube[ii] = np.nanmedian(err_cube)
+    # And replace any negatives with zeros
+    newdata[newdata < 0] = 0
+
+    # Make a final, corrected deepframe for the baseline intergations.
+    deepframe_fnl = utils.make_deepstack(newdata[baseline_ints])
 
     results = []
     current_int = 0
