@@ -8,8 +8,6 @@ Created on Thurs Jul 21 17:33 2022
 Custom JWST DMS pipeline steps for Stage 3 (1D spectral extraction).
 """
 
-# TODO: Make box extraction default
-# TODO: Rewrite box to subtract 1/f in window around trace before extraction.
 from astropy.convolution import Gaussian1DKernel, convolve
 from astropy.io import fits
 import glob
@@ -536,8 +534,8 @@ def format_extracted_spectra(datafiles, times, extract_params, target_name,
 
 
 def run_stage3(results, save_results=True, root_dir='./', force_redo=False,
-               extract_method='atoca', specprofile=None, centroids=None,
-               soss_width=25, st_teff=None, st_logg=None, st_met=None,
+               extract_method='box', specprofile=None, centroids=None,
+               soss_width=40, st_teff=None, st_logg=None, st_met=None,
                planet_letter='b', output_tag='', do_plot=False,
                show_plot=False):
     """Run the supreme-SPOON Stage 3 pipeline: 1D spectral extraction, using
