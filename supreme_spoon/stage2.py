@@ -157,16 +157,19 @@ class BackgroundStep:
         else:
             with warnings.catch_warnings():
                 warnings.filterwarnings('ignore')
-                scale1, scale2 = None, None
-                if 'scale1' in kwargs.keys():
-                    scale1 = kwargs['scale1']
+                scale, background_coords = None, None
+                if 'scale' in kwargs.keys():
+                    scale = kwargs['scale']
+                if 'background_coords' in kwargs.keys():
+                    background_coords = kwargs['background_coords']
                 step_results = backgroundstep(self.datafiles,
                                               self.background_model,
                                               output_dir=self.output_dir,
                                               save_results=save_results,
                                               fileroots=self.fileroots,
                                               fileroot_noseg=self.fileroot_noseg,
-                                              scale1=scale1)
+                                              scale=scale,
+                                              background_coords=background_coords)
                 results, background_models = step_results
 
             # Do step plot if requested.
@@ -353,7 +356,7 @@ class TracingStep:
 
 def backgroundstep(datafiles, background_model, output_dir='./',
                    save_results=True, fileroots=None, fileroot_noseg='',
-                   scale1=None):
+                   scale=None, background_coords=None):
     """Background subtraction must be carefully treated with SOSS observations.
     Due to the extent of the PSF wings, there are very few, if any,
     non-illuminated pixels to serve as a sky region. Furthermore, the zodi
@@ -378,9 +381,13 @@ def backgroundstep(datafiles, background_model, output_dir='./',
         Root names for output files.
     fileroot_noseg : str
         Root name with no segment information.
-    scale1 : float, array-like[float], None
-        Scaling value(s) to apply to background model to match data. Will take
-        precedence over calculated scaling value.
+    scale : float, array-like[float], None
+        Scaling value to apply to background model to match data. Will take
+        precedence over calculated scaling value. If applied at group level,
+        length of scaling array must equal ngroup.
+    background_coords : array-like[int], None
+        Region of frame to use to estimate the background. Must be 1D:
+        [x_low, x_up, y_low, y_up].
 
     Returns
     -------
@@ -417,24 +424,32 @@ def backgroundstep(datafiles, background_model, output_dir='./',
         stack = stack.reshape(1, dimy, dimx)
     ngroup, dimy, dimx = np.shape(stack)
     # Ensure if user-defined scalings are provided that there is one per group.
-    if scale1 is not None:
-        scale1 = np.atleast_1d(scale1)
-        assert len(scale1) == ngroup
+    if scale is not None:
+        scale = np.atleast_1d(scale)
+        assert len(scale) == ngroup
 
     fancyprint('Calculating background model scaling.')
     model_scaled = np.zeros_like(stack)
     first_time = True
     for i in range(ngroup):
-        if scale1 is None:
-            # Calculate scaling of model background to median stack.
-            if dimy == 96:
-                # Use area in bottom left corner of detector for SUBSTRIP96.
-                xl, xu = 5, 21
-                yl, yu = 5, 401
+        if scale is None:
+            if background_coords is None:
+                # If region to estimate background is not provided, use a
+                # default region.
+                if dimy == 96:
+                    # Use area in bottom left corner for SUBSTRIP96.
+                    xl, xu = 5, 21
+                    yl, yu = 5, 401
+                else:
+                    # Use area in the top left corner for SUBSTRIP256
+                    xl, xu = 210, 250
+                    yl, yu = 250, 500
             else:
-                # Use area in the top left corner of detector for SUBSTRIP256
-                xl, xu = 210, 250
-                yl, yu = 250, 500
+                # Use user-defined background scaling region.
+                assert len(background_coords) == 4
+                # Convert to int if not already.
+                background_coords = np.array(background_coords).astype(int)
+                xl, xu, yl, yu = background_coords
             bkg_ratio = stack[i, xl:xu, yl:yu] / background_model[xl:xu, yl:yu]
             # Instead of a straight median, use the median of the 2nd quartile
             # to limit the effect of any remaining illuminated pixels.
@@ -450,8 +465,8 @@ def backgroundstep(datafiles, background_model, output_dir='./',
         else:
             # If using a user specified scaling for the whole frame.
             fancyprint('Using user-defined background scaling: '
-                       '{:.5f}'.format(scale1[i]))
-            model_scaled[i] = background_model * scale1[i]
+                       '{:.5f}'.format(scale[i]))
+            model_scaled[i] = background_model * scale[i]
 
     # Loop over all segments in the exposure and subtract the background from
     # each of them.
