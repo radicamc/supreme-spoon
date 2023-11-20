@@ -501,6 +501,12 @@ def format_extracted_spectra(datafiles, times, extract_params, target_name,
         wave1d_o1 += wave_shift
         wave1d_o2 += wave_shift
 
+    # Restrict order 2 to only the useful bit (0.6 - 0.85µm).
+    ii = np.where((wave1d_o2 >= 0.6) & (wave1d_o2 < 0.85))[0]
+    wave1d_o2 = wave1d_o2[ii]
+    flux_o2 = flux_o2[:, ii]
+    ferr_o2 = ferr_o2[:, ii]
+
     # Clip remaining 3-sigma outliers.
     flux_o1_clip = utils.sigma_clip_lightcurves(flux_o1, ferr_o1)
     flux_o2_clip = utils.sigma_clip_lightcurves(flux_o2, ferr_o2)
