@@ -235,16 +235,23 @@ for order in config['orders']:
         prior_dict[thisbin] = copy.deepcopy(priors)
         # For transit only; update the LD prior for this bin if available.
         if config['occultation_type'] == 'transit':
-            # Set prior width to 0.2 around the model value - based on
-            # findings of Patel & Espinoza 2022.
-            if config['ldcoef_file_o1'] is not None:
+            if config['ld_fit_type'] == 'prior':
+                # Set prior width to 0.2 around the model value - based on
+                # findings of Patel & Espinoza 2022.
                 if np.isfinite(q1[wavebin]):
                     prior_dict[thisbin]['q1_SOSS']['distribution'] = 'truncatednormal'
                     prior_dict[thisbin]['q1_SOSS']['hyperparameters'] = [q1[wavebin], 0.2, 0.0, 1.0]
-            if config['ldcoef_file_o2'] is not None:
                 if np.isfinite(q2[wavebin]):
                     prior_dict[thisbin]['q2_SOSS']['distribution'] = 'truncatednormal'
                     prior_dict[thisbin]['q2_SOSS']['hyperparameters'] = [q2[wavebin], 0.2, 0.0, 1.0]
+            elif config['ld_fit_type'] == 'fixed':
+                # Fix LD to model values.
+                if np.isfinite(q1[wavebin]):
+                    prior_dict[thisbin]['q1_SOSS']['distribution'] = 'fixed'
+                    prior_dict[thisbin]['q1_SOSS']['hyperparameters'] = q1[wavebin]
+                if np.isfinite(q2[wavebin]):
+                    prior_dict[thisbin]['q2_SOSS']['distribution'] = 'fixed'
+                    prior_dict[thisbin]['q2_SOSS']['hyperparameters'] = q2[wavebin]
 
     # === Do the Fit ===
     # Fit each light curve
