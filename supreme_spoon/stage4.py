@@ -345,15 +345,15 @@ def fit_lightcurves(data_dict, prior_dict, order, output_dir, fit_suffix,
     return results
 
 
-def gen_ld_coefs(datafile, wavebin_low, wavebin_up, order, m_h, logg, teff,
+def gen_ld_coefs(spectrace_ref, wavebin_low, wavebin_up, order, m_h, logg, teff,
                  ld_data_path, model_type='stagger'):
     """Generate estimates of quadratic limb-darkening coefficients using the
     ExoTiC-LD package.
 
     Parameters
     ----------
-    datafile : str
-        Path to extract1d output file.
+    spectrace_ref : str
+        Path to spectrace reference file.
     wavebin_low : array-like[float]
         Lower edge of wavelength bins.
     wavebin_up: array-like[float]
@@ -385,8 +385,6 @@ def gen_ld_coefs(datafile, wavebin_low, wavebin_up, order, m_h, logg, teff,
     sld = StellarLimbDarkening(m_h, teff, logg, model_type, ld_data_path)
 
     # Load the most up to date throughput info for SOSS
-    step = calwebb_spec2.extract_1d_step.Extract1dStep()
-    spectrace_ref = step.get_reference_file(datafile, 'spectrace')
     spec_trace = datamodels.SpecTraceModel(spectrace_ref)
     wavelengths = spec_trace.trace[order-1].data['WAVELENGTH'] * 10000
     throughputs = spec_trace.trace[order-1].data['THROUGHPUT']

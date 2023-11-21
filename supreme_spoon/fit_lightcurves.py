@@ -213,7 +213,7 @@ for order in config['orders']:
             target = fits.getheader(config['infile'], 0)['TARGET']
             target += config['planet_letter']
             utils.save_ld_priors(wave, c1, c2, order, target, m_h, teff, logg,
-                                 outdir=outdir + 'speclightcurve{}'.format(fit_suffix))
+                                 outdir=outdir + '/speclightcurve{}'.format(fit_suffix))
 
     # Pack fitting arrays and priors into dictionaries.
     data_dict, prior_dict = {}, {}
