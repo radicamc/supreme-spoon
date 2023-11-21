@@ -7,6 +7,7 @@ Created on Wed Jul 27 14:35 2022
 
 Juliet light curve fitting script.
 """
+
 import warnings
 
 from astropy.io import fits
@@ -190,6 +191,7 @@ for order in config['orders']:
         calculate = True
         # First check if LD coefficient files have been provided.
         if config['ldcoef_file_o{}'.format(order)] is not None:
+            fancyprint('Reading limb-darkening coefficient file.')
             try:
                 q1, q2 = stage4.read_ld_coefs(config['ldcoef_file_o{}'.format(order)],
                                               wave_low, wave_up)
@@ -201,6 +203,7 @@ for order in config['orders']:
             calculate = False
         if calculate is True:
             # Calculate LD coefficients on specified wavelength grid.
+            fancyprint('Calculating limb-darkening coefficients.')
             m_h, logg, teff = config['m_h'], config['logg'], config['teff']
             msg = 'All stellar parameters must be provided to calculate ' \
                   'limb-darkening coefficients.'
@@ -213,7 +216,7 @@ for order in config['orders']:
             target = fits.getheader(config['infile'], 0)['TARGET']
             target += config['planet_letter']
             utils.save_ld_priors(wave, c1, c2, order, target, m_h, teff, logg,
-                                 outdir=outdir + '/speclightcurve{}'.format(fit_suffix))
+                                 outdir=outdir + 'speclightcurve{}/'.format(fit_suffix))
 
     # Pack fitting arrays and priors into dictionaries.
     data_dict, prior_dict = {}, {}
@@ -370,7 +373,7 @@ for order in config['orders']:
     if doplot is True:
         plotting.make_2d_lightcurve_plot(wave, data, outpdf=outpdf,
                                          title='Normalized Lightcurves')
-        plotting.make_2d_lightcurve_plot(wave, models, outpdf=outpdf,
+        plotting.make_2d_lightcurve_plot(wave, models[0], outpdf=outpdf,
                                          title='Model Lightcurves')
         plotting.make_2d_lightcurve_plot(wave, residuals, outpdf=outpdf,
                                          title='Residuals')

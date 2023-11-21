@@ -18,7 +18,6 @@ import ray
 from tqdm import tqdm
 
 from jwst import datamodels
-from jwst.pipeline import calwebb_spec2
 from supreme_spoon.utils import fancyprint
 
 
