@@ -52,9 +52,8 @@ gp_file : None
 gp_parameter : ''
 
 # === Parameters for Limb-Darkening -- Transit Only ===
-# Paths to files containing model limb-darkening coefficients.
-ldcoef_file_o1 : None
-ldcoef_file_o2 : None
+# Options for limb-darkening fitting. One of 'fixed', 'prior', or 'free'.
+ld_fit_type : 'prior'
 # Stellar Metallicity
 m_h : None
 # Star log Gravity
@@ -67,4 +66,8 @@ ld_data_path :
 # Path to JWST spectrace Reference File
 # Will be in crds_cache with file name like jwst_niriss_spectrace_XXXX.fits
 spectrace_ref : './crds_cache/references/jwst/niriss/jwst_niriss_spectrace_0023.fits'
+# Paths to files containing model limb-darkening coefficients.
+# If provided, will take precedence over calculated values. Must be in format compatible with read_ld_coefs.
+ldcoef_file_o1 : None
+ldcoef_file_o2 : None
 # ======================= END LIGHT CURVE FIT CONFIG FILE ===========================

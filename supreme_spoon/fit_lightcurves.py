@@ -7,6 +7,7 @@ Created on Wed Jul 27 14:35 2022
 
 Juliet light curve fitting script.
 """
+import warnings
 
 from astropy.io import fits
 import copy
@@ -185,21 +186,34 @@ for order in config['orders']:
         priors[param]['hyperparameters'] = hyperp
 
     # For transit fits, calculate LD coefficients from stellar models.
-    if config['occultation_type'] == 'transit':
-        # Calculate LD coefficients on specified wavelength grid.
-        m_h, logg, teff = config['m_h'], config['logg'], config['teff']
-        msg = 'All stellar parameters must be provided to calculate ' \
-              'limb-darkening coefficients.'
-        assert np.all(np.array([m_h, logg, teff]) != None), msg
-        c1, c2 = stage4.gen_ld_coefs(config['spectrace_ref'], wave_low,
-                                     wave_up, order, m_h, logg, teff,
-                                     config['ld_data_path'])
-        q1, q2 = juliet.reverse_q_coeffs('quadratic', c1, c2)
-        # Save calculated coefficients.
-        target = fits.getheader(config['infile'], 0)['TARGET']
-        target += config['planet_letter']
-        utils.save_ld_priors(wave, c1, c2, order, target, m_h, teff, logg,
-                             outdir=outdir + 'speclightcurve{}'.format(fit_suffix))
+    if config['occultation_type'] == 'transit' and config['ld_fit_type'] != 'free':
+        calculate = True
+        # First check if LD coefficient files have been provided.
+        if config['ldcoef_file_o{}'.format(order)] is not None:
+            try:
+                q1, q2 = stage4.read_ld_coefs(config['ldcoef_file_o{}'.format(order)],
+                                              wave_low, wave_up)
+            except ValueError:
+                msg = 'LD coefficient file could not be correctly parsed. ' \
+                      'Falling back onto LD calculation.'
+                warnings.warn(msg)
+                calculate = True
+            calculate = False
+        if calculate is True:
+            # Calculate LD coefficients on specified wavelength grid.
+            m_h, logg, teff = config['m_h'], config['logg'], config['teff']
+            msg = 'All stellar parameters must be provided to calculate ' \
+                  'limb-darkening coefficients.'
+            assert np.all(np.array([m_h, logg, teff]) != None), msg
+            c1, c2 = stage4.gen_ld_coefs(config['spectrace_ref'], wave_low,
+                                         wave_up, order, m_h, logg, teff,
+                                         config['ld_data_path'])
+            q1, q2 = juliet.reverse_q_coeffs('quadratic', c1, c2)
+            # Save calculated coefficients.
+            target = fits.getheader(config['infile'], 0)['TARGET']
+            target += config['planet_letter']
+            utils.save_ld_priors(wave, c1, c2, order, target, m_h, teff, logg,
+                                 outdir=outdir + 'speclightcurve{}'.format(fit_suffix))
 
     # Pack fitting arrays and priors into dictionaries.
     data_dict, prior_dict = {}, {}
