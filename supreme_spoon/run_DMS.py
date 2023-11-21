@@ -66,6 +66,8 @@ for file in input_files:
 
 # Open some of the input files.
 background_model = np.load(config['background_file'])
+if np.ndim(background_model) == 3:
+    background_model = background_model[0]
 if config['smoothed_wlc'] is not None:
     config['smoothed_wlc'] = np.load(config['smoothed_wlc'])
 if config['centroids'] is not None:
@@ -93,23 +95,24 @@ else:
 
 # ===== Run Stage 2 =====
 if 2 in config['run_stages']:
+    if config['soss_width'] <= 40:
+        mask_width = 45
+    else:
+        mask_width = config['soss_width'] + 5
     stage2_results = run_stage2(stage1_results,
                                 background_model=background_model,
                                 baseline_ints=config['baseline_ints'],
                                 smoothed_wlc=config['smoothed_wlc'],
                                 save_results=config['save_results'],
                                 force_redo=config['force_redo'],
-                                calculate_stability_ccf=config['calculate_stability_ccf'],
-                                stability_params_ccf=config['stability_params_ccf'],
-                                nthreads=config['nthreads'],
-                                calculate_stability_pca=config['calculate_stability_pca'],
+                                calculate_stability=config['calculate_stability'],
                                 pca_components=config['pca_components'],
                                 output_tag=config['output_tag'],
                                 smoothing_scale=config['smoothing_scale'],
                                 skip_steps=config['stage2_skip'],
                                 generate_lc=config['generate_lc'],
                                 generate_tracemask=config['generate_tracemask'],
-                                mask_width=config['mask_width'],
+                                mask_width=mask_width,
                                 pixel_flags=config['outlier_maps'],
                                 generate_order0_mask=config['generate_order0_mask'],
                                 f277w=config['f277w'],

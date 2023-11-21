@@ -18,7 +18,6 @@ import ray
 from tqdm import tqdm
 
 from jwst import datamodels
-from jwst.pipeline import calwebb_spec2
 from supreme_spoon.utils import fancyprint
 
 
@@ -345,15 +344,15 @@ def fit_lightcurves(data_dict, prior_dict, order, output_dir, fit_suffix,
     return results
 
 
-def gen_ld_coefs(datafile, wavebin_low, wavebin_up, order, m_h, logg, teff,
+def gen_ld_coefs(spectrace_ref, wavebin_low, wavebin_up, order, m_h, logg, teff,
                  ld_data_path, model_type='stagger'):
     """Generate estimates of quadratic limb-darkening coefficients using the
     ExoTiC-LD package.
 
     Parameters
     ----------
-    datafile : str
-        Path to extract1d output file.
+    spectrace_ref : str
+        Path to spectrace reference file.
     wavebin_low : array-like[float]
         Lower edge of wavelength bins.
     wavebin_up: array-like[float]
@@ -385,8 +384,6 @@ def gen_ld_coefs(datafile, wavebin_low, wavebin_up, order, m_h, logg, teff,
     sld = StellarLimbDarkening(m_h, teff, logg, model_type, ld_data_path)
 
     # Load the most up to date throughput info for SOSS
-    step = calwebb_spec2.extract_1d_step.Extract1dStep()
-    spectrace_ref = step.get_reference_file(datafile, 'spectrace')
     spec_trace = datamodels.SpecTraceModel(spectrace_ref)
     wavelengths = spec_trace.trace[order-1].data['WAVELENGTH'] * 10000
     throughputs = spec_trace.trace[order-1].data['THROUGHPUT']
@@ -413,7 +410,8 @@ def gen_ld_coefs(datafile, wavebin_low, wavebin_up, order, m_h, logg, teff,
 
 def read_ld_coefs(filename, wavebin_low, wavebin_up, ld_model='quadratic'):
     """Unpack limb darkening coefficients and interpolate to the wavelength
-    grid of data being fit.
+    grid of data being fit. File must be comma separated with three columns:
+    wavelength c1 and c2.
 
     Parameters
     ----------
@@ -445,6 +443,17 @@ def read_ld_coefs(filename, wavebin_low, wavebin_up, ld_model='quadratic'):
     ii = np.argsort(waves)
     waves = waves[ii]
     q1s, q2s = q1s[ii], q2s[ii]
+
+    # Check that coeffs in file span the wavelength range of the observations
+    # with at least the same resolution.
+    if np.min(waves) < np.min(wavebin_low) or np.max(waves) > np.max(wavebin_up):
+        msg = 'LD coefficient file does not span the full wavelength range ' \
+              'of the observations.'
+        raise ValueError(msg)
+    if len(waves) < len(wavebin_low):
+        msg = 'LD coefficient file has a coarser wavelength grid than ' \
+              'the observations.'
+        raise ValueError(msg)
 
     prior_q1, prior_q2 = [], []
     # Loop over all fitting bins. Calculate mean of model LD coefs within that

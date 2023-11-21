@@ -644,59 +644,6 @@ def outlier_resistant_variance(data):
     return var
 
 
-def pack_ld_priors(wave, c1, c2, order, target, m_h, teff, logg, outdir):
-    """Write model limb darkening parameters to a file to be used as priors
-    for light curve fitting.
-
-    Parameters
-    ----------
-    wave : array-like[float]
-        Wavelength axis.
-    c1 : array-like[float]
-        c1 parameter for two-parameter limb darkening law.
-    c2 : array-like[float]
-        c2 parameter for two-parameter limb darkening law.
-    order : int
-        SOSS order.
-    target : str
-        Name of the target.
-    m_h : float
-        Host star metallicity.
-    teff : float
-        Host star effective temperature.
-    logg : float
-        Host star gravity.
-    outdir : str
-        Directory to which to save file.
-    """
-
-    # Create dictionary with model LD info.
-    dd = {'wave': wave, 'c1': c1, 'c2': c2}
-    df = pd.DataFrame(data=dd)
-    # Remove old LD file if one exists.
-    filename = target+'_order' + str(order) + '_exotic-ld_quadratic.csv'
-    if os.path.exists(outdir + filename):
-        os.remove(outdir + filename)
-    # Add header info.
-    f = open(outdir + filename, 'a')
-    f.write('# Target: {}\n'.format(target))
-    f.write('# Instrument: NIRISS/SOSS\n')
-    f.write('# Order: {}\n'.format(order))
-    f.write('# Author: {}\n'.format(os.environ.get('USER')))
-    f.write('# Date: {}\n'.format(datetime.utcnow().replace(microsecond=0).isoformat()))
-    f.write('# Stellar M/H: {}\n'.format(m_h))
-    f.write('# Stellar log g: {}\n'.format(logg))
-    f.write('# Stellar Teff: {}\n'.format(teff))
-    f.write('# Algorithm: ExoTiC-LD\n')
-    f.write('# Limb Darkening Model: quadratic\n')
-    f.write('# Column wave: Central wavelength of bin (micron)\n')
-    f.write('# Column c1: Quadratic Coefficient 1\n')
-    f.write('# Column c2: Quadratic Coefficient 2\n')
-    f.write('#\n')
-    df.to_csv(f, index=False)
-    f.close()
-
-
 def parse_config(config_file):
     """Parse a yaml config file.
 
@@ -823,6 +770,59 @@ def save_extracted_spectra(filename, wl1, wu1, f1, e1, wl2, wu2, f2, e2, t,
                   'Flux O2': f2, 'Flux Err O2': e2, 'Time': t}
 
     return param_dict
+
+
+def save_ld_priors(wave, c1, c2, order, target, m_h, teff, logg, outdir):
+    """Write model limb darkening parameters to a file to be used as priors
+    for light curve fitting.
+
+    Parameters
+    ----------
+    wave : array-like[float]
+        Wavelength axis.
+    c1 : array-like[float]
+        c1 parameter for two-parameter limb darkening law.
+    c2 : array-like[float]
+        c2 parameter for two-parameter limb darkening law.
+    order : int
+        SOSS order.
+    target : str
+        Name of the target.
+    m_h : float
+        Host star metallicity.
+    teff : float
+        Host star effective temperature.
+    logg : float
+        Host star gravity.
+    outdir : str
+        Directory to which to save file.
+    """
+
+    # Create dictionary with model LD info.
+    dd = {'wave': wave, 'c1': c1, 'c2': c2}
+    df = pd.DataFrame(data=dd)
+    # Remove old LD file if one exists.
+    filename = target+'_order' + str(order) + '_exotic-ld_quadratic.csv'
+    if os.path.exists(outdir + filename):
+        os.remove(outdir + filename)
+    # Add header info.
+    f = open(outdir + filename, 'a')
+    f.write('# Target: {}\n'.format(target))
+    f.write('# Instrument: NIRISS/SOSS\n')
+    f.write('# Order: {}\n'.format(order))
+    f.write('# Author: {}\n'.format(os.environ.get('USER')))
+    f.write('# Date: {}\n'.format(datetime.utcnow().replace(microsecond=0).isoformat()))
+    f.write('# Stellar M/H: {}\n'.format(m_h))
+    f.write('# Stellar log g: {}\n'.format(logg))
+    f.write('# Stellar Teff: {}\n'.format(teff))
+    f.write('# Algorithm: ExoTiC-LD\n')
+    f.write('# Limb Darkening Model: quadratic\n')
+    f.write('# Column wave: Central wavelength of bin (micron)\n')
+    f.write('# Column c1: Quadratic Coefficient 1\n')
+    f.write('# Column c2: Quadratic Coefficient 2\n')
+    f.write('#\n')
+    df.to_csv(f, index=False)
+    f.close()
 
 
 def sigma_clip_lightcurves(flux, ferr, thresh=3, window=10):

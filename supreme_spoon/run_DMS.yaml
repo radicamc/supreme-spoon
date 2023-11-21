@@ -11,7 +11,8 @@ input_dir : 'DMS_uncal/'
 input_filetag : 'uncal'
 
 # ===== Stage 1 Input Files & Parameters =====
-# Background model.
+# Background model. Default model available here:
+# https://jwst-docs.stsci.edu/jwst-near-infrared-imager-and-slitless-spectrograph/niriss-observing-strategies/niriss-soss-recommended-strategies
 background_file : 'model_background256.npy'
 # For 1/f correction; outlier pixel maps (optional).
 outlier_maps : None
@@ -31,20 +32,9 @@ stage1_kwargs : {}
 # ===== Stage 2 Input Files & Parameters =====
 # If True, create a mask of the target trace orders.
 generate_tracemask : True
-# Size of box to mask around the trace - should be wider than extraction box.
-# Only necessary if generate_tracemask is True.
-mask_width : 45
 # If True, calculate the stability of the SOSS trace over the course of the
-# TSO using a CCF analysis.
-calculate_stability_ccf : False
-# Parameters for which to calcuate the stability: 'x', 'y', 'FWHM, or 'ALL'. Only
-# necessary if calculate_stability_ccf is True.
-stability_params_ccf : 'ALL'
-# Number of CPUs for CCF stability parameter calculation multiprocessing.
-nthreads : 4
-# If True, calculate the stability of the SOSS trace over the course of the
-# TSO using a principle component analysis.
-calculate_stability_pca : True
+# TSO using principle component analysis.
+calculate_stability : True
 # Number of principle components to extract. Only neceesary if calculate_stability_pca
 # is True.
 pca_components : 10
@@ -64,9 +54,9 @@ stage2_kwargs : {}
 
 # ===== Stage 3 Input Files & Parameters =====
 # Extraction method: box or atoca.
-extract_method : 'atoca'
+extract_method : 'box'
 # Box width to extract around the trace center.
-soss_width : 30
+soss_width : 40
 # Specprofile reference file for ATOCA (optional).
 specprofile : None
 # File with centroids for all three orders for box extraction (optional).
