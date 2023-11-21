@@ -214,9 +214,10 @@ for order in config['orders']:
             q1, q2 = juliet.reverse_q_coeffs('quadratic', c1, c2)
             # Save calculated coefficients.
             target = fits.getheader(config['infile'], 0)['TARGET']
-            target += config['planet_letter']
+            outdir_ld = outdir + 'speclightcurve{}/'.format(fit_suffix)
+            utils.verify_path(outdir_ld)
             utils.save_ld_priors(wave, c1, c2, order, target, m_h, teff, logg,
-                                 outdir=outdir + 'speclightcurve{}/'.format(fit_suffix))
+                                 outdir=outdir_ld)
 
     # Pack fitting arrays and priors into dictionaries.
     data_dict, prior_dict = {}, {}
