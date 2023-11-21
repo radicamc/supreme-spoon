@@ -183,15 +183,17 @@ for order in config['orders']:
         priors[param] = {}
         priors[param]['distribution'] = dist
         priors[param]['hyperparameters'] = hyperp
-    # TODO: Should porbably just calculate these at the required resolution.
     # For transit fits, interpolate LD coefficients from stellar models.
     if config['occultation_type'] == 'transit':
-        if order == 1 and config['ldcoef_file_o1'] is not None:
-            q1, q2 = stage4.read_ld_coefs(config['ldcoef_file_o1'], wave_low,
-                                          wave_up)
-        if order == 2 and config['ldcoef_file_o2'] is not None:
-            q1, q2 = stage4.read_ld_coefs(config['ldcoef_file_o2'], wave_low,
-                                          wave_up)
+        # Calculate LD coefficients on specified wavelength grid.
+        m_h, logg, teff = config['m_h'], config['logg'], config['teff']
+        msg = 'All stellar parameters must be provided to calculate ' \
+              'limb-darkening coefficients.'
+        assert np.all(np.array([m_h, logg, teff]) != None), msg
+        c1, c2 = stage4.gen_ld_coefs(config['spectrace_ref'], wave_low,
+                                     wave_up, order, m_h, logg, teff,
+                                     config['ld_data_path'])
+        q1, q2 = juliet.reverse_q_coeffs('quadratic', c1, c2)
 
     # Pack fitting arrays and priors into dictionaries.
     data_dict, prior_dict = {}, {}
