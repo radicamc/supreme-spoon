@@ -8,6 +8,8 @@ Created on Wed Jul 27 14:35 2022
 Juliet light curve fitting script.
 """
 
+import warnings
+
 from astropy.io import fits
 import copy
 from datetime import datetime
@@ -183,15 +185,39 @@ for order in config['orders']:
         priors[param] = {}
         priors[param]['distribution'] = dist
         priors[param]['hyperparameters'] = hyperp
-    # TODO: Should porbably just calculate these at the required resolution.
-    # For transit fits, interpolate LD coefficients from stellar models.
-    if config['occultation_type'] == 'transit':
-        if order == 1 and config['ldcoef_file_o1'] is not None:
-            q1, q2 = stage4.read_ld_coefs(config['ldcoef_file_o1'], wave_low,
-                                          wave_up)
-        if order == 2 and config['ldcoef_file_o2'] is not None:
-            q1, q2 = stage4.read_ld_coefs(config['ldcoef_file_o2'], wave_low,
-                                          wave_up)
+
+    # For transit fits, calculate LD coefficients from stellar models.
+    if config['occultation_type'] == 'transit' and config['ld_fit_type'] != 'free':
+        calculate = True
+        # First check if LD coefficient files have been provided.
+        if config['ldcoef_file_o{}'.format(order)] is not None:
+            fancyprint('Reading limb-darkening coefficient file.')
+            try:
+                q1, q2 = stage4.read_ld_coefs(config['ldcoef_file_o{}'.format(order)],
+                                              wave_low, wave_up)
+            except ValueError:
+                msg = 'LD coefficient file could not be correctly parsed. ' \
+                      'Falling back onto LD calculation.'
+                warnings.warn(msg)
+                calculate = True
+            calculate = False
+        if calculate is True:
+            # Calculate LD coefficients on specified wavelength grid.
+            fancyprint('Calculating limb-darkening coefficients.')
+            m_h, logg, teff = config['m_h'], config['logg'], config['teff']
+            msg = 'All stellar parameters must be provided to calculate ' \
+                  'limb-darkening coefficients.'
+            assert np.all(np.array([m_h, logg, teff]) != None), msg
+            c1, c2 = stage4.gen_ld_coefs(config['spectrace_ref'], wave_low,
+                                         wave_up, order, m_h, logg, teff,
+                                         config['ld_data_path'])
+            q1, q2 = juliet.reverse_q_coeffs('quadratic', c1, c2)
+            # Save calculated coefficients.
+            target = fits.getheader(config['infile'], 0)['TARGET']
+            outdir_ld = outdir + 'speclightcurve{}/'.format(fit_suffix)
+            utils.verify_path(outdir_ld)
+            utils.save_ld_priors(wave, c1, c2, order, target, m_h, teff, logg,
+                                 outdir=outdir_ld)
 
     # Pack fitting arrays and priors into dictionaries.
     data_dict, prior_dict = {}, {}
@@ -213,16 +239,23 @@ for order in config['orders']:
         prior_dict[thisbin] = copy.deepcopy(priors)
         # For transit only; update the LD prior for this bin if available.
         if config['occultation_type'] == 'transit':
-            # Set prior width to 0.2 around the model value - based on
-            # findings of Patel & Espinoza 2022.
-            if config['ldcoef_file_o1'] is not None:
+            if config['ld_fit_type'] == 'prior':
+                # Set prior width to 0.2 around the model value - based on
+                # findings of Patel & Espinoza 2022.
                 if np.isfinite(q1[wavebin]):
                     prior_dict[thisbin]['q1_SOSS']['distribution'] = 'truncatednormal'
                     prior_dict[thisbin]['q1_SOSS']['hyperparameters'] = [q1[wavebin], 0.2, 0.0, 1.0]
-            if config['ldcoef_file_o2'] is not None:
                 if np.isfinite(q2[wavebin]):
                     prior_dict[thisbin]['q2_SOSS']['distribution'] = 'truncatednormal'
                     prior_dict[thisbin]['q2_SOSS']['hyperparameters'] = [q2[wavebin], 0.2, 0.0, 1.0]
+            elif config['ld_fit_type'] == 'fixed':
+                # Fix LD to model values.
+                if np.isfinite(q1[wavebin]):
+                    prior_dict[thisbin]['q1_SOSS']['distribution'] = 'fixed'
+                    prior_dict[thisbin]['q1_SOSS']['hyperparameters'] = q1[wavebin]
+                if np.isfinite(q2[wavebin]):
+                    prior_dict[thisbin]['q2_SOSS']['distribution'] = 'fixed'
+                    prior_dict[thisbin]['q2_SOSS']['hyperparameters'] = q2[wavebin]
 
     # === Do the Fit ===
     # Fit each light curve
@@ -341,7 +374,7 @@ for order in config['orders']:
     if doplot is True:
         plotting.make_2d_lightcurve_plot(wave, data, outpdf=outpdf,
                                          title='Normalized Lightcurves')
-        plotting.make_2d_lightcurve_plot(wave, models, outpdf=outpdf,
+        plotting.make_2d_lightcurve_plot(wave, models[0], outpdf=outpdf,
                                          title='Model Lightcurves')
         plotting.make_2d_lightcurve_plot(wave, residuals, outpdf=outpdf,
                                          title='Residuals')
