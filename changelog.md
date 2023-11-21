@@ -1,6 +1,20 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+### [1.2.0] -- 2023-11-21
+#### Added
+- Best fitting transit models are saved by default.
+- Limb-darkening coefficients are automatically calculated at desired binning during light curve fitting.
+- Streamline process for fitting (free or prior) or fixing LD coefficients during fits. 
+- Incorporate PASTASOSS to calculate SOSS wavelength solution pased on pupil wheel position. 
+- Option to specify background estimation region.
+- Improvements to bad pixel interpolation.
+- extra_functions.py for potentially helpful functions not directly used by the pipeline.
+- Misc. bug fixes. 
+
+#### Removed
+- Stability calculations via the cross-correlation method.
+
 ### [1.1.7] -- 2023-07-28
 #### Added
 - Streamline installation process.
