@@ -33,16 +33,8 @@ stage1_kwargs : {}
 # If True, create a mask of the target trace orders.
 generate_tracemask : True
 # If True, calculate the stability of the SOSS trace over the course of the
-# TSO using a CCF analysis.
-calculate_stability_ccf : False
-# Parameters for which to calcuate the stability: 'x', 'y', 'FWHM, or 'ALL'. Only
-# necessary if calculate_stability_ccf is True.
-stability_params_ccf : 'ALL'
-# Number of CPUs for CCF stability parameter calculation multiprocessing.
-nthreads : 4
-# If True, calculate the stability of the SOSS trace over the course of the
-# TSO using a principle component analysis.
-calculate_stability_pca : True
+# TSO using principle component analysis.
+calculate_stability : True
 # Number of principle components to extract. Only neceesary if calculate_stability_pca
 # is True.
 pca_components : 10

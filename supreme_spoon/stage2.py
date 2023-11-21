@@ -15,11 +15,8 @@ import more_itertools as mit
 import numpy as np
 import os
 import pandas as pd
-import ray
 from sklearn.decomposition import PCA
-from scipy.interpolate import interp2d
 from scipy.ndimage import median_filter
-from scipy.optimize import curve_fit
 from tqdm import tqdm
 import warnings
 
@@ -298,8 +295,7 @@ class TracingStep:
 
     def run(self, generate_tracemask=True, mask_width=45, pixel_flags=None,
             generate_order0_mask=True, f277w=None,
-            calculate_stability_ccf=True, stability_params='ALL', nthreads=4,
-            calculate_stability_pca=True, pca_components=10,
+            calculate_stability=True, pca_components=10,
             save_results=True, force_redo=False, generate_lc=True,
             baseline_ints=None, smoothing_scale=None, do_plot=False,
             show_plot=False):
@@ -333,10 +329,7 @@ class TracingStep:
                     pixel_flags = new_pixel_flags
 
             step_results = tracingstep(self.datafiles, self.deepframe,
-                                       calculate_stability_ccf=calculate_stability_ccf,
-                                       stability_params=stability_params,
-                                       nthreads=nthreads,
-                                       calculate_stability_pca=calculate_stability_pca,
+                                       calculate_stability=calculate_stability,
                                        pca_components=pca_components,
                                        generate_tracemask=generate_tracemask,
                                        mask_width=mask_width,
@@ -717,14 +710,12 @@ def badpixstep(datafiles, baseline_ints, smoothed_wlc=None, thresh=15,
     return results, deepframe_fnl
 
 
-def tracingstep(datafiles, deepframe=None, calculate_stability_ccf=True,
-                stability_params='ALL', nthreads=4,
-                calculate_stability_pca=True, pca_components=10,
-                generate_tracemask=True, mask_width=45, pixel_flags=None,
-                generate_order0_mask=False, f277w=None, generate_lc=True,
-                baseline_ints=None, smoothing_scale=None, output_dir='./',
-                save_results=True, fileroot_noseg='', do_plot=False,
-                show_plot=False):
+def tracingstep(datafiles, deepframe=None, calculate_stability=True,
+                pca_components=10, generate_tracemask=True, mask_width=45,
+                pixel_flags=None, generate_order0_mask=False, f277w=None,
+                generate_lc=True, baseline_ints=None, smoothing_scale=None,
+                output_dir='./', save_results=True, fileroot_noseg='',
+                do_plot=False, show_plot=False):
     """A multipurpose step to perform some initial analysis of the 2D
     dataframes and produce products which can be useful in further reduction
     iterations. The five functionalities are detailed below:
@@ -745,15 +736,7 @@ def tracingstep(datafiles, deepframe=None, calculate_stability_ccf=True,
     deepframe : str, array-like[float], None
         Path to median stack file, or the median stack itself. Should be 2D
         (dimy, dimx). If None is passed, one will be generated.
-    calculate_stability_ccf : bool
-        If True, calculate the stabilty of the SOSS trace over the TSO using a
-        CCF method.
-    stability_params : str, array-like[str]
-        List of parameters for which to calculate the stability. Any of: 'x',
-        'y', and/or 'FWHM', or 'ALL' for all three.
-    nthreads : int
-        Number of CPUs for CCF stability parameter calculation multiprocessing.
-    calculate_stability_pca : bool
+    calculate_stability : bool
         If True, calculate the stabilty of the SOSS trace over the TSO using a
         PCA method.
     pca_components : int
@@ -808,7 +791,7 @@ def tracingstep(datafiles, deepframe=None, calculate_stability_ccf=True,
     datafiles = np.atleast_1d(datafiles)
     # If no deepframe is passed, construct one. Also generate a datacube for
     # later white light curve or stability calculations.
-    if deepframe is None or np.any([generate_lc, calculate_stability_ccf, calculate_stability_pca]) == True:
+    if deepframe is None or np.any([generate_lc, calculate_stability]) == True:
         # Construct datacube from the data files.
         for i, file in enumerate(datafiles):
             if isinstance(file, str):
@@ -937,53 +920,13 @@ def tracingstep(datafiles, deepframe=None, calculate_stability_ccf=True,
                     fancyprint('Order 0 mask saved to {}'.format(outfile))
 
     # ===== PART 4: Calculate the trace stability =====
-    # === CCF Method ===
-    # If requested, calculate the change in position of the trace, as well as
-    # its FWHM over the course of the TSO. These quantities may be useful for
-    # lightcurve detrending.
-    if calculate_stability_ccf is True:
-        fancyprint('Calculating trace stability using the CCF method... '
-                   'This might take a while.')
-        assert save_results is True, 'save_results must be True to run ' \
-                                     'soss_stability_ccf'
-        if stability_params == 'ALL':
-            stability_params = ['x', 'y', 'FWHM']
-
-        # Calculate the stability of the requested parameters.
-        stability_results = {}
-        if 'x' in stability_params:
-            fancyprint('Getting trace X-positions...')
-            ccf_x = soss_stability_xy(cube, axis='x', nthreads=nthreads)
-            stability_results['X'] = ccf_x
-        if 'y' in stability_params:
-            fancyprint('Getting trace Y-positions...')
-            ccf_y = soss_stability_xy(cube, axis='y', nthreads=nthreads)
-            stability_results['Y'] = ccf_y
-        if 'FWHM' in stability_params:
-            fancyprint('Getting trace FWHM values...')
-            fwhm = soss_stability_fwhm(cube, y1, nthreads=nthreads)
-            stability_results['FWHM'] = fwhm
-
-        # Save stability results.
-        suffix = 'soss_stability.csv'
-        if os.path.exists(output_dir + fileroot_noseg + suffix):
-            old_data = pd.read_csv(output_dir + fileroot_noseg + suffix,
-                                   comment='#')
-            for key in stability_results.keys():
-                old_data[key] = stability_results[key]
-            os.remove(output_dir + fileroot_noseg + suffix)
-            old_data.to_csv(output_dir + fileroot_noseg + suffix, index=False)
-        else:
-            df = pd.DataFrame(data=stability_results)
-            df.to_csv(output_dir + fileroot_noseg + suffix, index=False)
-
-    # === PCA Method ===
-    # If requested, calculate the stability of the SOSS trace using PCA.
-    if calculate_stability_pca is True:
+    # If requested, calculate the stability of the SOSS trace over the course
+    # of the TSO using PCA.
+    if calculate_stability is True:
         fancyprint('Calculating trace stability using the PCA method...'
                    ' This might take a while.')
         assert save_results is True, 'save_results must be True to run ' \
-                                     'soss_stability_pca'
+                                     'soss_stability.'
 
         # Calculate the trace stability using PCA.
         outfile = output_dir + 'soss_stability_pca.pdf'
@@ -1076,228 +1019,6 @@ def make_order0_mask_from_f277w(f277w, thresh_std=1, thresh_size=10):
     return mask
 
 
-def soss_stability_xy(cube, nsteps=501, axis='x', nthreads=4,
-                      smoothing_scale=None):
-    """Perform a CCF analysis to track the movement of the SOSS trace
-        relative to the median stack over the course of a TSO.
-
-    Parameters
-    ----------
-    cube : array-like[float]
-        Data cube. Should be 3D (ints, dimy, dimx).
-    nsteps : int
-        Number of CCF steps to test.
-    axis : str
-        Axis over which to calculate the CCF - either 'x', or 'y'.
-    nthreads : int
-        Number of CPUs for multiprocessing.
-    smoothing_scale : int
-        Length scale over which to smooth results.
-
-    Returns
-    -------
-    ccf : array-like[float]
-        The cross-correlation results.
-    """
-
-    # Initialize ray with specified number of threads.
-    ray.shutdown()
-    ray.init(num_cpus=nthreads)
-
-    # Subtract integration-wise median from cube for CCF.
-    cube = cube - np.nanmedian(cube, axis=(1, 2))[:, None, None]
-    # Calculate median stack.
-    deep = bn.nanmedian(cube, axis=0)
-
-    # Divide total data cube into segments and run each segment in parallel
-    # with ray.
-    ii = 0
-    all_fits = []
-    nints = np.shape(cube)[0]
-    seglen = nints // nthreads
-    for i in range(nthreads):
-        if i == nthreads - 1:
-            cube_seg = cube[ii:]
-        else:
-            cube_seg = cube[ii:ii + seglen]
-
-        all_fits.append(soss_stability_xy_run.remote(cube_seg, deep, seg_no=i+1,
-                                                     nsteps=nsteps, axis=axis))
-        ii += seglen
-
-    # Run the CCFs.
-    ray_results = ray.get(all_fits)
-
-    # Stack all the CCF results into a single array.
-    maxvals = []
-    for i in range(nthreads):
-        if i == 0:
-            maxvals = ray_results[i]
-        else:
-            maxvals = np.concatenate([maxvals, ray_results[i]])
-
-    # Smooth results if requested.
-    if smoothing_scale is not None:
-        ccf = median_filter(np.linspace(-0.01, 0.01, nsteps)[maxvals],
-                            smoothing_scale)
-    else:
-        ccf = np.linspace(-0.01, 0.01, nsteps)[maxvals]
-    ccf = ccf.reshape(nints)
-
-    return ccf
-
-
-@ray.remote
-def soss_stability_xy_run(cube_sub, med, seg_no, nsteps=501, axis='x'):
-    """Wrapper to perform CCF calculations in parallel with ray.
-    """
-
-    # Get data dimensions.
-    nints, dimy, dimx = np.shape(cube_sub)
-
-    # Get integration numbers to show progress prints.
-    marks = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
-    locs = np.nanpercentile(np.arange(nints), marks)
-
-    # Initialize CCF variables.
-    ccf = np.zeros((nints, nsteps))
-    f = interp2d(np.arange(dimx), np.arange(dimy), med, kind='cubic')
-    # Perform cross-correlation over desired axis.
-    loc = 0
-    for i in range(nints):
-        # Progress print.
-        if i >= int(locs[loc]):
-            fancyprint('Slice {}: {}% complete.'.format(seg_no, marks[loc]))
-            loc += 1
-        for j, jj in enumerate(np.linspace(-0.01, 0.01, nsteps)):
-            if axis == 'x':
-                interp = f(np.arange(dimx) + jj, np.arange(dimy))
-            elif axis == 'y':
-                interp = f(np.arange(dimx), np.arange(dimy) + jj)
-            else:
-                raise ValueError('Unknown axis: {}'.format(axis))
-            ccf[i, j] = np.nansum(cube_sub[i] * interp)
-
-    # Determine the peak of the CCF for each integration to get the
-    # best-fitting shift.
-    maxvals = []
-    for i in range(nints):
-        maxvals.append(np.where(ccf[i] == np.max(ccf[i]))[0])
-    maxvals = np.array(maxvals)
-    maxvals = maxvals.reshape(maxvals.shape[0])
-
-    return maxvals
-
-
-def soss_stability_fwhm(cube, ycens_o1, nthreads=4, smoothing_scale=None):
-    """Estimate the FWHM of the trace over the course of a TSO by fitting a
-    Gaussian to each detector column.
-
-    Parameters
-    ----------
-    cube : array-like[float]
-        Data cube. Should be 3D (ints, dimy, dimx).
-    ycens_o1 : arrray-like[float]
-        Y-centroid positions of the order 1 trace. Should have length dimx.
-    nthreads : int
-        Number of CPUs for multiprocessing.
-    smoothing_scale : int
-        Length scale over which to smooth results.
-
-    Returns
-    -------
-    fwhm : array-like[float]
-        FWHM estimates for each column at every integration.
-    """
-
-    # Initialize ray with specified number of threads.
-    ray.shutdown()
-    ray.init(num_cpus=nthreads)
-
-    # Divide total data cube into segments and run each segment in parallel
-    # with ray.
-    ii = 0
-    all_fits = []
-    nints = np.shape(cube)[0]
-    seglen = nints // nthreads
-    for i in range(nthreads):
-        if i == nthreads - 1:
-            cube_seg = cube[ii:]
-        else:
-            cube_seg = cube[ii:ii + seglen]
-
-        all_fits.append(soss_stability_fwhm_run.remote(cube_seg, ycens_o1,
-                                                       seg_no=i+1))
-        ii += seglen
-
-    # Run the CCFs.
-    ray_results = ray.get(all_fits)
-
-    # Stack all the CCF results into a single array.
-    fwhm = []
-    for i in range(nthreads):
-        if i == 0:
-            fwhm = ray_results[i]
-        else:
-            fwhm = np.concatenate([fwhm, ray_results[i]])
-
-    # Set median of trend to zero.
-    fwhm -= np.median(fwhm)
-    # Smooth the trend.
-    if smoothing_scale is None:
-        smoothing_scale = int(0.2*nints)
-    fwhm = median_filter(fwhm, smoothing_scale)
-
-    return fwhm
-
-
-@ray.remote
-def soss_stability_fwhm_run(cube, ycens_o1, seg_no):
-    """Wrapper to perform FWHM calculations in parallel with ray.
-    """
-
-    def gauss(x, *p):
-        amp, mu, sigma = p
-        return amp * np.exp(-(x - mu) ** 2 / (2. * sigma ** 2))
-
-    # Get data dimensions.
-    nints, dimy, dimx = np.shape(cube)
-
-    # Get integration numbers to show progress prints.
-    marks = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
-    locs = np.nanpercentile(np.arange(nints), marks)
-
-    # Initialize storage array for widths.
-    fwhm = np.zeros((nints, dimx-254))
-    # Fit a Gaussian to the PSF in each detector column.
-    loc = 0
-    for j in range(nints):
-        # Progress print.
-        if j >= int(locs[loc]):
-            fancyprint('Slice {}: {}% complete.'.format(seg_no, marks[loc]))
-            loc += 1
-        # Cut out first 250 columns as there is order 2 contmination.
-        for i in range(250, dimx-4):
-            p0 = [1., ycens_o1[i], 1.]
-            data = np.copy(cube[j, :, i])
-            # Replace any NaN values with a median.
-            if np.isnan(data).any():
-                ii = np.where(np.isnan(data))
-                data[ii] = np.nanmedian(data)
-            # Fit a Gaussian to the profile, and save the FWHM.
-            try:
-                coeff, var_matrix = curve_fit(gauss, np.arange(dimy), data,
-                                              p0=p0)
-                fwhm[j, i-250] = coeff[2] * 2.355
-            except RuntimeError:
-                fwhm[j, i-250] = np.nan
-
-    # Get median FWHM per integration.
-    fwhm = np.nanmedian(fwhm, axis=1)
-
-    return fwhm
-
-
 def soss_stability_pca(cube, n_components=10, outfile=None, do_plot=False,
                        show_plot=False):
     """Calculate the stability of the SOSS trace over the course of a TSO
@@ -1355,13 +1076,12 @@ def soss_stability_pca(cube, n_components=10, outfile=None, do_plot=False,
 
 
 def run_stage2(results, background_model, baseline_ints, smoothed_wlc=None,
-               save_results=True, force_redo=False,
-               calculate_stability_ccf=True, stability_params_ccf='ALL',
-               nthreads=4, calculate_stability_pca=True, pca_components=10,
-               root_dir='./', output_tag='', smoothing_scale=None,
-               skip_steps=None, generate_lc=True, generate_tracemask=True,
-               mask_width=45, pixel_flags=None, generate_order0_mask=True,
-               f277w=None, do_plot=False, show_plot=False, **kwargs):
+               save_results=True, force_redo=False, calculate_stability=True,
+               pca_components=10, root_dir='./', output_tag='',
+               smoothing_scale=None, skip_steps=None, generate_lc=True,
+               generate_tracemask=True, mask_width=45, pixel_flags=None,
+               generate_order0_mask=True, f277w=None, do_plot=False,
+               show_plot=False, **kwargs):
     """Run the supreme-SPOON Stage 2 pipeline: spectroscopic processing,
     using a combination of official STScI DMS and custom steps. Documentation
     for the official DMS steps can be found here:
@@ -1381,17 +1101,9 @@ def run_stage2(results, background_model, baseline_ints, smoothed_wlc=None,
         If True, save results of each step to file.
     force_redo : bool
         If True, redo steps even if outputs files are already present.
-    calculate_stability_ccf : bool
+    calculate_stability : bool
         If True, calculate the stability of the SOSS trace over the course of
-        the TSO using a CCF method.
-    stability_params_ccf : str, array-like[str]
-        List of parameters for which to calculate the stability. Any of: 'x',
-        'y', and/or 'FWHM', or 'ALL' for all three.
-    nthreads : int
-        Number of CPUs for stability parameter calculation multiprocessing.
-    calculate_stability_pca : bool
-        If True, calculate the stability of the SOSS trace over the course of
-        the TSO using a CCF method.
+        the TSO using a PCA method.
     pca_components : int
         Number of PCA components to calculate.
     root_dir : str
@@ -1507,10 +1219,7 @@ def run_stage2(results, background_model, baseline_ints, smoothed_wlc=None,
     # Custom DMS step.
     if 'TracingStep' not in skip_steps:
         step = TracingStep(results, deepframe=deepframe, output_dir=outdir)
-        step_results = step.run(calculate_stability_ccf=calculate_stability_ccf,
-                                stability_params=stability_params_ccf,
-                                nthreads=nthreads,
-                                calculate_stability_pca=calculate_stability_pca,
+        step_results = step.run(calculate_stability=calculate_stability,
                                 pca_components=pca_components,
                                 generate_tracemask=generate_tracemask,
                                 mask_width=mask_width, pixel_flags=pixel_flags,

@@ -8,7 +8,6 @@ Created on Thurs Jul 21 18:07 2022
 Custom JWST DMS pipeline steps for Stage 4 (lightcurve fitting).
 """
 
-# TODO: Think about bulk WLC batch fitting
 from datetime import datetime
 from exotic_ld import StellarLimbDarkening
 import juliet
