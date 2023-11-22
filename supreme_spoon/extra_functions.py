@@ -9,7 +9,89 @@ Extra functions to be used alongside the main pipeline.
 """
 
 from astropy.io import fits
+from astroquery.mast import Observations
+from itertools import groupby
 import numpy as np
+import os
+import shutil
+
+from supreme_spoon.utils import fancyprint
+
+
+def download_observations(proposal_id, instrument_name=None, objectname=None,
+                          filters=None, visit_nos=None):
+    """Directly download uncal files associated with a given observation from
+    the MAST archive.
+
+    Parameters
+    ----------
+    proposal_id : str
+        ID for proposal with which the observations are associated.
+    instrument_name : str
+        Name of instrument data to retrieve. NIRISS/SOSS, NIRSpec/SLIT
+        currently supported. (optional).
+    objectname : str
+        Name of observational target. (optional).
+    filters : str
+        Instrument filters to retrieve.
+    visit_nos : int, array-like(int)
+        For targets with multiple visits, which visits to retrieve.
+    """
+
+    # Make sure something is specified to download.
+    if proposal_id is None and objectname is None:
+        msg = 'At least one of proposal_id or objectname must be specified.'
+        raise ValueError(msg)
+
+    # Get observations from MAST.
+    obs_table = Observations.query_criteria(proposal_id=proposal_id,
+                                            instrument_name=instrument_name,
+                                            filters=filters,
+                                            objectname=objectname,
+                                            radius='.2 deg')
+    all_products = Observations.get_product_list(obs_table)
+
+    products = Observations.filter_products(all_products,
+                                            dataproduct_type='image',
+                                            extension='_uncal.fits',
+                                            productType='SCIENCE')
+
+    # If specific visits are specified, retrieve only those files. If not,
+    # retrieve all relevant files.
+    if visit_nos is not None:
+        # Group files by observation number.
+        nums = []
+        for file in products['productFilename'].data.data:
+            nums.append(file.split('_')[0])
+        nums = np.array(nums)
+        exps = [list(j) for i, j in groupby(nums)]
+        fancyprint('Identified {} observations.'.format(len(exps)))
+
+        # Select only files from relevant visits.
+        visit_nos = np.atleast_1d(visit_nos)
+        if np.max(visit_nos) > len(exps):
+            msg = 'You are trying to retrieve visit {0}, but only {1} ' \
+                  'visits exist.'.format(np.max(visit_nos), len(exps))
+            raise ValueError(msg)
+        fancyprint('Retrieving visit(s) {}.'.format(visit_nos))
+        for visit in visit_nos:
+            ii = np.where(nums == exps[visit - 1][0])[0]
+            this_visit = products[ii]
+            # Download the relevant files.
+            manifest = Observations.download_products(this_visit)
+    else:
+        # Download the relevant files.
+        manifest = Observations.download_products(products)
+
+    # Unpack auto-generated directories into something better.
+    os.mkdir('DMS_uncal')
+    for root, _, files in os.walk('mastDownload/', topdown=False):
+        for name in files:
+            file = os.path.join(root, name)
+            shutil.move(file, 'DMS_uncal/.')
+    shutil.rmtree('mastDownload/')
+
+    return
 
 
 def get_throughput_from_photom_file(photom_path):
