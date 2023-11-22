@@ -242,7 +242,8 @@ class BadPixStep:
         self.fileroots = utils.get_filename_root(self.datafiles)
         self.fileroot_noseg = utils.get_filename_root_noseg(self.fileroots)
 
-    def run(self, thresh=15, box_size=5, save_results=True, force_redo=False,
+    def run(self, space_thresh=15, time_thresh=10, box_size=5,
+            save_results=True, force_redo=False,
             do_plot=False, show_plot=False):
         """Method to run the step.
         """
@@ -272,7 +273,9 @@ class BadPixStep:
                                       save_results=save_results,
                                       fileroots=self.fileroots,
                                       fileroot_noseg=self.fileroot_noseg,
-                                      thresh=thresh, box_size=box_size,
+                                      space_thresh=space_thresh,
+                                      time_thresh=time_thresh,
+                                      box_size=box_size,
                                       do_plot=do_plot, show_plot=show_plot)
             results, deepframe = step_results
 
@@ -485,13 +488,15 @@ def backgroundstep(datafiles, background_model, output_dir='./',
     return results, model_scaled
 
 
-def badpixstep(datafiles, baseline_ints, smoothed_wlc=None, thresh=15,
-               box_size=5, output_dir='./', save_results=True, fileroots=None,
-               fileroot_noseg='', do_plot=False, show_plot=False):
-    """Identify and correct hot pixels remaining in the dataset. Find outlier
-    pixels in the median stack and correct them via the median of a box of
-    surrounding pixels. Then replace these pixels in each integration via the
-    wlc scaled median.
+def badpixstep(datafiles, baseline_ints, smoothed_wlc=None, space_thresh=10,
+               time_thresh=10, box_size=5, output_dir='./', save_results=True,
+               fileroots=None, fileroot_noseg='', do_plot=False,
+               show_plot=False):
+    """Identify and correct outlier pixels remaining in the dataset, using
+    both a spatial and temporal approach. First, find spatial outlier pixels
+    in the median stack and correct them in each integration via the median of
+    a box of surrounding pixels. Then flag outlier pixels in the temporal
+    direction and again replace with the surrounding median.
 
     Parameters
     ----------
@@ -502,8 +507,10 @@ def badpixstep(datafiles, baseline_ints, smoothed_wlc=None, thresh=15,
         Integrations of ingress and egress.
     smoothed_wlc : array-like[float]
         Estimate of the normalized light curve.
-    thresh : int
-        Sigma threshold for a deviant pixel to be flagged.
+    space_thresh : int
+        Sigma threshold for a deviant pixel to be flagged spatially.
+    time_thresh : int
+        Sigma threshold for a deviant pixel to be flagged temporally.
     box_size : int
         Size of box around each pixel to test for deviations.
     output_dir : str
@@ -528,7 +535,7 @@ def badpixstep(datafiles, baseline_ints, smoothed_wlc=None, thresh=15,
         Final median stack of all outlier corrected integrations.
     """
 
-    fancyprint('Starting hot pixel interpolation step.')
+    fancyprint('Starting outlier pixel interpolation step.')
 
     # Output directory formatting.
     if output_dir is not None:
@@ -557,8 +564,9 @@ def badpixstep(datafiles, baseline_ints, smoothed_wlc=None, thresh=15,
     newdata = np.copy(cube)
     newdq = np.copy(dq_cube)
 
+    # ===== Spatial Outlier Flagging ======
+    fancyprint('Starting spatial outlier flagging...')
     # Generate the deepstack.
-    fancyprint('Generating a deep stack...')
     deepframe_itl = utils.make_deepstack(newdata[baseline_ints])
 
     # Get locations of all hot pixels.
@@ -595,13 +603,12 @@ def badpixstep(datafiles, baseline_ints, smoothed_wlc=None, thresh=15,
                     nanpix[j, i] = 1
                     nan += 1
                 elif deepframe_itl[j, i] < 0:
-                    # Interpolate if bright, set to zero if dark.
+                    # Interpolate if bright, ignore if dark (will handle
+                    # later).
                     if med >= np.nanpercentile(deepframe_itl, 10):
                         nanpix[j, i] = 1
-                    else:
-                        deepframe_itl[j, i] = 0
-                    neg += 1
-                elif np.abs(deepframe_itl[j, i] - med) >= (thresh * std):
+                        neg += 1
+                elif np.abs(deepframe_itl[j, i] - med) >= (space_thresh * std):
                     otherpix[j, i] = 1
                     other += 1
 
@@ -611,11 +618,18 @@ def badpixstep(datafiles, baseline_ints, smoothed_wlc=None, thresh=15,
 
     fancyprint('{0} hot, {1} nan, {2} negative, and {3} deviant pixels '
                'identified.'.format(hot, nan, neg, other))
-    # Replace the flagged pixels in the median integration.
-    newdeep, deepdq = utils.do_replacement(deepframe_itl, badpix,
-                                           dq=np.ones_like(deepframe_itl),
-                                           box_size=box_size)
+    # Replace the flagged pixels in each integration.
+    fancyprint('Doing pixel replacement...')
+    for i in tqdm(range(nint)):
+        newdata[i], thisdq = utils.do_replacement(newdata[i], badpix,
+                                                  dq=np.ones_like(newdata[i]),
+                                                  box_size=box_size)
+        # Set DQ flags for these pixels to zero (use the pixel).
+        thisdq = ~thisdq.astype(bool)
+        newdq[:, thisdq] = 0
 
+    # ===== Temporal Outlier Flagging =====
+    fancyprint('Starting temporal outlier flagging...')
     # Attempt to open smoothed wlc file.
     if isinstance(smoothed_wlc, str):
         try:
@@ -633,32 +647,35 @@ def badpixstep(datafiles, baseline_ints, smoothed_wlc=None, thresh=15,
         smoothed_wlc = median_filter(timeseries,
                                      int(0.02*np.shape(cube)[0]))
 
-    # Replace hot pixels in each integration using a scaled median.
-    newdeep = np.repeat(newdeep, nint).reshape(dimy, dimx, nint)
-    newdeep = newdeep.transpose(2, 0, 1) * smoothed_wlc[:, None, None]
-    mask = badpix.astype(bool)
-    newdata[:, mask] = newdeep[:, mask]
-    # Set DQ flags for these pixels to zero (use the pixel).
-    deepdq = ~deepdq.astype(bool)
-    newdq[:, deepdq] = 0
-
     # Generate a temporary corrected deep frame.
     deepframe_tmp = utils.make_deepstack(newdata[baseline_ints])
+    # Scale by the white light curve.
+    deepframe_scaled = deepframe_tmp[None, :, :]*smoothed_wlc[:, None, None]
 
-    # Final check along the time axis for outlier pixels.
-    std_dev = bn.nanstd(newdata, axis=0)
-    scale = np.abs(newdata - deepframe_tmp) / std_dev
-    ii = np.where(scale > 5)
-    mask = np.zeros_like(cube).astype(bool)
-    mask[ii] = True
-    newdata[mask] = newdeep[mask]
+    # Check along the time axis for outlier pixels.
+    std_dev = bn.nanstd(newdata[baseline_ints], axis=0)
+    scale = np.abs(newdata - deepframe_scaled) / std_dev
+    ii = np.where(scale > time_thresh)
+    fancyprint('{} outliers detected.'.format(len(ii[0])))
+    badpix = np.zeros_like(cube).astype(bool)
+    badpix[ii] = 1
+
+    # Replace the flagged pixels in each integration.
+    fancyprint('Doing pixel replacement...')
+    for i in tqdm(range(nint)):
+        newdata[i], thisdq = utils.do_replacement(newdata[i], badpix[i],
+                                                  dq=np.ones_like(newdata[i]),
+                                                  box_size=box_size)
+        # Set DQ flags for these pixels to zero (use the pixel).
+        thisdq = ~thisdq.astype(bool)
+        newdq[:, thisdq] = 0
 
     # Lastly, do a final check for any remaining invalid flux or error values.
     ii = np.where(np.isnan(newdata))
-    newdata[ii] = newdeep[ii]
+    newdata[ii] = deepframe_scaled[ii]
     ii = np.where(np.isnan(err_cube))
     err_cube[ii] = np.nanmedian(err_cube)
-    # And replace any negatives with zeros
+    # And replace any negatives with zeros.
     newdata[newdata < 0] = 0
 
     # Make a final, corrected deepframe for the baseline intergations.
