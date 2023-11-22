@@ -10,9 +10,14 @@ Extra functions to be used alongside the main pipeline.
 
 from astropy.io import fits
 from astroquery.mast import Observations
+import bottleneck as bn
 from itertools import groupby
 import numpy as np
 import os
+import ray
+from scipy.interpolate import interp2d
+from scipy.ndimage import median_filter
+from scipy.optimize import curve_fit
 import shutil
 
 from supreme_spoon.utils import fancyprint
@@ -28,7 +33,7 @@ def download_observations(proposal_id, instrument_name=None, objectname=None,
     proposal_id : str
         ID for proposal with which the observations are associated.
     instrument_name : str
-        Name of instrument data to retrieve. NIRISS/SOSS, NIRSpec/SLIT
+        Name of instrument data to retrieve. NIRISS/SOSS, NIRSPEC/SLIT
         currently supported. (optional).
     objectname : str
         Name of observational target. (optional).
