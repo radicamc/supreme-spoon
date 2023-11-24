@@ -272,7 +272,7 @@ def make_lightcurve_plot(t, data, model, scatter, errors, nfit, outpdf=None,
     nint = len(data)  # Total number of data points
     # Full dataset
     ax1.errorbar(t, data, yerr=scatter*1e-6, fmt='o', capsize=0,
-                 color='royalblue', ms=5, alpha=0.75)
+                 color='royalblue', ms=5, alpha=0.25)
     # Binned points
     rem = nint % nbin
     if rem != 0:
@@ -314,7 +314,7 @@ def make_lightcurve_plot(t, data, model, scatter, errors, nfit, outpdf=None,
         data_detrended = data - systematics
         # Full dataset.
         ax2.errorbar(t, data_detrended, yerr=scatter*1e-6, fmt='o',
-                     capsize=0, color='salmon', ms=5, alpha=1)
+                     capsize=0, color='salmon', ms=5, alpha=0.25)
         # Binned points.
         if rem != 0:
             d_bin = data_detrended[trim_i:trim_e].reshape((nint-rem)//nbin, nbin)
@@ -339,7 +339,7 @@ def make_lightcurve_plot(t, data, model, scatter, errors, nfit, outpdf=None,
         ax3 = plt.subplot(gs[1])
     # Full dataset.
     res = (data - model)*1e6
-    ax3.errorbar(t, res, yerr=scatter, alpha=0.8, ms=5,
+    ax3.errorbar(t, res, yerr=scatter, alpha=0.25, ms=5,
                  c='royalblue', fmt='o', zorder=10)
     # Binned points.
     if rem != 0:
@@ -800,7 +800,8 @@ def nine_panel_plot(data, text=None, outfile=None, show_plot=True, **kwargs):
             ax.imshow(data[frame], aspect='auto', origin='lower', vmin=vmin,
                       vmax=vmax)
             if text is not None:
-                ax.text(30, 230, text[frame], c='white', fontsize=12)
+                ax.text(30, 0.9*np.shape(data[frame])[0], text[frame],
+                        c='white', fontsize=12)
             if j != 0:
                 ax.yaxis.set_major_formatter(plt.NullFormatter())
             else:
