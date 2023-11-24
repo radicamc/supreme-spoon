@@ -157,21 +157,32 @@ def format_out_frames(out_frames):
 
     Parameters
     ----------
-    out_frames : array-like[int]
-        Integration numbers of ingress and egress.
+    out_frames : int, array-like[int]
+        Integration numbers of ingress and/or egress.
 
     Returns
     -------
     baseline_ints : array-like[int]
-        Array of out-of-transit frames.
+        Array of baseline frames.
     """
 
-    # Format the out-of-transit integration numbers.
-    out_frames = np.abs(out_frames)
-    out_frames = np.concatenate([np.arange(out_frames[0]),
-                                 np.arange(out_frames[1]) - out_frames[1]])
+    out_frames = np.atleast_1d(out_frames)
+    # For baseline just before ingress or after ingress.
+    if len(out_frames) == 1:
+        if out_frames[0] > 0:
+            baseline_ints = np.arange(out_frames[0])
+        else:
+            out_frames = np.abs(out_frames)
+            baseline_ints = np.arange(out_frames[0]) - out_frames[0]
+    # If baseline at both ingress and egress to be used.
+    elif len(out_frames) == 2:
+        out_frames = np.abs(out_frames)
+        baseline_ints = np.concatenate([np.arange(out_frames[0]),
+                                        np.arange(out_frames[1]) - out_frames[1]])
+    else:
+        raise ValueError('out_frames must have length 1 or 2.')
 
-    return out_frames
+    return baseline_ints
 
 
 def get_default_header():
