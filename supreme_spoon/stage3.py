@@ -16,12 +16,12 @@ import pandas as pd
 import pastasoss
 from scipy.interpolate import interp1d
 from scipy.signal import butter, filtfilt
+from tqdm import tqdm
 import os
 
 from applesoss import applesoss
 
 from jwst import datamodels
-from jwst.extract_1d.soss_extract import soss_boxextract
 from jwst.pipeline import calwebb_spec2
 
 from supreme_spoon import utils, plotting
@@ -145,7 +145,8 @@ class Extract1DStep:
                     except FileNotFoundError:
                         raise ValueError('Centroids must be provided for box '
                                          'extraction')
-                results = box_extract(self.datafiles, centroids, soss_width)
+                results = box_extract_soss(self.datafiles, centroids,
+                                           soss_width)
             else:
                 raise ValueError('Invalid extraction method')
 
@@ -258,7 +259,7 @@ def specprofilestep(datafiles, empirical=True, output_dir='./'):
     return filename
 
 
-def box_extract(datafiles, centroids, soss_width):
+def box_extract_soss(datafiles, centroids, soss_width):
     """Perform a simple box aperture extraction on SOSS orders 1 and 2.
 
     Parameters
@@ -296,7 +297,6 @@ def box_extract(datafiles, centroids, soss_width):
             else:
                 cube = np.concatenate([cube, datamodel.data])
                 ecube = np.concatenate([ecube, datamodel.err])
-    nints, dimy, dimx = np.shape(cube)
 
     # Get centroid positions
     x1 = centroids['xpos'].values
@@ -304,26 +304,12 @@ def box_extract(datafiles, centroids, soss_width):
     ii = np.where(np.isfinite(y2))
     x2, y2 = x1[ii], y2[ii]
 
-    # Define the widths of the extraction boxes for orders 1 and 2.
-    weights = soss_boxextract.get_box_weights(y1, soss_width, (dimy, dimx),
-                                              cols=x1.astype(int))
-    weights2 = soss_boxextract.get_box_weights(y2, soss_width, (dimy, dimx),
-                                               cols=x2.astype(int))
-
-    flux_o1, ferr_o1 = np.zeros((nints, dimx)), np.zeros((nints, dimx))
-    flux_o2, ferr_o2 = np.zeros((nints, dimx)), np.zeros((nints, dimx))
-    # Loop over each integration and perform the box extraction.
     fancyprint('Performing simple aperture extraction.')
-    for i in range(nints):
-        scimask = np.isnan(cube[i])
-        c, f, fe, npx = soss_boxextract.box_extract(cube[i], ecube[i], scimask,
-                                                    weights)
-        flux_o1[i] = f
-        ferr_o1[i] = fe
-        c, f, fe, npx = soss_boxextract.box_extract(cube[i], ecube[i], scimask,
-                                                    weights2)
-        flux_o2[i] = f
-        ferr_o2[i] = fe
+    fancyprint('Extracting Order 1')
+    flux_o1, ferr_o1 = do_box_extraction(cube, ecube, y1, width=soss_width)
+    fancyprint('Extracting Order 2')
+    flux_o2, ferr_o2 = do_box_extraction(cube, ecube, y2, width=soss_width,
+                                         extract_end=len(y2))
 
     # Get default wavelength solution.
     step = calwebb_spec2.extract_1d_step.Extract1dStep()
@@ -333,6 +319,74 @@ def box_extract(datafiles, centroids, soss_width):
     wave_o2 = np.mean(fits.getdata(wavemap, 2)[20:-20, 20:-20], axis=0)
 
     return wave_o1, flux_o1, ferr_o1, wave_o2, flux_o2, ferr_o2
+
+
+def do_box_extraction(cube, err, ypos, width, extract_start=0,
+                      extract_end=None):
+    """Do intrapixel aperture extraction.
+
+    Parameters
+    ----------
+    cube : array-like(float)
+        Data cube.
+    err : array-like(float)
+        Error cube.
+    ypos : array-like(float)
+        Detector Y-positions to extract.
+    width : int
+        Full-width of the extraction aperture to use.
+    extract_start : int
+        Detector X-position at which to start extraction.
+    extract_end : int, None
+        Detector X-position at which to end extraction.
+
+    Returns
+    -------
+    f : np.array(float)
+        Extracted flux values.
+    ferr : np.array(float)
+         Extracted error values.
+    """
+
+    # Ensure data and errors are the same shape.
+    assert np.shape(cube) == np.shape(err)
+    nint, dimy, dimx = np.shape(cube)
+
+    # If extraction end is not specified, extract the whole frame.
+    if extract_end is None:
+        extract_end = dimx
+
+    # Initialize output arrays.
+    f, ferr = np.zeros((nint, dimx)), np.zeros((nint, dimx))
+
+    # Determine the upper and lower edges of the extraction region. Cut at
+    # detector edges if necessary.
+    edge_up = np.min([ypos + width / 2, np.ones_like(ypos) * dimy], axis=0)
+    edge_low = np.max([ypos - width / 2, np.zeros_like(ypos)], axis=0)
+
+    # Loop over all integrations and sum flux within the extraction aperture.
+    for i in tqdm(range(nint)):
+        for x in range(extract_start, extract_end):
+            # First sum the whole pixel components within the aperture.
+            up_whole = np.floor(edge_up[x - extract_start]).astype(int)
+            low_whole = np.ceil(edge_low[x - extract_start]).astype(int)
+            this_flux = np.sum(cube[i, low_whole:up_whole, x])
+            this_err = np.sum(err[i, low_whole:up_whole, x]**2)
+
+            # Now incorporate the partial pixels at the upper and lower edges.
+            if edge_up[x - extract_start] >= (dimy-1) or edge_low[x - extract_start] == 0:
+                continue
+            else:
+                up_part = edge_up[x - extract_start] % 1
+                low_part = 1 - edge_low[x - extract_start] % 1
+                this_flux += (up_part * cube[i, up_whole, x] +
+                              low_part * cube[i, low_whole, x])
+                this_err += (up_part * err[i, up_whole, x]**2 +
+                             low_part * err[i, low_whole, x]**2)
+                f[i, x] = this_flux
+                ferr[i, x] = np.sqrt(this_err)
+
+    return f, ferr
 
 
 def do_ccf(wave, flux, err, mod_flux, nsteps=1000):
