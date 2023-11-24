@@ -14,6 +14,7 @@ import glob
 import numpy as np
 import os
 from scipy.ndimage import median_filter
+from scipy.signal import medfilt
 from tqdm import tqdm
 import warnings
 
@@ -592,7 +593,7 @@ def flag_hot_pixels(result, deepframe, box_size=10, thresh=15, hot_pix=None):
     return result, hot_pix
 
 
-def jumpstep_in_time(datafile, window=10, thresh=10, fileroot=None,
+def jumpstep_in_time(datafile, window=5, thresh=10, fileroot=None,
                      save_results=True, output_dir=None):
     """Jump detection step in the temporal domain. This algorithm is based off
     of Nikolov+ (2014) and identifies cosmic ray hits in the temporal domain.
@@ -605,7 +606,7 @@ def jumpstep_in_time(datafile, window=10, thresh=10, fileroot=None,
         Path to data file, or RampModel itself for a segment of the TSO.
         Should be 4D ramp.
     window : int
-        Number of integrations before and after to use for cosmic ray flagging.
+        Number of integrations to use for cosmic ray flagging.
     thresh : int
         Sigma threshold for a pixel to be flagged.
     output_dir : str
@@ -641,43 +642,42 @@ def jumpstep_in_time(datafile, window=10, thresh=10, fileroot=None,
     # create a difference image using the median of surrounding integrations.
     # Flag all pixels with deviations more than X-sigma as comsic rays hits.
     count, interp = 0, 0
-    for i in tqdm(range(nints)):
-        # Create a stack of the integrations before and after the current
-        # integration.
-        up = np.min([nints, i + window])
-        low = np.max([0, i - window])
-        stack = np.concatenate([cube[low:i], cube[(i + 1):up]])
-        # Get median and standard deviation of the stack.
-        local_med = np.nanmedian(stack, axis=0)
-        local_std = np.nanstd(stack, axis=0)
-        for g in range(ngroups):
-            # Find deviant pixels.
-            ii = np.abs(cube[i, g] - local_med[g]) >= thresh * local_std[g]
-            # If ngroup<=2, replace the pixel with the stack median so that a
-            # ramp can still be fit.
-            if ngroups <= 2:
-                # Do not want to interpolate pixels which are flagged for
-                # another reason, so only select good pixels or those which
-                # are flagged for jumps.
-                jj = (dqcube[i, g] == 0) | (dqcube[i, g] == 4)
-                # Replace these pixels with the stack median and remove the
-                # dq flag.
-                replace = ii & jj
-                cube[i, g][replace] = local_med[g][replace]
-                dqcube[i, g][replace] = 0
-                interp += np.sum(replace)
-            # If ngroup>2, flag the pixel as having a jump.
-            else:
-                # Want to ignore pixels which are already flagged for a jump.
-                jj = np.where(utils.get_dq_flag_metrics(dqcube[i, g], ['JUMP_DET']) == 1)
-                alrdy_flg = np.ones_like(dqcube[i, g]).astype(bool)
-                alrdy_flg[jj] = False
-                new_flg = np.zeros_like(dqcube[i, g]).astype(bool)
-                new_flg[ii] = True
-                to_flag = new_flg & alrdy_flg
-                # Add the jump detection flag.
-                dqcube[i, g][to_flag] += 4
-                count += int(np.sum(to_flag))
+    for g in tqdm(range(ngroups)):
+        # Filter the data using the specified window
+        cube_filt = medfilt(cube[:, g], (window, 1, 1))
+        # Calculate the point-to-point scatter along the temporal axis.
+        scatter = np.median(np.abs(0.5 * (cube[0:-2, g] + cube[2:, g]) - cube[1:-1, g]), axis=0)
+        scatter = np.where(scatter == 0, np.inf, scatter)
+        # Find pixels which deviate more than the specified threshold.
+        scale = np.abs(cube[:, g] - cube_filt) / scatter
+        ii = np.where((scale > thresh) & (cube[:, g] > np.nanpercentile(cube, 10)))
+
+        # If ngroup<=2, replace the pixel with the stack median so that a
+        # ramp can still be fit.
+        if ngroups <= 2:
+            # Do not want to interpolate pixels which are flagged for
+            # another reason, so only select good pixels or those which
+            # are flagged for jumps.
+            jj = (dqcube[:, g] == 0) | (dqcube[:, g] == 4)
+            # Replace these pixels with the stack median and remove the
+            # dq flag.
+            replace = ii & jj
+            cube[:, g][replace] = cube_filt[replace]
+            dqcube[:, g][replace] = 0
+            interp += np.sum(replace)
+        # If ngroup>2, flag the pixel as having a jump.
+        else:
+            # Want to ignore pixels which are already flagged for a jump.
+            jj = np.where(utils.get_dq_flag_metrics(dqcube[:, g], ['JUMP_DET']) == 1)
+            alrdy_flg = np.ones_like(dqcube[:, g]).astype(bool)
+            alrdy_flg[jj] = False
+            new_flg = np.zeros_like(dqcube[:, g]).astype(bool)
+            new_flg[ii] = True
+            to_flag = new_flg & alrdy_flg
+            # Add the jump detection flag.
+            dqcube[:, g][to_flag] += 4
+            count += int(np.sum(to_flag))
+
     fancyprint('{} jumps flagged'.format(count))
     fancyprint('and {} interpolated'.format(interp))
 

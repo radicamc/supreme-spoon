@@ -237,7 +237,8 @@ def get_dq_flag_metrics(dq_map, flags):
     """
 
     flags = np.atleast_1d(flags)
-    dimy, dimx = np.shape(dq_map)
+    dq_map = np.atleast_3d(dq_map)
+    dimy, dimx, nint = np.shape(dq_map)
 
     # From here: https://jwst-reffiles.stsci.edu/source/data_quality.html
     flags_dict = {'DO_NOT_USE': 0, 'SATURATED': 1, 'JUMP_DET': 2,
@@ -260,12 +261,15 @@ def get_dq_flag_metrics(dq_map, flags):
         flag_bits.append(flags_dict[flag])
 
     # Find pixels flagged for the selected reasons.
-    for x in range(dimx):
-        for y in range(dimy):
-            val = np.binary_repr(dq_map[y, x], width=32)[::-1]
-            for bit in flag_bits:
-                if val[bit] == '1':
-                    flagged[y, x] = True
+    for i in range(nint):
+        for x in range(dimx):
+            for y in range(dimy):
+                val = np.binary_repr(dq_map[y, x, i], width=32)[::-1]
+                for bit in flag_bits:
+                    if val[bit] == '1':
+                        flagged[y, x, i] = True
+    if nint == 1:
+        flagged = flagged[:, :, 0]
 
     return flagged
 
