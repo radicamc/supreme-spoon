@@ -19,24 +19,27 @@ outlier_maps : None
 # For 1/f correction; estimate of white light curve (optional).
 smoothed_wlc : None
 # For jump detection; sigma threshold for a pixel to be flagged as an outlier.
-rejection_threshold : 15
+jump_threshold : 15
 # For jump detection; whether to also flag outliers in the time domain.
 flag_in_time : False
 # For time domain jump detection; sigma threshold for a pixel to be flagged as an outlier.
-time_rejection_threshold : 10
+time_jump_threshold : 10
 # List of Stage 1 steps to skip, if any.
 stage1_skip : None
 # DMS Stage 1 kwargs. Format should be: {'step_name': {'kwd': value}}.
 stage1_kwargs : {}
 
 # ===== Stage 2 Input Files & Parameters =====
+# For outlier detection; sigma threshold for a pixel to be flagged as an outlier spatially.
+space_outlier_threshold : 15
+# For outlier detection; sigma threshold for a pixel to be flagged as an outlier temporally.
+time_outlier_threshold : 10
 # If True, create a mask of the target trace orders.
 generate_tracemask : True
 # If True, calculate the stability of the SOSS trace over the course of the
 # TSO using principle component analysis.
 calculate_stability : True
-# Number of principle components to extract. Only neceesary if calculate_stability_pca
-# is True.
+# Number of principle components to extract. Only neceesary if calculate_stability_pca is True.
 pca_components : 10
 # If True, generate a smoothed estimate of the order 1 white light curve.
 generate_lc : True
@@ -81,7 +84,7 @@ exposure_type : 'CLEAR'
 save_results : True
 # Force redo of steps which have already been completed.
 force_redo : False
-# Integrations of ingress and egress.
+# Integrations of ingress and/or egress.
 baseline_ints : [50, -50]
 # If True, make diagnostic plots.
 do_plots : False

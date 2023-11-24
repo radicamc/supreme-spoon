@@ -17,6 +17,7 @@ import os
 import pandas as pd
 from sklearn.decomposition import PCA
 from scipy.ndimage import median_filter
+from scipy.signal import medfilt
 from tqdm import tqdm
 import warnings
 
@@ -229,22 +230,20 @@ class BadPixStep:
     """Wrapper around custom Bad Pixel Correction Step.
     """
 
-    def __init__(self, input_data, smoothed_wlc, baseline_ints,
-                 output_dir='./'):
+    def __init__(self, input_data, baseline_ints, output_dir='./'):
         """Step initializer.
         """
 
         self.tag = 'badpixstep.fits'
         self.output_dir = output_dir
-        self.smoothed_wlc = smoothed_wlc
         self.baseline_ints = baseline_ints
         self.datafiles = utils.sort_datamodels(input_data)
         self.fileroots = utils.get_filename_root(self.datafiles)
         self.fileroot_noseg = utils.get_filename_root_noseg(self.fileroots)
 
     def run(self, space_thresh=15, time_thresh=10, box_size=5,
-            save_results=True, force_redo=False,
-            do_plot=False, show_plot=False):
+            save_results=True, force_redo=False, do_plot=False,
+            show_plot=False):
         """Method to run the step.
         """
 
@@ -268,7 +267,6 @@ class BadPixStep:
         else:
             step_results = badpixstep(self.datafiles,
                                       baseline_ints=self.baseline_ints,
-                                      smoothed_wlc=self.smoothed_wlc,
                                       output_dir=self.output_dir,
                                       save_results=save_results,
                                       fileroots=self.fileroots,
@@ -488,15 +486,15 @@ def backgroundstep(datafiles, background_model, output_dir='./',
     return results, model_scaled
 
 
-def badpixstep(datafiles, baseline_ints, smoothed_wlc=None, space_thresh=10,
-               time_thresh=10, box_size=5, output_dir='./', save_results=True,
+def badpixstep(datafiles, baseline_ints, space_thresh=15, time_thresh=10,
+               box_size=5, output_dir='./', save_results=True,
                fileroots=None, fileroot_noseg='', do_plot=False,
                show_plot=False):
     """Identify and correct outlier pixels remaining in the dataset, using
     both a spatial and temporal approach. First, find spatial outlier pixels
     in the median stack and correct them in each integration via the median of
     a box of surrounding pixels. Then flag outlier pixels in the temporal
-    direction and again replace with the surrounding median.
+    direction and again replace with the surrounding median in time.
 
     Parameters
     ----------
@@ -505,8 +503,6 @@ def badpixstep(datafiles, baseline_ints, smoothed_wlc=None, space_thresh=10,
         themselves.
     baseline_ints : array-like[int]
         Integrations of ingress and egress.
-    smoothed_wlc : array-like[float]
-        Estimate of the normalized light curve.
     space_thresh : int
         Sigma threshold for a deviant pixel to be flagged spatially.
     time_thresh : int
@@ -575,8 +571,12 @@ def badpixstep(datafiles, baseline_ints, smoothed_wlc=None, space_thresh=10,
     hotpix = np.zeros_like(deepframe_itl)
     nanpix = np.zeros_like(deepframe_itl)
     otherpix = np.zeros_like(deepframe_itl)
-    nan, hot, other, neg = 0, 0, 0, 0
+    nan, hot, other = 0, 0, 0
     nint, dimy, dimx = np.shape(newdata)
+
+    # Set all negatives to zero.
+    newdata[newdata < 0] = 0
+
     # Loop over whole deepstack and flag deviant pixels.
     for i in tqdm(range(4, dimx - 4)):
         for j in range(dimy - 4):
@@ -598,16 +598,10 @@ def badpixstep(datafiles, baseline_ints, smoothed_wlc=None, space_thresh=10,
                                                     i, j, dimx)
                 med, std = box_prop[0], box_prop[1]
 
-                # If central pixel is too deviant (or nan/negative) flag it.
+                # If central pixel is too deviant (or nan) flag it.
                 if np.isnan(deepframe_itl[j, i]):
                     nanpix[j, i] = 1
                     nan += 1
-                elif deepframe_itl[j, i] < 0:
-                    # Interpolate if bright, ignore if dark (will handle
-                    # later).
-                    if med >= np.nanpercentile(deepframe_itl, 10):
-                        nanpix[j, i] = 1
-                        neg += 1
                 elif np.abs(deepframe_itl[j, i] - med) >= (space_thresh * std):
                     otherpix[j, i] = 1
                     other += 1
@@ -616,8 +610,8 @@ def badpixstep(datafiles, baseline_ints, smoothed_wlc=None, space_thresh=10,
     badpix = hotpix.astype(bool) | nanpix.astype(bool) | otherpix.astype(bool)
     badpix = badpix.astype(int)
 
-    fancyprint('{0} hot, {1} nan, {2} negative, and {3} deviant pixels '
-               'identified.'.format(hot, nan, neg, other))
+    fancyprint('{0} hot, {1} nan, and {2} deviant pixels '
+               'identified.'.format(hot, nan, other))
     # Replace the flagged pixels in each integration.
     fancyprint('Doing pixel replacement...')
     for i in tqdm(range(nint)):
@@ -630,49 +624,25 @@ def badpixstep(datafiles, baseline_ints, smoothed_wlc=None, space_thresh=10,
 
     # ===== Temporal Outlier Flagging =====
     fancyprint('Starting temporal outlier flagging...')
-    # Attempt to open smoothed wlc file.
-    if isinstance(smoothed_wlc, str):
-        try:
-            smoothed_wlc = np.load(smoothed_wlc)
-        except (ValueError, FileNotFoundError):
-            fancyprint('Light curve file cannot be opened. It will be '
-                       'estimated from current data.', msg_type='WARNING')
-            smoothed_wlc = None
-    # If no lightcurve is provided, estimate it from the current data.
-    if smoothed_wlc is None:
-        postage = cube[:, 20:60, 1500:1550]
-        timeseries = np.nansum(postage, axis=(1, 2))
-        timeseries = timeseries / np.nanmedian(timeseries[baseline_ints])
-        # Smooth the time series on a timescale of roughly 2%.
-        smoothed_wlc = median_filter(timeseries,
-                                     int(0.02*np.shape(cube)[0]))
-
-    # Generate a temporary corrected deep frame.
-    deepframe_tmp = utils.make_deepstack(newdata[baseline_ints])
-    # Scale by the white light curve.
-    deepframe_scaled = deepframe_tmp[None, :, :]*smoothed_wlc[:, None, None]
+    # Median filter the data.
+    cube_filt = medfilt(newdata, (5, 1, 1))
 
     # Check along the time axis for outlier pixels.
-    std_dev = bn.nanstd(newdata[baseline_ints], axis=0)
-    scale = np.abs(newdata - deepframe_scaled) / std_dev
-    ii = np.where(scale > time_thresh)
+    std_dev = np.median(np.abs(0.5*(newdata[0:-2] + newdata[2:]) - newdata[1:-1]), axis=0)
+    std_dev = np.where(std_dev == 0, np.inf, std_dev)
+    scale = np.abs(newdata - cube_filt) / std_dev
+    # Filter out some noise.
+    # TODO: swap to 50 for NIRSpec
+    ii = np.where((scale > time_thresh) & (newdata > np.nanpercentile(newdata, 25)))
     fancyprint('{} outliers detected.'.format(len(ii[0])))
-    badpix = np.zeros_like(cube).astype(bool)
-    badpix[ii] = 1
-
     # Replace the flagged pixels in each integration.
     fancyprint('Doing pixel replacement...')
-    for i in tqdm(range(nint)):
-        newdata[i], thisdq = utils.do_replacement(newdata[i], badpix[i],
-                                                  dq=np.ones_like(newdata[i]),
-                                                  box_size=box_size)
-        # Set DQ flags for these pixels to zero (use the pixel).
-        thisdq = ~thisdq.astype(bool)
-        newdq[:, thisdq] = 0
+    newdata[ii] = cube_filt[ii]
+    newdq[ii] = 0
 
     # Lastly, do a final check for any remaining invalid flux or error values.
     ii = np.where(np.isnan(newdata))
-    newdata[ii] = deepframe_scaled[ii]
+    newdata[ii] = cube_filt[ii]
     ii = np.where(np.isnan(err_cube))
     err_cube[ii] = np.nanmedian(err_cube)
     # And replace any negatives with zeros.
@@ -1092,13 +1062,13 @@ def soss_stability_pca(cube, n_components=10, outfile=None, do_plot=False,
     return pcs, var
 
 
-def run_stage2(results, background_model, baseline_ints, smoothed_wlc=None,
-               save_results=True, force_redo=False, calculate_stability=True,
-               pca_components=10, root_dir='./', output_tag='',
-               smoothing_scale=None, skip_steps=None, generate_lc=True,
-               generate_tracemask=True, mask_width=45, pixel_flags=None,
-               generate_order0_mask=True, f277w=None, do_plot=False,
-               show_plot=False, **kwargs):
+def run_stage2(results, background_model, baseline_ints, save_results=True,
+               force_redo=False, space_thresh=15, time_thresh=15,
+               calculate_stability=True, pca_components=10,
+               root_dir='./', output_tag='', smoothing_scale=None,
+               skip_steps=None, generate_lc=True, generate_tracemask=True,
+               mask_width=45, pixel_flags=None, generate_order0_mask=True,
+               f277w=None, do_plot=False, show_plot=False, **kwargs):
     """Run the supreme-SPOON Stage 2 pipeline: spectroscopic processing,
     using a combination of official STScI DMS and custom steps. Documentation
     for the official DMS steps can be found here:
@@ -1112,12 +1082,14 @@ def run_stage2(results, background_model, baseline_ints, smoothed_wlc=None,
         SOSS background model.
     baseline_ints : array-like[int]
         Integrations of ingress and egress.
-    smoothed_wlc : array-like[float], None
-        Estimate of the normalized light curve.
     save_results : bool
         If True, save results of each step to file.
     force_redo : bool
         If True, redo steps even if outputs files are already present.
+    space_thresh : int
+        Sigma threshold for pixel to be flagged as an outlier spatially.
+    time_thresh : int
+        Sigma threshold for pixel to be flagged as an outlier temporally.
     calculate_stability : bool
         If True, calculate the stability of the SOSS trace over the course of
         the TSO using a PCA method.
@@ -1220,14 +1192,20 @@ def run_stage2(results, background_model, baseline_ints, smoothed_wlc=None,
                            do_plot=do_plot, show_plot=show_plot,
                            **step_kwargs)[0]
 
-    # ===== Hot Pixel Correction Step =====
+    # ===== Bad Pixel Correction Step =====
     # Custom DMS step.
     if 'BadPixStep' not in skip_steps:
+        if 'BadPixStep' in kwargs.keys():
+            step_kwargs = kwargs['BadPixStep']
+        else:
+            step_kwargs = {}
         step = BadPixStep(results, baseline_ints=baseline_ints,
-                          smoothed_wlc=smoothed_wlc, output_dir=outdir)
+                          output_dir=outdir)
         step_results = step.run(save_results=save_results,
-                                force_redo=force_redo, do_plot=do_plot,
-                                show_plot=show_plot)
+                                space_thresh=space_thresh,
+                                time_thresh=time_thresh, force_redo=force_redo,
+                                do_plot=do_plot, show_plot=show_plot,
+                                **step_kwargs)
         results, deepframe = step_results
     else:
         deepframe = None
