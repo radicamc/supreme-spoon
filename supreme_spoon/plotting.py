@@ -459,6 +459,49 @@ def make_linearity_plot(results, old_results, outfile=None, show_plot=True):
         plt.show()
 
 
+def make_oneoverf_chromatic_plot(m_e, m_o, b_e, b_o, ngroup, outfile=None,
+                                 show_plot=True):
+    """Make plot of chromatic 1/f slope and intercept values.
+    """
+
+    fancyprint('Doing diagnostic plot 3.')
+
+    to_plot = [m_e, m_o, b_e, b_o]
+    texts = ['m even', 'm odd', 'b even', 'b odd']
+
+    fig = plt.figure(figsize=(8, 2*ngroup), facecolor='white')
+    gs = GridSpec(ngroup+1, 4, width_ratios=[1, 1, 1, 1])
+
+    for i in range(ngroup):
+        for j, obj in enumerate(to_plot):
+            ax = fig.add_subplot(gs[i, j])
+            plt.imshow(obj[i], aspect='auto', origin='lower',
+                       vmin=np.nanpercentile(obj[i], 25),
+                       vmax=np.nanpercentile(obj[i], 75))
+            if j != 0:
+                ax.yaxis.set_major_formatter(plt.NullFormatter())
+            if i != ngroup-1:
+                ax.xaxis.set_major_formatter(plt.NullFormatter())
+            if i == ngroup-1:
+                plt.xlabel('Spectral Pixel', fontsize=10)
+            if i == 0:
+                plt.title(texts[j], fontsize=12)
+            if j == 0:
+                plt.ylabel('Integration', fontsize=10)
+
+    gs.update(hspace=0.1, wspace=0.1)
+    if outfile is not None:
+        plt.savefig(outfile, bbox_inches='tight')
+        fancyprint('Plot saved to {}'.format(outfile))
+    if show_plot is False:
+        plt.close()
+    else:
+        plt.show()
+
+
+from supreme_spoon.utils import fancyprint
+
+
 def make_oneoverf_plot(results, baseline_ints, timeseries=None,
                        outfile=None, show_plot=True):
     """make nine-panel plot of dataframes after 1/f correction.
@@ -484,23 +527,29 @@ def make_oneoverf_plot(results, baseline_ints, timeseries=None,
             timeseries = np.load(timeseries)
         except (ValueError, FileNotFoundError):
             timeseries = None
-    # If no lightcurve is provided, estimate it from the current data.
+    # If no lightcurve is provided, use array of ones.
     if timeseries is None:
-        postage = cube[:, -1, 20:60, 1500:1550]
-        timeseries = np.nansum(postage, axis=(1, 2))
-        timeseries = timeseries / np.nanmedian(timeseries[baseline_ints])
-        # Smooth the time series on a timescale of roughly 2%.
-        timeseries = median_filter(timeseries,
-                                   int(0.02 * np.shape(cube)[0]))
+        timeseries = np.ones(np.shape(cube[0]))
 
-    nint, ngroup, dimy, dimx = np.shape(cube)
-    ints = np.random.randint(0, nint, 9)
-    grps = np.random.randint(0, ngroup, 9)
-    to_plot, to_write = [], []
-    kwargs = {'vmin': -50, 'vmax': 50}
-    for i, g in zip(ints, grps):
-        to_plot.append(cube[i, g] - deep[g] * timeseries[i])
-        to_write.append('({0}, {1})'.format(i, g))
+    if np.ndim(cube) == 4:
+        nint, ngroup, dimy, dimx = np.shape(cube)
+        ints = np.random.randint(0, nint, 9)
+        grps = np.random.randint(0, ngroup, 9)
+        to_plot, to_write = [], []
+        for i, g in zip(ints, grps):
+            diff = cube[i, g] - deep[g] * timeseries[i]
+            to_plot.append(diff)
+            to_write.append('({0}, {1})'.format(i, g))
+    else:
+        nint, dimy, dimx = np.shape(cube)
+        ints = np.random.randint(0, nint, 9)
+        to_plot, to_write = [], []
+        for i in ints:
+            diff = cube[i] - deep * timeseries[i]
+            to_plot.append(diff)
+            to_write.append('({0})'.format(i))
+    kwargs = {'vmin': np.nanpercentile(diff, 5),
+              'vmax': np.nanpercentile(diff, 95)}
     nine_panel_plot(to_plot, to_write, outfile=outfile, show_plot=show_plot,
                     **kwargs)
     if outfile is not None:
@@ -523,12 +572,14 @@ def make_oneoverf_psd(results, old_results, timeseries, baseline_ints,
                 cube = datamodel.data
             else:
                 cube = np.concatenate([cube, datamodel.data])
+    cube = np.where(np.isnan(cube), np.nanmedian(cube), cube)
     for i, file in enumerate(old_results):
         with utils.open_filetype(file) as datamodel:
             if i == 0:
                 old_cube = datamodel.data
             else:
                 old_cube = np.concatenate([old_cube, datamodel.data])
+    old_cube = np.where(np.isnan(old_cube), np.nanmedian(old_cube), old_cube)
     if pixel_masks is not None:
         for i, file in enumerate(pixel_masks):
             if i == 0:
@@ -538,7 +589,10 @@ def make_oneoverf_psd(results, old_results, timeseries, baseline_ints,
     else:
         mask_cube = None
 
-    nints, ngroups, dimy, dimx = np.shape(cube)
+    if np.ndim(cube) == 4:
+        nints, ngroups, dimy, dimx = np.shape(cube)
+    else:
+        nints, dimy, dimx = np.shape(cube)
     baseline_ints = utils.format_out_frames(baseline_ints)
     old_deep = bn.nanmedian(old_cube[baseline_ints], axis=0)
     deep = bn.nanmedian(cube[baseline_ints], axis=0)
@@ -549,14 +603,9 @@ def make_oneoverf_psd(results, old_results, timeseries, baseline_ints,
             timeseries = np.load(timeseries)
         except (ValueError, FileNotFoundError):
             timeseries = None
-    # If no lightcurve is provided, estimate it from the current data.
+    # If no lightcurve is provided, use array of ones.
     if timeseries is None:
-        postage = cube[:, -1, 20:60, 1500:1550]
-        timeseries = np.nansum(postage, axis=(1, 2))
-        timeseries = timeseries / np.nanmedian(timeseries[baseline_ints])
-        # Smooth the time series on a timescale of roughly 2%.
-        timeseries = median_filter(timeseries,
-                                   int(0.02 * np.shape(cube)[0]))
+        timeseries = np.ones(np.shape(cube[0]))
 
     # Generate array of timestamps for each pixel
     pixel_ts = []
@@ -564,7 +613,7 @@ def make_oneoverf_psd(results, old_results, timeseries, baseline_ints,
     for p in range(dimy * dimx):
         ti = time1 + tpix
         # If column is done, add gap time.
-        if p % 256 == 0 and p != 0:
+        if p % dimy == 0 and p != 0:
             ti += tgap
         pixel_ts.append(ti)
         time1 = ti
@@ -576,18 +625,25 @@ def make_oneoverf_psd(results, old_results, timeseries, baseline_ints,
     # Select nsample random frames and compare PSDs before and after 1/f
     # removal.
     for s in tqdm(range(nsample)):
-        # Get random groups and ints
-        i, g = np.random.randint(nints), np.random.randint(ngroups)
-        # Get difference images before and after 1/f removal.
-        diff_old = (old_cube[i, g] - old_deep[g] * timeseries[i]).flatten('F')[::-1]
-        diff = (cube[i, g] - deep[g] * timeseries[i]).flatten('F')[::-1]
+        if np.ndim(cube) == 4:
+            # Get random groups and ints.
+            i, g = np.random.randint(nints), np.random.randint(ngroups)
+            # Get difference images before and after 1/f removal.
+            diff_old = (old_cube[i, g] - old_deep[g] * timeseries[i]).flatten('F')[::-1]
+            diff = (cube[i, g] - deep[g] * timeseries[i]).flatten('F')[::-1]
+        else:
+            # Get random ints.
+            i = np.random.randint(nints)
+            # Get difference images before and after 1/f removal.
+            diff_old = (old_cube[i] - old_deep * timeseries[i]).flatten('F')[::-1]
+            diff = (cube[i] - deep * timeseries[i]).flatten('F')[::-1]
         # Mask pixels which are not part of the background
         if mask_cube is None:
             # If no pixel/trace mask, discount pixels above a threshold.
             bad = np.where(np.abs(diff) > 100)
         else:
             # Mask flagged pixels.
-            bad = np.where(mask_cube[i, g] != 0)
+            bad = np.where(mask_cube[i] != 0)
         diff, diff_old = np.delete(diff, bad), np.delete(diff_old, bad)
         this_t = np.delete(pixel_ts, bad)
         # Calculate PSDs
@@ -602,15 +658,15 @@ def make_oneoverf_psd(results, old_results, timeseries, baseline_ints,
         plt.plot(freqs[:-1], pwr[i, :-1], c='royalblue', alpha=0.1)
     # Median trends.
     # Aprox white noise level
-    plt.plot(freqs[:-1], np.median(pwr_old, axis=0)[:-1], c='red', lw=2,
+    plt.plot(freqs[:-1], np.nanmedian(pwr_old, axis=0)[:-1], c='red', lw=2,
              label='Before Correction')
-    plt.plot(freqs[:-1], np.median(pwr, axis=0)[:-1], c='blue', lw=2,
+    plt.plot(freqs[:-1], np.nanmedian(pwr, axis=0)[:-1], c='blue', lw=2,
              label='After Correction')
 
     plt.xscale('log')
     plt.xlabel('Frequency [Hz]', fontsize=12)
     plt.yscale('log')
-    plt.ylim(np.percentile(pwr, 0.1), np.max(pwr_old))
+    plt.ylim(np.nanpercentile(pwr, 0.1), np.nanmax(pwr_old))
     plt.ylabel('PSD', fontsize=12)
     plt.legend(loc=1)
 
