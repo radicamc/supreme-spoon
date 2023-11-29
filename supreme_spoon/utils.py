@@ -148,7 +148,7 @@ def fancyprint(message, msg_type='INFO'):
         Type of message. Mirrors the jwst pipeline logging.
     """
 
-    time = datetime.utcnow().isoformat(sep=' ', timespec='milliseconds')
+    time = datetime.now().isoformat(sep=' ', timespec='milliseconds')
     print('{} - supreme-SPOON - {} - {}'.format(time, msg_type, message))
 
 
