@@ -632,9 +632,7 @@ def badpixstep(datafiles, baseline_ints, space_thresh=15, time_thresh=10,
     std_dev = np.median(np.abs(0.5*(newdata[0:-2] + newdata[2:]) - newdata[1:-1]), axis=0)
     std_dev = np.where(std_dev == 0, np.inf, std_dev)
     scale = np.abs(newdata - cube_filt) / std_dev
-    # Filter out some noise.
-    # TODO: swap to 50 for NIRSpec
-    ii = np.where((scale > time_thresh) & (newdata > np.nanpercentile(newdata, 25)))
+    ii = np.where((scale > time_thresh))
     fancyprint('{} outliers detected.'.format(len(ii[0])))
     # Replace the flagged pixels in each integration.
     fancyprint('Doing pixel replacement...')
@@ -648,6 +646,8 @@ def badpixstep(datafiles, baseline_ints, space_thresh=15, time_thresh=10,
     err_cube[ii] = np.nanmedian(err_cube)
     # And replace any negatives with zeros.
     newdata[newdata < 0] = 0
+    newdata[np.isnan(newdata)] = 0
+    deepframe_itl[np.isnan(deepframe_itl)] = 0
 
     # Make a final, corrected deepframe for the baseline intergations.
     deepframe_fnl = utils.make_deepstack(newdata[baseline_ints])
