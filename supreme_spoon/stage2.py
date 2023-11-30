@@ -901,10 +901,18 @@ def tracingstep(datafiles, deepframe=None, calculate_stability=True,
                     outfile = parts[0] + 'seg' + 'XXX' + parts[1][3:]
                     fancyprint('Order 0 mask added to {}'.format(outfile))
                     for flag_file in pixel_flags:
-                        old_flags = fits.getdata(flag_file)
-                        new_flags = old_flags.astype(bool) | order0mask.astype(bool)
-                        hdu = fits.PrimaryHDU(new_flags.astype(int))
-                        hdu.writeto(flag_file, overwrite=True)
+                        old_flags = fits.open(flag_file)
+                        # Add flags to both file extensions.
+                        new_flags1 = old_flags[1].data.astype(bool) | order0mask.astype(bool)
+                        new_flags2 = old_flags[2].data.astype(bool) | order0mask.astype(bool)
+                        # First extension will be combined flags.
+                        hdu1 = fits.PrimaryHDU()
+                        hdu2 = fits.ImageHDU(new_flags1.astype(int))
+                        # Second extension is flags without the trace mask.
+                        hdu3 = fits.ImageHDU(new_flags2.astype(int))
+                        hdul = fits.HDUList([hdu1, hdu2, hdu3])
+                        hdul.writeto(flag_file, overwrite=True)
+
                 else:
                     hdu = fits.PrimaryHDU(order0mask)
                     suffix = 'order0_mask.fits'
