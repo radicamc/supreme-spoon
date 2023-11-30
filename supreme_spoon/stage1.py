@@ -714,12 +714,13 @@ def jumpstep_in_time(datafile, window=5, thresh=10, fileroot=None,
 def oneoverfstep(datafiles, baseline_ints, even_odd_rows=True,
                  background=None, smoothed_wlc=None, output_dir=None,
                  save_results=True, pixel_masks=None, fileroots=None):
-    """Custom 1/f correction routine to be applied at the group level. A
-    median stack is constructed using all out-of-transit integrations and
-    subtracted from each individual integration. The column-wise median of
-    this difference image is then subtracted from the original frame to
-    correct 1/f noise. Outlier pixels, background contaminants, and the target
-    trace itself can (should) be masked to improve the estimation.
+    """Custom achromatic 1/f correction routine to be applied at the group or
+    integration level. A median stack is constructed using all out-of-transit
+    integrations and subtracted from each individual integration. The
+    column-wise median of this difference image is then subtracted from the
+    original frame to correct 1/f noise. Outlier pixels, background
+    contaminants, and the target trace itself can (should) be masked to
+    improve the estimation.
 
     Parameters
     ----------
@@ -909,10 +910,10 @@ def oneoverfstep(datafiles, baseline_ints, even_odd_rows=True,
 def oneoverfstep_v2(datafiles, baseline_ints, background=None,
                     output_dir=None, save_results=True, pixel_masks=None,
                     fileroots=None, do_plot=False, show_plot=False):
-    """Custom 1/f correction routine to be applied at the group or integration
-    level. 1/f noise level and median frame scaling is calculated independently
-     for each pixel column. Outlier pixels and background contaminants can
-    (should) be masked to improve the estimation.
+    """Custom chomratic 1/f correction routine to be applied at the group or
+    integration level. 1/f noise level and median frame scaling is calculated
+    independently for each pixel column. Outlier pixels and background
+    contaminants can (should) be masked to improve the estimation.
 
     Parameters
     ----------
@@ -1123,11 +1124,11 @@ def oneoverfstep_v2(datafiles, baseline_ints, background=None,
 
 
 def run_stage1(results, background_model, baseline_ints=None,
-               smoothed_wlc=None, save_results=True, pixel_masks=None,
-               force_redo=False, deepframe=None, rejection_threshold=15,
-               flag_in_time=False, time_rejection_threshold=10,
-               root_dir='./', output_tag='', skip_steps=None, do_plot=False,
-               show_plot=False, **kwargs):
+               oof_method='achromatic', smoothed_wlc=None, save_results=True,
+               pixel_masks=None, force_redo=False, deepframe=None,
+               rejection_threshold=15, flag_in_time=False,
+               time_rejection_threshold=10, root_dir='./', output_tag='',
+               skip_steps=None, do_plot=False, show_plot=False, **kwargs):
     """Run the supreme-SPOON Stage 1 pipeline: detector level processing,
     using a combination of official STScI DMS and custom steps. Documentation
     for the official DMS steps can be found here:
@@ -1142,6 +1143,8 @@ def run_stage1(results, background_model, baseline_ints=None,
         SOSS background model.
     baseline_ints : array-like[int]
         Integration numbers for transit ingress and egress.
+    oof_method : str
+        Whether to apply "chromatic" or "achromatic" 1/f correction algorithms.
     smoothed_wlc : array-like[float], None
         Estimate of the normalized light curve.
     save_results : bool
@@ -1254,7 +1257,7 @@ def run_stage1(results, background_model, baseline_ints=None,
             step_kwargs = {}
         step = OneOverFStep(results, baseline_ints=baseline_ints,
                             output_dir=outdir, pixel_masks=pixel_masks,
-                            smoothed_wlc=smoothed_wlc,
+                            smoothed_wlc=smoothed_wlc, method=oof_method,
                             background=background_model)
         results = step.run(save_results=save_results, force_redo=force_redo,
                            do_plot=do_plot, show_plot=show_plot, **step_kwargs)

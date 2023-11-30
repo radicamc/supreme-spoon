@@ -27,6 +27,7 @@ from jwst.pipeline import calwebb_spec2
 
 from supreme_spoon import utils, plotting
 from supreme_spoon.utils import fancyprint
+from supreme_spoon.stage1 import OneOverFStep
 
 
 class AssignWCSStep:
@@ -1069,11 +1070,12 @@ def soss_stability_pca(cube, n_components=10, outfile=None, do_plot=False,
 
 def run_stage2(results, background_model, baseline_ints, save_results=True,
                force_redo=False, space_thresh=15, time_thresh=15,
-               calculate_stability=True, pca_components=10,
-               root_dir='./', output_tag='', smoothing_scale=None,
-               skip_steps=None, generate_lc=True, generate_tracemask=True,
-               mask_width=45, pixel_flags=None, generate_order0_mask=True,
-               f277w=None, do_plot=False, show_plot=False, **kwargs):
+               calculate_stability=True, pca_components=10, smoothed_wlc=None,
+               oof_method='achromatic', root_dir='./', output_tag='',
+               smoothing_scale=None, skip_steps=None, generate_lc=True,
+               generate_tracemask=True, mask_width=45, pixel_masks=None,
+               generate_order0_mask=True, f277w=None, do_plot=False,
+               show_plot=False, **kwargs):
     """Run the supreme-SPOON Stage 2 pipeline: spectroscopic processing,
     using a combination of official STScI DMS and custom steps. Documentation
     for the official DMS steps can be found here:
@@ -1100,6 +1102,10 @@ def run_stage2(results, background_model, baseline_ints, save_results=True,
         the TSO using a PCA method.
     pca_components : int
         Number of PCA components to calculate.
+    smoothed_wlc : array-like[float], None
+        Estimate of the normalized light curve.
+    oof_method : str
+        Whether to apply "chromatic" or "achromatic" 1/f correction algorithms.
     root_dir : str
         Directory from which all relative paths are defined.
     output_tag : str
@@ -1115,7 +1121,7 @@ def run_stage2(results, background_model, baseline_ints, save_results=True,
     mask_width : int
         Mask width, in pixels, around the trace centroids. Only necesssary if
         generate_tracemask is True.
-    pixel_flags: None, str, array-like[str]
+    pixel_masks: None, str, array-like[str]
         Paths to files containing existing pixel flags to which the trace mask
         should be added. Only necesssary if generate_tracemask is True.
     generate_order0_mask : bool
@@ -1197,6 +1203,19 @@ def run_stage2(results, background_model, baseline_ints, save_results=True,
                            do_plot=do_plot, show_plot=show_plot,
                            **step_kwargs)[0]
 
+    # ===== 1/f Noise Correction Step =====
+    # Custom DMS step.
+    if 'OneOverFStep' not in skip_steps:
+        if 'OneOverFStep' in kwargs.keys():
+            step_kwargs = kwargs['OneOverFStep']
+        else:
+            step_kwargs = {}
+        step = OneOverFStep(results, baseline_ints=baseline_ints,
+                            output_dir=outdir, pixel_masks=pixel_masks,
+                            smoothed_wlc=smoothed_wlc, method=oof_method)
+        results = step.run(save_results=save_results, force_redo=force_redo,
+                           do_plot=do_plot, show_plot=show_plot, **step_kwargs)
+
     # ===== Bad Pixel Correction Step =====
     # Custom DMS step.
     if 'BadPixStep' not in skip_steps:
@@ -1222,7 +1241,7 @@ def run_stage2(results, background_model, baseline_ints, save_results=True,
         step_results = step.run(calculate_stability=calculate_stability,
                                 pca_components=pca_components,
                                 generate_tracemask=generate_tracemask,
-                                mask_width=mask_width, pixel_flags=pixel_flags,
+                                mask_width=mask_width, pixel_flags=pixel_masks,
                                 generate_order0_mask=generate_order0_mask,
                                 f277w=f277w,
                                 generate_lc=generate_lc,
