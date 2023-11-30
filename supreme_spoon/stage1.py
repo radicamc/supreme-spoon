@@ -21,7 +21,7 @@ import warnings
 from jwst import datamodels
 from jwst.pipeline import calwebb_detector1
 
-from supreme_spoon.stage2 import BackgroundStep
+import supreme_spoon.stage2 as stage2
 from supreme_spoon import utils, plotting
 from supreme_spoon.utils import fancyprint
 
@@ -1244,8 +1244,9 @@ def run_stage1(results, background_model, baseline_ints=None,
     if 'OneOverFStep' not in skip_steps:
         # ===== Background Subtraction Step =====
         # Custom DMS step - imported from Stage2.
-        step = BackgroundStep(results, background_model=background_model,
-                              output_dir=outdir)
+        step = stage2.BackgroundStep(results,
+                                     background_model=background_model,
+                                     output_dir=outdir)
         results = step.run(save_results=save_results, force_redo=force_redo)
         results, background_model = results
 

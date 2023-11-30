@@ -25,9 +25,9 @@ from jwst import datamodels
 from jwst.extract_1d.soss_extract import soss_boxextract
 from jwst.pipeline import calwebb_spec2
 
+import supreme_spoon.stage1 as stage1
 from supreme_spoon import utils, plotting
 from supreme_spoon.utils import fancyprint
-from supreme_spoon.stage1 import OneOverFStep
 
 
 class AssignWCSStep:
@@ -1210,9 +1210,10 @@ def run_stage2(results, background_model, baseline_ints, save_results=True,
             step_kwargs = kwargs['OneOverFStep']
         else:
             step_kwargs = {}
-        step = OneOverFStep(results, baseline_ints=baseline_ints,
-                            output_dir=outdir, pixel_masks=pixel_masks,
-                            smoothed_wlc=smoothed_wlc, method=oof_method)
+        step = stage1.OneOverFStep(results, baseline_ints=baseline_ints,
+                                   output_dir=outdir, pixel_masks=pixel_masks,
+                                   smoothed_wlc=smoothed_wlc,
+                                   method=oof_method)
         results = step.run(save_results=save_results, force_redo=force_redo,
                            do_plot=do_plot, show_plot=show_plot, **step_kwargs)
 
