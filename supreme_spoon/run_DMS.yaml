@@ -18,6 +18,8 @@ background_file : 'model_background256.npy'
 outlier_maps : None
 # For 1/f correction; estimate of white light curve (optional).
 smoothed_wlc : None
+# 1/f correction method; either 'chromatic' or 'achromatic'.
+oof_method : 'achromatic'
 # For jump detection; sigma threshold for a pixel to be flagged as an outlier.
 jump_threshold : 15
 # For jump detection; whether to also flag outliers in the time domain.

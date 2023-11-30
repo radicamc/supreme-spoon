@@ -80,6 +80,7 @@ if 1 in config['run_stages']:
     stage1_results = run_stage1(input_files, background_model=background_model,
                                 baseline_ints=config['baseline_ints'],
                                 smoothed_wlc=config['smoothed_wlc'],
+                                oof_method=config['oof_method'],
                                 save_results=config['save_results'],
                                 pixel_masks=config['outlier_maps'],
                                 force_redo=config['force_redo'],
@@ -114,9 +115,11 @@ if 2 in config['run_stages']:
                                 generate_lc=config['generate_lc'],
                                 generate_tracemask=config['generate_tracemask'],
                                 mask_width=mask_width,
-                                pixel_flags=config['outlier_maps'],
+                                pixel_masks=config['outlier_maps'],
                                 generate_order0_mask=config['generate_order0_mask'],
                                 f277w=config['f277w'],
+                                smoothed_wlc=config['smoothed_wlc'],
+                                oof_method=config['oof_method'],
                                 do_plot=config['do_plots'],
                                 **config['stage2_kwargs'])
 else:
