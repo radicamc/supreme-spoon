@@ -17,12 +17,10 @@ from matplotlib.gridspec import GridSpec
 from matplotlib.patches import Ellipse
 import matplotlib.pyplot as plt
 import numpy as np
-from scipy.ndimage import median_filter
 from tqdm import tqdm
 import warnings
 
 from supreme_spoon import utils
-from supreme_spoon.utils import fancyprint
 
 
 def make_background_plot(results, outfile=None, show_plot=True):

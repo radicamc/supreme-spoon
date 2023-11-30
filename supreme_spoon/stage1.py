@@ -472,9 +472,14 @@ class RampFitStep:
                     # Store flags for use in 1/f correction.
                     flags = res.dq
                     flags[flags != 0] = 1  # Convert to binary mask.
-                    hdu = fits.PrimaryHDU(flags)
+                    # Save in two extensions for chromatic vs achromatic 1/f
+                    # correction.
+                    hdu1 = fits.PrimaryHDU(flags)
+                    hdu2 = fits.ImageHDU(flags)
+                    hdu3 = fits.ImageHDU(flags)
+                    hdul = fits.HDUList([hdu1, hdu2, hdu3])
                     outfile = self.output_dir + self.fileroots[i] + 'pixelflags.fits'
-                    hdu.writeto(outfile, overwrite=True)
+                    hdul.writeto(outfile, overwrite=True)
                     # Remove rate file because we don't need it and I don't
                     # like having extra files.
                     rate = res.meta.filename.replace('_1_ramp', '_0_ramp')
@@ -1017,6 +1022,7 @@ def oneoverfstep_v2(datafiles, baseline_ints, background=None,
         for i, file in enumerate(pixel_masks):
             fancyprint('Reading outlier map {}'.format(file))
             if i == 0:
+                # Get second extension which will be flags without tracemask.
                 outliers = fits.getdata(file, 2)
             else:
                 outliers = np.concatenate([outliers, fits.getdata(file, 2)])

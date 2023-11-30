@@ -856,8 +856,13 @@ def tracingstep(datafiles, deepframe=None, calculate_stability=True,
                 for flag_file in pixel_flags:
                     old_flags = fits.getdata(flag_file)
                     new_flags = old_flags.astype(bool) | tracemask
-                    hdu = fits.PrimaryHDU(new_flags.astype(int))
-                    hdu.writeto(flag_file, overwrite=True)
+                    # First extension will be combined flags.
+                    hdu1 = fits.PrimaryHDU()
+                    hdu2 = fits.ImageHDU(new_flags.astype(int))
+                    # Second extension is flags without the trace mask.
+                    hdu3 = fits.ImageHDU(old_flags.astype(int))
+                    hdul = fits.HDUList([hdu1, hdu2, hdu3])
+                    hdul.writeto(flag_file, overwrite=True)
             else:
                 hdu = fits.PrimaryHDU(tracemask.astype(int))
                 suffix = 'tracemask_width{}.fits'.format(mask_width)
