@@ -527,7 +527,7 @@ def make_oneoverf_plot(results, baseline_ints, timeseries=None,
             timeseries = None
     # If no lightcurve is provided, use array of ones.
     if timeseries is None:
-        timeseries = np.ones(np.shape(cube[0]))
+        timeseries = np.ones(np.shape(cube)[0])
 
     if np.ndim(cube) == 4:
         nint, ngroup, dimy, dimx = np.shape(cube)
@@ -603,7 +603,7 @@ def make_oneoverf_psd(results, old_results, timeseries, baseline_ints,
             timeseries = None
     # If no lightcurve is provided, use array of ones.
     if timeseries is None:
-        timeseries = np.ones(np.shape(cube[0]))
+        timeseries = np.ones(np.shape(cube)[0])
 
     # Generate array of timestamps for each pixel
     pixel_ts = []
