@@ -16,8 +16,8 @@ input_filetag : 'uncal'
 background_file : 'model_background256.npy'
 # For 1/f correction; outlier pixel maps (optional).
 outlier_maps : None
-# For 1/f correction; estimate of white light curve (optional).
-smoothed_wlc : None
+# For 1/f correction; estimate of 1D or 2D timeseries (optional).
+timeseries : None
 # 1/f correction method; either 'chromatic' or 'achromatic'.
 oof_method : 'achromatic'
 # For jump detection; sigma threshold for a pixel to be flagged as an outlier.

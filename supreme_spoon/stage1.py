@@ -224,7 +224,7 @@ class OneOverFStep:
     """
 
     def __init__(self, input_data, baseline_ints, output_dir,
-                 method='achromatic', smoothed_wlc=None, pixel_masks=None,
+                 method='achromatic', timeseries=None, pixel_masks=None,
                  background=None):
         """Step initializer.
         """
@@ -232,7 +232,7 @@ class OneOverFStep:
         self.tag = 'oneoverfstep.fits'
         self.output_dir = output_dir
         self.baseline_ints = baseline_ints
-        self.smoothed_wlc = smoothed_wlc
+        self.timeseries = timeseries
         self.pixel_masks = pixel_masks
         self.background = background
         self.datafiles = utils.sort_datamodels(input_data)
@@ -264,7 +264,7 @@ class OneOverFStep:
                 results = oneoverfstep_achromatic(self.datafiles,
                                                   baseline_ints=self.baseline_ints,
                                                   background=self.background,
-                                                  smoothed_wlc=self.smoothed_wlc,
+                                                  timeseries=self.timeseries,
                                                   output_dir=self.output_dir,
                                                   save_results=save_results,
                                                   pixel_masks=self.pixel_masks,
@@ -290,12 +290,12 @@ class OneOverFStep:
                 else:
                     plot_file1, plot_file2 = None, None
                 plotting.make_oneoverf_plot(results,
-                                            timeseries=self.smoothed_wlc,
+                                            timeseries=self.timeseries,
                                             baseline_ints=self.baseline_ints,
                                             outfile=plot_file1,
                                             show_plot=show_plot)
                 plotting.make_oneoverf_psd(results, self.datafiles,
-                                           timeseries=self.smoothed_wlc,
+                                           timeseries=self.timeseries,
                                            baseline_ints=self.baseline_ints,
                                            pixel_masks=self.pixel_masks,
                                            outfile=plot_file2,
@@ -713,7 +713,7 @@ def jumpstep_in_time(datafile, window=5, thresh=10, fileroot=None,
 
 
 def oneoverfstep_achromatic(datafiles, baseline_ints, even_odd_rows=True,
-                            background=None, smoothed_wlc=None,
+                            background=None, timeseries=None,
                             output_dir=None, save_results=True,
                             pixel_masks=None, fileroots=None):
     """Custom achromatic 1/f correction routine to be applied at the group or
@@ -735,8 +735,8 @@ def oneoverfstep_achromatic(datafiles, baseline_ints, even_odd_rows=True,
         If True, calculate 1/f noise seperately for even and odd numbered rows.
     background : str, array-like[float], None
         Model of background flux.
-    smoothed_wlc : array-like[float], str, None
-        Estimate of the normalized light curve, or path to file containing it.
+    timeseries : array-like[float], str, None
+        Estimate of normalized light curve(s), or path to file.
     output_dir : str, None
         Directory to which to save results. Only necessary if saving results.
     save_results : bool
@@ -794,28 +794,29 @@ def oneoverfstep_achromatic(datafiles, baseline_ints, even_odd_rows=True,
 
     # In order to subtract off the trace as completely as possible, the median
     # stack must be scaled, via the transit curve, to the flux level of each
-    # integration.
-    # Try to open light curve file. If not, estimate it from data.
-    if isinstance(smoothed_wlc, str):
+    # integration. This can be done via two methods: using the white light
+    # curve (i.e., assuming the scaling is not wavelength dependent), or using
+    # extracted 2D light curves, such that the scaling is wavelength dependent.
+    # Try to open light curve file. If not, estimate it (1D only) from data.
+    if isinstance(timeseries, str):
         try:
-            smoothed_wlc = np.load(smoothed_wlc)
+            timeseries = np.load(timeseries)
         except (ValueError, FileNotFoundError):
             fancyprint('Light curve file cannot be opened. It will be '
                        'estimated from current data.', msg_type='WARNING')
-            smoothed_wlc = None
+            timeseries = None
     # If no lightcurve is provided, estimate it from the current data.
-    if smoothed_wlc is None:
+    if timeseries is None:
         postage = cube[:, -1, 20:60, 1500:1550]
         timeseries = np.nansum(postage, axis=(1, 2))
         timeseries = timeseries / np.nanmedian(timeseries[baseline_ints])
         # Smooth the time series on a timescale of roughly 2%.
-        smoothed_wlc = median_filter(timeseries,
-                                     int(0.02*np.shape(cube)[0]))
-
+        timeseries = median_filter(timeseries,
+                                   int(0.02*np.shape(cube)[0]))
     # If passed light curve is 1D, extend to 2D.
-    if np.ndim(smoothed_wlc) == 1:
+    if np.ndim(timeseries) == 1:
         dimx = np.shape(currentfile.data)[-1]
-        smoothed_wlc = np.repeat(smoothed_wlc[:, np.newaxis], dimx, axis=1)
+        timeseries = np.repeat(timeseries[:, np.newaxis], dimx, axis=1)
 
     # Background must be subtracted to accurately subtract off the target
     # trace and isolate 1/f noise. However, the background flux must also be
@@ -865,10 +866,9 @@ def oneoverfstep_achromatic(datafiles, baseline_ints, even_odd_rows=True,
             ii = current_int + i
             # Create the difference image.
             if np.ndim(currentfile.data) == 4:
-                sub = currentfile.data[i] - deepstack * smoothed_wlc[ii, None, None, :]
+                sub = currentfile.data[i] - deepstack * timeseries[ii, None, None, :]
             else:
-                sub = currentfile.data[i] - deepstack * smoothed_wlc[ii, None, :]
-            #sub = currentfile.data[i] - deepstack * smoothed_wlc[ii]
+                sub = currentfile.data[i] - deepstack * timeseries[ii, None, :]
             # Apply the outlier mask.
             sub *= outliers[i, :, :]
             with warnings.catch_warnings():
@@ -1269,8 +1269,8 @@ def run_stage1(results, background_model, baseline_ints=None,
         else:
             step_kwargs = {}
         step = OneOverFStep(results, baseline_ints=baseline_ints,
-                            output_dir=outdir, pixel_masks=pixel_masks,
-                            smoothed_wlc=smoothed_wlc, method=oof_method,
+                            output_dir=outdir, method=oof_method,
+                            timeseries=smoothed_wlc, pixel_masks=pixel_masks,
                             background=background_model)
         results = step.run(save_results=save_results, force_redo=force_redo,
                            do_plot=do_plot, show_plot=show_plot, **step_kwargs)

@@ -68,8 +68,8 @@ for file in input_files:
 background_model = np.load(config['background_file'])
 if np.ndim(background_model) == 3:
     background_model = background_model[0]
-if config['smoothed_wlc'] is not None:
-    config['smoothed_wlc'] = np.load(config['smoothed_wlc'])
+if config['timeseries'] is not None:
+    config['timeseries'] = np.load(config['timeseries'])
 if config['centroids'] is not None:
     config['centroids'] = pd.read_csv(config['centroids'], comment='#')
 if config['f277w'] is not None:
@@ -79,7 +79,7 @@ if config['f277w'] is not None:
 if 1 in config['run_stages']:
     stage1_results = run_stage1(input_files, background_model=background_model,
                                 baseline_ints=config['baseline_ints'],
-                                smoothed_wlc=config['smoothed_wlc'],
+                                timeseries=config['timeseries'],
                                 oof_method=config['oof_method'],
                                 save_results=config['save_results'],
                                 pixel_masks=config['outlier_maps'],
@@ -107,8 +107,10 @@ if 2 in config['run_stages']:
                                 force_redo=config['force_redo'],
                                 space_thresh=config['space_outlier_threshold'],
                                 time_thresh=config['time_outlier_threshold'],
-                                calculate_stability=config['calculate_stability'],
+                                calculate_stability=config[ 'calculate_stability'],
                                 pca_components=config['pca_components'],
+                                timeseries=config['timeseries'],
+                                oof_method=config['oof_method'],
                                 output_tag=config['output_tag'],
                                 smoothing_scale=config['smoothing_scale'],
                                 skip_steps=config['stage2_skip'],
@@ -116,10 +118,8 @@ if 2 in config['run_stages']:
                                 generate_tracemask=config['generate_tracemask'],
                                 mask_width=mask_width,
                                 pixel_masks=config['outlier_maps'],
-                                generate_order0_mask=config['generate_order0_mask'],
+                                generate_order0_mask=config[ 'generate_order0_mask'],
                                 f277w=config['f277w'],
-                                smoothed_wlc=config['smoothed_wlc'],
-                                oof_method=config['oof_method'],
                                 do_plot=config['do_plots'],
                                 **config['stage2_kwargs'])
 else:

@@ -1078,7 +1078,7 @@ def soss_stability_pca(cube, n_components=10, outfile=None, do_plot=False,
 
 def run_stage2(results, background_model, baseline_ints, save_results=True,
                force_redo=False, space_thresh=15, time_thresh=15,
-               calculate_stability=True, pca_components=10, smoothed_wlc=None,
+               calculate_stability=True, pca_components=10, timeseries=None,
                oof_method='achromatic', root_dir='./', output_tag='',
                smoothing_scale=None, skip_steps=None, generate_lc=True,
                generate_tracemask=True, mask_width=45, pixel_masks=None,
@@ -1110,7 +1110,7 @@ def run_stage2(results, background_model, baseline_ints, save_results=True,
         the TSO using a PCA method.
     pca_components : int
         Number of PCA components to calculate.
-    smoothed_wlc : array-like[float], None
+    timeseries : array-like[float], None
         Estimate of the normalized light curve.
     oof_method : str
         Whether to apply "chromatic" or "achromatic" 1/f correction algorithms.
@@ -1219,9 +1219,9 @@ def run_stage2(results, background_model, baseline_ints, save_results=True,
         else:
             step_kwargs = {}
         step = stage1.OneOverFStep(results, baseline_ints=baseline_ints,
-                                   output_dir=outdir, pixel_masks=pixel_masks,
-                                   smoothed_wlc=smoothed_wlc,
-                                   method=oof_method)
+                                   output_dir=outdir, method=oof_method,
+                                   timeseries=timeseries,
+                                   pixel_masks=pixel_masks)
         results = step.run(save_results=save_results, force_redo=force_redo,
                            do_plot=do_plot, show_plot=show_plot, **step_kwargs)
 
