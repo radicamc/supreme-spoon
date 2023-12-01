@@ -639,7 +639,7 @@ def badpixstep(datafiles, baseline_ints, space_thresh=15, time_thresh=10,
     newdata[ii] = cube_filt[ii]
     newdq[ii] = 0
 
-    # Lastly, do a final check for any remaining invalid flux or error values.
+    # Lastly, do a final check for any remaining invalid  flux or error values.
     ii = np.where(np.isnan(newdata))
     newdata[ii] = cube_filt[ii]
     ii = np.where(np.isnan(err_cube))

@@ -974,7 +974,7 @@ def oneoverfstep_v2(datafiles, baseline_ints, background=None,
                 raise NotImplementedError
             # To create the deepstack, join all segments together.
             if i == 0:
-                cube = currentfile.data
+                cube = np.copy(currentfile.data)
                 if np.ndim(cube) == 4:
                     grpdq = currentfile.groupdq
                     pixdq = currentfile.pixeldq
@@ -1049,7 +1049,7 @@ def oneoverfstep_v2(datafiles, baseline_ints, background=None,
                                    cube[1:-1]), axis=0)
         scatter = np.where(scatter == 0, np.inf, scatter)
         # Find pixels which deviate more than 10 sigma.
-        scale = np.abs(cube[:] - cube_filt) / scatter
+        scale = np.abs(cube - cube_filt) / scatter
         ii = np.where(scale > 10)
         print(len(ii[0]))
         err[ii] = np.inf
@@ -1104,14 +1104,16 @@ def oneoverfstep_v2(datafiles, baseline_ints, background=None,
     for n, file in enumerate(datafiles):
         file = utils.open_filetype(file)
         nint = np.shape(file.data)[0]
-        file.data = cube_corr[current_int:(current_int+nint)]
-        corrected_rampmodels.append(file)
+        newfile = file.copy()
+        file.close()
+        newfile.data = cube_corr[current_int:(current_int+nint)]
+        corrected_rampmodels.append(newfile)
         current_int += nint
 
         # Save the results if requested.
         if save_results is True:
             suffix = 'oneoverfstep.fits'
-            file.write(output_dir + fileroots[n] + suffix)
+            newfile.write(output_dir + fileroots[n] + suffix)
 
     # Do step plot if requested.
     if do_plot is True:
