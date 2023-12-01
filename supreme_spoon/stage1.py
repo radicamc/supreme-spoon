@@ -812,6 +812,11 @@ def oneoverfstep_achromatic(datafiles, baseline_ints, even_odd_rows=True,
         smoothed_wlc = median_filter(timeseries,
                                      int(0.02*np.shape(cube)[0]))
 
+    # If passed light curve is 1D, extend to 2D.
+    if np.ndim(smoothed_wlc) == 1:
+        dimx = np.shape(currentfile.data)[-1]
+        smoothed_wlc = np.repeat(smoothed_wlc[:, np.newaxis], dimx, axis=1)
+
     # Background must be subtracted to accurately subtract off the target
     # trace and isolate 1/f noise. However, the background flux must also be
     # corrected for non-linearity. Therefore, it should be added back after
@@ -859,15 +864,17 @@ def oneoverfstep_achromatic(datafiles, baseline_ints, even_odd_rows=True,
             # ints from the start of the exposure.
             ii = current_int + i
             # Create the difference image.
-            sub = currentfile.data[i] - deepstack * smoothed_wlc[ii]
+            if np.ndim(currentfile.data) == 4:
+                sub = currentfile.data[i] - deepstack * smoothed_wlc[ii, None, None, :]
+            else:
+                sub = currentfile.data[i] - deepstack * smoothed_wlc[ii, None, :]
+            #sub = currentfile.data[i] - deepstack * smoothed_wlc[ii]
             # Apply the outlier mask.
             sub *= outliers[i, :, :]
             with warnings.catch_warnings():
                 warnings.simplefilter('ignore', category=RuntimeWarning)
                 if even_odd_rows is True:
                     # Calculate 1/f scaling seperately for even and odd rows.
-                    # This *should* be taken care of by the RefPixStep, but it
-                    # doesn't hurt to do it again.
                     dc = np.zeros_like(sub)
                     # For group-level corrections.
                     if np.ndim(currentfile.data) == 4:
