@@ -25,6 +25,7 @@ from jwst import datamodels
 from jwst.extract_1d.soss_extract import soss_boxextract
 from jwst.pipeline import calwebb_spec2
 
+import supreme_spoon.stage1 as stage1
 from supreme_spoon import utils, plotting
 from supreme_spoon.utils import fancyprint
 
@@ -631,22 +632,22 @@ def badpixstep(datafiles, baseline_ints, space_thresh=15, time_thresh=10,
     std_dev = np.median(np.abs(0.5*(newdata[0:-2] + newdata[2:]) - newdata[1:-1]), axis=0)
     std_dev = np.where(std_dev == 0, np.inf, std_dev)
     scale = np.abs(newdata - cube_filt) / std_dev
-    # Filter out some noise.
-    # TODO: swap to 50 for NIRSpec
-    ii = np.where((scale > time_thresh) & (newdata > np.nanpercentile(newdata, 25)))
+    ii = np.where((scale > time_thresh))
     fancyprint('{} outliers detected.'.format(len(ii[0])))
     # Replace the flagged pixels in each integration.
     fancyprint('Doing pixel replacement...')
     newdata[ii] = cube_filt[ii]
     newdq[ii] = 0
 
-    # Lastly, do a final check for any remaining invalid flux or error values.
+    # Lastly, do a final check for any remaining invalid  flux or error values.
     ii = np.where(np.isnan(newdata))
     newdata[ii] = cube_filt[ii]
     ii = np.where(np.isnan(err_cube))
     err_cube[ii] = np.nanmedian(err_cube)
     # And replace any negatives with zeros.
     newdata[newdata < 0] = 0
+    newdata[np.isnan(newdata)] = 0
+    deepframe_itl[np.isnan(deepframe_itl)] = 0
 
     # Make a final, corrected deepframe for the baseline intergations.
     deepframe_fnl = utils.make_deepstack(newdata[baseline_ints])
@@ -856,8 +857,13 @@ def tracingstep(datafiles, deepframe=None, calculate_stability=True,
                 for flag_file in pixel_flags:
                     old_flags = fits.getdata(flag_file)
                     new_flags = old_flags.astype(bool) | tracemask
-                    hdu = fits.PrimaryHDU(new_flags.astype(int))
-                    hdu.writeto(flag_file, overwrite=True)
+                    # First extension will be combined flags.
+                    hdu1 = fits.PrimaryHDU()
+                    hdu2 = fits.ImageHDU(new_flags.astype(int))
+                    # Second extension is flags without the trace mask.
+                    hdu3 = fits.ImageHDU(old_flags.astype(int))
+                    hdul = fits.HDUList([hdu1, hdu2, hdu3])
+                    hdul.writeto(flag_file, overwrite=True)
             else:
                 hdu = fits.PrimaryHDU(tracemask.astype(int))
                 suffix = 'tracemask_width{}.fits'.format(mask_width)
@@ -895,10 +901,18 @@ def tracingstep(datafiles, deepframe=None, calculate_stability=True,
                     outfile = parts[0] + 'seg' + 'XXX' + parts[1][3:]
                     fancyprint('Order 0 mask added to {}'.format(outfile))
                     for flag_file in pixel_flags:
-                        old_flags = fits.getdata(flag_file)
-                        new_flags = old_flags.astype(bool) | order0mask.astype(bool)
-                        hdu = fits.PrimaryHDU(new_flags.astype(int))
-                        hdu.writeto(flag_file, overwrite=True)
+                        old_flags = fits.open(flag_file)
+                        # Add flags to both file extensions.
+                        new_flags1 = old_flags[1].data.astype(bool) | order0mask.astype(bool)
+                        new_flags2 = old_flags[2].data.astype(bool) | order0mask.astype(bool)
+                        # First extension will be combined flags.
+                        hdu1 = fits.PrimaryHDU()
+                        hdu2 = fits.ImageHDU(new_flags1.astype(int))
+                        # Second extension is flags without the trace mask.
+                        hdu3 = fits.ImageHDU(new_flags2.astype(int))
+                        hdul = fits.HDUList([hdu1, hdu2, hdu3])
+                        hdul.writeto(flag_file, overwrite=True)
+
                 else:
                     hdu = fits.PrimaryHDU(order0mask)
                     suffix = 'order0_mask.fits'
@@ -1064,11 +1078,12 @@ def soss_stability_pca(cube, n_components=10, outfile=None, do_plot=False,
 
 def run_stage2(results, background_model, baseline_ints, save_results=True,
                force_redo=False, space_thresh=15, time_thresh=15,
-               calculate_stability=True, pca_components=10,
-               root_dir='./', output_tag='', smoothing_scale=None,
-               skip_steps=None, generate_lc=True, generate_tracemask=True,
-               mask_width=45, pixel_flags=None, generate_order0_mask=True,
-               f277w=None, do_plot=False, show_plot=False, **kwargs):
+               calculate_stability=True, pca_components=10, smoothed_wlc=None,
+               oof_method='achromatic', root_dir='./', output_tag='',
+               smoothing_scale=None, skip_steps=None, generate_lc=True,
+               generate_tracemask=True, mask_width=45, pixel_masks=None,
+               generate_order0_mask=True, f277w=None, do_plot=False,
+               show_plot=False, **kwargs):
     """Run the supreme-SPOON Stage 2 pipeline: spectroscopic processing,
     using a combination of official STScI DMS and custom steps. Documentation
     for the official DMS steps can be found here:
@@ -1095,6 +1110,10 @@ def run_stage2(results, background_model, baseline_ints, save_results=True,
         the TSO using a PCA method.
     pca_components : int
         Number of PCA components to calculate.
+    smoothed_wlc : array-like[float], None
+        Estimate of the normalized light curve.
+    oof_method : str
+        Whether to apply "chromatic" or "achromatic" 1/f correction algorithms.
     root_dir : str
         Directory from which all relative paths are defined.
     output_tag : str
@@ -1110,7 +1129,7 @@ def run_stage2(results, background_model, baseline_ints, save_results=True,
     mask_width : int
         Mask width, in pixels, around the trace centroids. Only necesssary if
         generate_tracemask is True.
-    pixel_flags: None, str, array-like[str]
+    pixel_masks: None, str, array-like[str]
         Paths to files containing existing pixel flags to which the trace mask
         should be added. Only necesssary if generate_tracemask is True.
     generate_order0_mask : bool
@@ -1192,6 +1211,20 @@ def run_stage2(results, background_model, baseline_ints, save_results=True,
                            do_plot=do_plot, show_plot=show_plot,
                            **step_kwargs)[0]
 
+    # ===== 1/f Noise Correction Step =====
+    # Custom DMS step.
+    if 'OneOverFStep' not in skip_steps:
+        if 'OneOverFStep' in kwargs.keys():
+            step_kwargs = kwargs['OneOverFStep']
+        else:
+            step_kwargs = {}
+        step = stage1.OneOverFStep(results, baseline_ints=baseline_ints,
+                                   output_dir=outdir, pixel_masks=pixel_masks,
+                                   smoothed_wlc=smoothed_wlc,
+                                   method=oof_method)
+        results = step.run(save_results=save_results, force_redo=force_redo,
+                           do_plot=do_plot, show_plot=show_plot, **step_kwargs)
+
     # ===== Bad Pixel Correction Step =====
     # Custom DMS step.
     if 'BadPixStep' not in skip_steps:
@@ -1217,7 +1250,7 @@ def run_stage2(results, background_model, baseline_ints, save_results=True,
         step_results = step.run(calculate_stability=calculate_stability,
                                 pca_components=pca_components,
                                 generate_tracemask=generate_tracemask,
-                                mask_width=mask_width, pixel_flags=pixel_flags,
+                                mask_width=mask_width, pixel_flags=pixel_masks,
                                 generate_order0_mask=generate_order0_mask,
                                 f277w=f277w,
                                 generate_lc=generate_lc,

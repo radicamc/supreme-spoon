@@ -21,7 +21,7 @@ import warnings
 from jwst import datamodels
 from jwst.pipeline import calwebb_detector1
 
-from supreme_spoon.stage2 import BackgroundStep
+import supreme_spoon.stage2 as stage2
 from supreme_spoon import utils, plotting
 from supreme_spoon.utils import fancyprint
 
@@ -224,7 +224,8 @@ class OneOverFStep:
     """
 
     def __init__(self, input_data, baseline_ints, output_dir,
-                 smoothed_wlc=None, pixel_masks=None, background=None):
+                 method='achromatic', smoothed_wlc=None, pixel_masks=None,
+                 background=None):
         """Step initializer.
         """
 
@@ -236,6 +237,7 @@ class OneOverFStep:
         self.background = background
         self.datafiles = utils.sort_datamodels(input_data)
         self.fileroots = utils.get_filename_root(self.datafiles)
+        self.method = method
 
     def run(self, save_results=True, force_redo=False, do_plot=False,
             show_plot=False, **kwargs):
@@ -258,15 +260,26 @@ class OneOverFStep:
             fancyprint('Skipping 1/f Correction Step.')
         # If no output files are detected, run the step.
         else:
-            results = oneoverfstep(self.datafiles,
-                                   baseline_ints=self.baseline_ints,
-                                   background=self.background,
-                                   smoothed_wlc=self.smoothed_wlc,
-                                   output_dir=self.output_dir,
-                                   save_results=save_results,
-                                   pixel_masks=self.pixel_masks,
-                                   fileroots=self.fileroots,
-                                   **kwargs)
+            if self.method == 'achromatic':
+                results = oneoverfstep_achromatic(self.datafiles,
+                                                  baseline_ints=self.baseline_ints,
+                                                  background=self.background,
+                                                  smoothed_wlc=self.smoothed_wlc,
+                                                  output_dir=self.output_dir,
+                                                  save_results=save_results,
+                                                  pixel_masks=self.pixel_masks,
+                                                  fileroots=self.fileroots,
+                                                  **kwargs)
+            else:
+                results = oneoverfstep_chromatic(self.datafiles,
+                                                 baseline_ints=self.baseline_ints,
+                                                 background=self.background,
+                                                 output_dir=self.output_dir,
+                                                 save_results=save_results,
+                                                 pixel_masks=self.pixel_masks,
+                                                 fileroots=self.fileroots,
+                                                 do_plot=do_plot,
+                                                 show_plot=show_plot)
             # Do step plots if requested.
             if do_plot is True:
                 if save_results is True:
@@ -361,7 +374,7 @@ class JumpStep:
         self.fileroots = utils.get_filename_root(self.datafiles)
 
     def run(self, save_results=True, force_redo=False, rejection_threshold=15,
-            flag_in_time=False, time_rejection_threshold=10, time_window=10,
+            flag_in_time=False, time_rejection_threshold=10, time_window=5,
             do_plot=False, show_plot=False, **kwargs):
         """Method to run the step.
         """
@@ -460,9 +473,14 @@ class RampFitStep:
                     # Store flags for use in 1/f correction.
                     flags = res.dq
                     flags[flags != 0] = 1  # Convert to binary mask.
-                    hdu = fits.PrimaryHDU(flags)
+                    # Save in two extensions for chromatic vs achromatic 1/f
+                    # correction.
+                    hdu1 = fits.PrimaryHDU(flags)
+                    hdu2 = fits.ImageHDU(flags)
+                    hdu3 = fits.ImageHDU(flags)
+                    hdul = fits.HDUList([hdu1, hdu2, hdu3])
                     outfile = self.output_dir + self.fileroots[i] + 'pixelflags.fits'
-                    hdu.writeto(outfile, overwrite=True)
+                    hdul.writeto(outfile, overwrite=True)
                     # Remove rate file because we don't need it and I don't
                     # like having extra files.
                     rate = res.meta.filename.replace('_1_ramp', '_0_ramp')
@@ -606,7 +624,7 @@ def jumpstep_in_time(datafile, window=5, thresh=10, fileroot=None,
         Path to data file, or RampModel itself for a segment of the TSO.
         Should be 4D ramp.
     window : int
-        Number of integrations to use for cosmic ray flagging.
+        Number of integrations to use for cosmic ray flagging. Must be odd.
     thresh : int
         Sigma threshold for a pixel to be flagged.
     output_dir : str
@@ -650,7 +668,7 @@ def jumpstep_in_time(datafile, window=5, thresh=10, fileroot=None,
         scatter = np.where(scatter == 0, np.inf, scatter)
         # Find pixels which deviate more than the specified threshold.
         scale = np.abs(cube[:, g] - cube_filt) / scatter
-        ii = np.where((scale > thresh) & (cube[:, g] > np.nanpercentile(cube, 10)))
+        ii = (scale >= thresh) & (cube[:, g] > np.nanpercentile(cube, 10))
 
         # If ngroup<=2, replace the pixel with the stack median so that a
         # ramp can still be fit.
@@ -694,15 +712,17 @@ def jumpstep_in_time(datafile, window=5, thresh=10, fileroot=None,
     return datafile
 
 
-def oneoverfstep(datafiles, baseline_ints, even_odd_rows=True,
-                 background=None, smoothed_wlc=None, output_dir=None,
-                 save_results=True, pixel_masks=None, fileroots=None):
-    """Custom 1/f correction routine to be applied at the group level. A
-    median stack is constructed using all out-of-transit integrations and
-    subtracted from each individual integration. The column-wise median of
-    this difference image is then subtracted from the original frame to
-    correct 1/f noise. Outlier pixels, background contaminants, and the target
-    trace itself can (should) be masked to improve the estimation.
+def oneoverfstep_achromatic(datafiles, baseline_ints, even_odd_rows=True,
+                            background=None, smoothed_wlc=None,
+                            output_dir=None, save_results=True,
+                            pixel_masks=None, fileroots=None):
+    """Custom achromatic 1/f correction routine to be applied at the group or
+    integration level. A median stack is constructed using all out-of-transit
+    integrations and subtracted from each individual integration. The
+    column-wise median of this difference image is then subtracted from the
+    original frame to correct 1/f noise. Outlier pixels, background
+    contaminants, and the target trace itself can (should) be masked to
+    improve the estimation.
 
     Parameters
     ----------
@@ -733,7 +753,7 @@ def oneoverfstep(datafiles, baseline_ints, even_odd_rows=True,
         RampModels for each segment, corrected for 1/f noise.
     """
 
-    fancyprint('Starting 1/f correction step.')
+    fancyprint('Starting achromatic 1/f correction step.')
 
     # If saving results, ensure output directory and fileroots are provided.
     if save_results is True:
@@ -796,6 +816,7 @@ def oneoverfstep(datafiles, baseline_ints, even_odd_rows=True,
     # trace and isolate 1/f noise. However, the background flux must also be
     # corrected for non-linearity. Therefore, it should be added back after
     # the 1/f is subtracted, in order to be re-subtracted later.
+    # Note: only relevant for group-level corrections.
     if background is not None:
         if isinstance(background, str):
             background = np.load(background)
@@ -888,12 +909,231 @@ def oneoverfstep(datafiles, baseline_ints, even_odd_rows=True,
     return corrected_rampmodels
 
 
+def oneoverfstep_chromatic(datafiles, baseline_ints, background=None,
+                           output_dir=None, save_results=True,
+                           pixel_masks=None, fileroots=None, do_plot=False,
+                           show_plot=False):
+    """Custom chomratic 1/f correction routine to be applied at the group or
+    integration level. 1/f noise level and median frame scaling is calculated
+    independently for each pixel column. Outlier pixels and background
+    contaminants can (should) be masked to improve the estimation.
+
+    Parameters
+    ----------
+    datafiles : array-like[str], array-like[RampModel], array-like[CubeModel]
+        List of paths to data files, or datamodels themselves for each segment
+        of the TSO. Should be 4D ramps, but 3D rate files are also accepted.
+    baseline_ints : array-like[int]
+        Integration numbers of ingress and egress.
+    background : str, array-like[float], None
+        Model of background flux.
+    output_dir : str, None
+        Directory to which to save results. Only necessary if saving results.
+    save_results : bool
+        If True, save results to disk.
+    pixel_masks : array-like[str], None
+        List of paths to maps of pixels to mask for each data segment. Can be
+        3D (nints, dimy, dimx), or 2D (dimy, dimx).
+    fileroots : array-like[str], None
+        Root names for output files. Only necessary if saving results.
+    do_plot : bool
+        If True, do the step diagnostic plot.
+    show_plot : bool
+        If True, show the step diagnostic plot instead of/in addition to
+        saving it to file.
+
+    Returns
+    -------
+    corrected_rampmodels : array-like[CubeModel]
+        RampModels for each segment, corrected for 1/f noise.
+    """
+
+    fancyprint('Starting chromatic 1/f correction step.')
+
+    # If saving results, ensure output directory and fileroots are provided.
+    if save_results is True:
+        assert output_dir is not None
+        assert fileroots is not None
+        # Output directory formatting.
+        if output_dir[-1] != '/':
+            output_dir += '/'
+
+    # Format the baseline frames.
+    baseline_ints = utils.format_out_frames(baseline_ints)
+
+    datafiles = np.atleast_1d(datafiles)
+    # If outlier maps are passed, ensure that there is one for each segment.
+    if pixel_masks is not None:
+        pixel_masks = np.atleast_1d(pixel_masks)
+        if len(pixel_masks) == 1:
+            pixel_masks = [pixel_masks[0] for d in datafiles]
+
+    # Load in datamodels from all segments.
+    for i, file in enumerate(datafiles):
+        with utils.open_filetype(file) as currentfile:
+            # FULL frame uses multiple amplifiers and probably has to be
+            # treated differently. Break if we encounter a FULL frame exposure.
+            if currentfile.meta.subarray.name == 'FULL':
+                raise NotImplementedError
+            # To create the deepstack, join all segments together.
+            if i == 0:
+                cube = np.copy(currentfile.data)
+                if np.ndim(cube) == 4:
+                    grpdq = currentfile.groupdq
+                    pixdq = currentfile.pixeldq
+                    dqcube = grpdq + pixdq
+                else:
+                    dqcube = currentfile.dq
+            else:
+                cube = np.concatenate([cube, currentfile.data], axis=0)
+                if np.ndim(cube) == 4:
+                    thisdq = currentfile.groupdq + currentfile.pixeldq
+                    dqcube = np.concatenate([dqcube, thisdq], axis=0)
+                else:
+                    dqcube = np.concatenate([dqcube, currentfile.dq], axis=0)
+    # Set errors to variance of data along integration axis.
+    err = np.nanstd(cube[baseline_ints], axis=0)
+    err = np.repeat(err[np.newaxis], cube.shape[0], axis=0)
+
+    # Generate the 3D deep stack (ngroup, dimy, dimx) using only
+    # baseline integrations.
+    fancyprint('Generating a deep stack for each group using baseline '
+               'integrations...')
+    deepstack = utils.make_deepstack(cube[baseline_ints])
+    deepstack = np.repeat(deepstack[np.newaxis], cube.shape[0], axis=0)
+
+    # Background must be subtracted to accurately subtract off the target
+    # trace and isolate 1/f noise. However, the background flux must also be
+    # corrected for non-linearity. Therefore, it should be added back after
+    # the 1/f is subtracted, in order to be re-subtracted later.
+    # Note: only relevant if applied at the group level.
+    if background is not None:
+        if isinstance(background, str):
+            background = np.load(background)
+
+    # Define the readout setup - can be 4D (recommended) or 3D.
+    if np.ndim(cube) == 4:
+        nint, ngroup, dimy, dimx = np.shape(cube)
+    else:
+        nint, dimy, dimx = np.shape(cube)
+        ngroup = 0
+
+    # Get outlier masks.
+    if pixel_masks is None:
+        fancyprint('No outlier maps passed, ignoring outliers.')
+        outliers = np.zeros((nint, dimy, dimx))
+    else:
+        for i, file in enumerate(pixel_masks):
+            fancyprint('Reading outlier map {}'.format(file))
+            if i == 0:
+                # Get second extension which will be flags without tracemask.
+                outliers = fits.getdata(file, 2)
+            else:
+                outliers = np.concatenate([outliers, fits.getdata(file, 2)])
+    # If correction is at group level, extend outlier map along group axis.
+    if ngroup != 0:
+        outliers = np.repeat(outliers[:, np.newaxis], ngroup, axis=1)
+
+    # Mask any pixels with non-zero dq flags.
+    ii = np.where((dqcube != 0))
+    err[ii] = np.inf
+    # Apply the outlier mask.
+    ii = np.where(outliers != 0)
+    err[ii] = np.inf
+
+    # Calculate 1/f noise using a wavelength-dependent scaling.
+    slopes_e, oofs_e, slopes_o, oofs_o = [], [], [], []
+    if ngroup == 0:
+        # Integration-level correction.
+        # Mask any potential jumps.
+        cube_filt = medfilt(cube, (5, 1, 1))
+        # Calculate the point-to-point scatter along the temporal axis.
+        scatter = np.median(np.abs(0.5 * (cube[0:-2] + cube[2:]) -
+                                   cube[1:-1]), axis=0)
+        scatter = np.where(scatter == 0, np.inf, scatter)
+        # Find pixels which deviate more than 10 sigma.
+        scale = np.abs(cube - cube_filt) / scatter
+        ii = np.where(scale > 10)
+        print(len(ii[0]))
+        err[ii] = np.inf
+
+        # Do the chromatic 1/f calculation.
+        m_e, b_e, m_o, b_o = utils.line_mle(deepstack, cube, err)
+        oof = np.zeros_like(cube)
+        oof[:, ::2, :] = b_e[:, None, :]
+        oof[:, 1::2, :] = b_o[:, None, :]
+        slopes_e.append(m_e)
+        slopes_o.append(m_o)
+        oofs_e.append(b_e)
+        oofs_o.append(b_o)
+        ngroup = 1
+    else:
+        # Group-level correction.
+        oof = np.zeros_like(cube)
+        # Treat each group individually.
+        for g in tqdm(range(ngroup)):
+            # Mask any potential jumps.
+            cube_filt = medfilt(cube[:, g], (5, 1, 1))
+            # Calculate the point-to-point scatter along the temporal axis.
+            scatter = np.median(np.abs(0.5 * (cube[0:-2, g] + cube[2:, g]) -
+                                       cube[1:-1, g]), axis=0)
+            scatter = np.where(scatter == 0, np.inf, scatter)
+            # Find pixels which deviate more than 10 sigma.
+            scale = np.abs(cube[:, g] - cube_filt) / scatter
+            ii = np.where(scale > 10)
+            err[:, g][ii] = np.inf
+
+            # Do the chromatic 1/f calculation.
+            m_e, b_e, m_o, b_o = utils.line_mle(deepstack[:, g], cube[:, g],
+                                                err[:, g])
+            oof[:, g, ::2] = b_e[:, None, :]
+            oof[:, g, 1::2] = b_o[:, None, :]
+            slopes_e.append(m_e)
+            slopes_o.append(m_o)
+            oofs_e.append(b_e)
+            oofs_o.append(b_o)
+
+    # Subtract the 1/f contribution.
+    oof[np.isnan(oof)] = 0
+    cube_corr = cube - oof
+
+    # Add back the zodi background.
+    if background is not None:
+        cube_corr += background
+
+    # Save the corrected data.
+    corrected_rampmodels = []
+    current_int = 0
+    for n, file in enumerate(datafiles):
+        file = utils.open_filetype(file)
+        nint = np.shape(file.data)[0]
+        newfile = file.copy()
+        file.close()
+        newfile.data = cube_corr[current_int:(current_int+nint)]
+        corrected_rampmodels.append(newfile)
+        current_int += nint
+
+        # Save the results if requested.
+        if save_results is True:
+            suffix = 'oneoverfstep.fits'
+            newfile.write(output_dir + fileroots[n] + suffix)
+
+    # Do step plot if requested.
+    if do_plot is True:
+        outfile = output_dir + 'oneoverfstep_3.pdf'
+        plotting.make_oneoverf_chromatic_plot(slopes_e, slopes_o, oofs_e,
+                                              oofs_o, ngroup, outfile=outfile,
+                                              show_plot=show_plot)
+
+    return corrected_rampmodels
+
+
 def run_stage1(results, background_model, baseline_ints=None,
-               smoothed_wlc=None, save_results=True, pixel_masks=None,
-               force_redo=False, deepframe=None, rejection_threshold=15,
-               flag_in_time=False, time_rejection_threshold=10,
-               root_dir='./', output_tag='', skip_steps=None, do_plot=False,
-               show_plot=False, **kwargs):
+               oof_method='achromatic', smoothed_wlc=None, save_results=True,
+               pixel_masks=None, force_redo=False, deepframe=None,
+               rejection_threshold=15, flag_in_time=False,
+               time_rejection_threshold=10, root_dir='./', output_tag='',
+               skip_steps=None, do_plot=False, show_plot=False, **kwargs):
     """Run the supreme-SPOON Stage 1 pipeline: detector level processing,
     using a combination of official STScI DMS and custom steps. Documentation
     for the official DMS steps can be found here:
@@ -908,6 +1148,8 @@ def run_stage1(results, background_model, baseline_ints=None,
         SOSS background model.
     baseline_ints : array-like[int]
         Integration numbers for transit ingress and egress.
+    oof_method : str
+        Whether to apply "chromatic" or "achromatic" 1/f correction algorithms.
     smoothed_wlc : array-like[float], None
         Estimate of the normalized light curve.
     save_results : bool
@@ -1007,8 +1249,9 @@ def run_stage1(results, background_model, baseline_ints=None,
     if 'OneOverFStep' not in skip_steps:
         # ===== Background Subtraction Step =====
         # Custom DMS step - imported from Stage2.
-        step = BackgroundStep(results, background_model=background_model,
-                              output_dir=outdir)
+        step = stage2.BackgroundStep(results,
+                                     background_model=background_model,
+                                     output_dir=outdir)
         results = step.run(save_results=save_results, force_redo=force_redo)
         results, background_model = results
 
@@ -1020,7 +1263,7 @@ def run_stage1(results, background_model, baseline_ints=None,
             step_kwargs = {}
         step = OneOverFStep(results, baseline_ints=baseline_ints,
                             output_dir=outdir, pixel_masks=pixel_masks,
-                            smoothed_wlc=smoothed_wlc,
+                            smoothed_wlc=smoothed_wlc, method=oof_method,
                             background=background_model)
         results = step.run(save_results=save_results, force_redo=force_redo,
                            do_plot=do_plot, show_plot=show_plot, **step_kwargs)

@@ -600,6 +600,56 @@ def interpolate_stellar_model_grid(model_files, st_teff, st_logg, st_met):
     return model_interp
 
 
+def line_mle(x, y, e):
+    """Analytical solution for Chi^2 of fitting a straight line to data.
+    All inputs are assumed to be 3D (ints, dimy, dimx).
+
+    Parameters
+    ----------
+    x : array-like[float]
+        X-data. Median stack for 1/f correction.
+    y : array-like[float]
+        Y-data. Data frames for 1/f correction.
+    e : array-like[float]
+        Errors.
+
+    Returns
+    -------
+    m_e : np.array(float)
+        "Slope" values for even numbered columns.
+    b_e : np.array(float)
+        "Intercept" values for even numbered columns.
+    m_o : np.array(float)
+        "Slope" values for odd numbered columns.
+    b_o : np.array(float)
+        "Intercept" values for odd numbered columns.
+    """
+
+    assert np.shape(x) == np.shape(y) == np.shape(e)
+    # Following "Numerical recipes in C. The art of scientific computing"
+    # Press, William H. (1989)
+    # pdf: https://www.grad.hr/nastava/gs/prg/NumericalRecipesinC.pdf S15.2
+    sx_e = np.nansum(x[:, ::2] / e[:, ::2]**2, axis=1)
+    sxx_e = np.nansum((x[:, ::2] / e[:, ::2])**2, axis=1)
+    sy_e = np.nansum(y[:, ::2] / e[:, ::2]**2, axis=1)
+    sxy_e = np.nansum(x[:, ::2] * y[:, ::2] / e[:, ::2]**2, axis=1)
+    s_e = np.nansum(1 / e[:, ::2]**2, axis=1)
+
+    m_e = (s_e * sxy_e - sx_e * sy_e) / (s_e * sxx_e - sx_e**2)
+    b_e = (sy_e - m_e * sx_e) / s_e
+
+    sx_o = np.nansum(x[:, 1::2] / e[:, 1::2]**2, axis=1)
+    sxx_o = np.nansum((x[:, 1::2] / e[:, 1::2])**2, axis=1)
+    sy_o = np.nansum(y[:, 1::2] / e[:, 1::2]**2, axis=1)
+    sxy_o = np.nansum(x[:, 1::2] * y[:, 1::2] / e[:, 1::2]**2, axis=1)
+    s_o = np.nansum(1 / e[:, 1::2]**2, axis=1)
+
+    m_o = (s_o * sxy_o - sx_o * sy_o) / (s_o * sxx_o - sx_o**2)
+    b_o = (sy_o - m_o * sx_o) / s_o
+
+    return m_e, b_e, m_o, b_o
+
+
 def make_deepstack(cube):
     """Make deep stack of a TSO.
 
