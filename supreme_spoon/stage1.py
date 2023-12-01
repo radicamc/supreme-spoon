@@ -623,7 +623,7 @@ def jumpstep_in_time(datafile, window=5, thresh=10, fileroot=None,
         Path to data file, or RampModel itself for a segment of the TSO.
         Should be 4D ramp.
     window : int
-        Number of integrations to use for cosmic ray flagging.
+        Number of integrations to use for cosmic ray flagging. Must be odd.
     thresh : int
         Sigma threshold for a pixel to be flagged.
     output_dir : str
@@ -667,7 +667,7 @@ def jumpstep_in_time(datafile, window=5, thresh=10, fileroot=None,
         scatter = np.where(scatter == 0, np.inf, scatter)
         # Find pixels which deviate more than the specified threshold.
         scale = np.abs(cube[:, g] - cube_filt) / scatter
-        ii = np.where((scale > thresh) & (cube[:, g] > np.nanpercentile(cube, 10)))
+        ii = (scale >= thresh) & (cube[:, g] > np.nanpercentile(cube, 10))
 
         # If ngroup<=2, replace the pixel with the stack median so that a
         # ramp can still be fit.
