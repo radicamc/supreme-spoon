@@ -139,6 +139,11 @@ if 3 in config['run_stages']:
                                 st_met=config['st_met'],
                                 planet_letter=config['planet_letter'],
                                 output_tag=config['output_tag'],
-                                do_plot=config['do_plots'])
+                                do_plot=config['do_plots'],
+                                baseline_ints=config['baseline_ints'],
+                                oof_width=config['oof_width'],
+                                timeseries_o1=config['timeseries'],
+                                timeseries_o2=config['timeseries_o2'],
+                                pixel_masks=config['outlier maps'])
 
 fancyprint('Done')

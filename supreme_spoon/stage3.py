@@ -71,7 +71,9 @@ class Extract1DStep:
     """
 
     def __init__(self, input_data, extract_method, st_teff=None, st_logg=None,
-                 st_met=None, planet_letter='b', output_dir='./'):
+                 st_met=None, planet_letter='b', output_dir='./',
+                 baseline_ints=None, timeseries_o1=None, timeseries_o2=None,
+                 pixel_masks=None,):
         """Step initializer.
         """
 
@@ -85,10 +87,14 @@ class Extract1DStep:
             self.target_name = datamodel.meta.target.catalog_name
         self.pl_name = self.target_name + ' ' + planet_letter
         self.stellar_params = [st_teff, st_logg, st_met]
+        self.baseline_ints = baseline_ints
+        self.timeseries_o1 = timeseries_o1
+        self.timeseries_o2 = timeseries_o2
+        self.pixel_masks = pixel_masks
 
-    def run(self, soss_width=25, specprofile=None, centroids=None,
-            save_results=True, force_redo=False, do_plot=False,
-            show_plot=False):
+    def run(self, soss_width=40, specprofile=None, centroids=None,
+            oof_width=None, save_results=True, force_redo=False,
+            do_plot=False, show_plot=False):
         """Method to run the step.
         """
 
@@ -115,6 +121,10 @@ class Extract1DStep:
                 for i, segment in enumerate(self.datafiles):
                     # Initialize extraction parameters for ATOCA.
                     soss_modelname = self.fileroots[i][:-1]
+                    if oof_width is not None:
+                        fancyprint('Window 1/f correction cannot be '
+                                   'performed with ATOCA extraction.',
+                                   msg_type='WARNING')
                     # Perform the extraction.
                     step = calwebb_spec2.extract_1d_step.Extract1dStep()
                     res = step.call(segment, output_dir=self.output_dir,
@@ -146,7 +156,11 @@ class Extract1DStep:
                         raise ValueError('Centroids must be provided for box '
                                          'extraction')
                 results = box_extract_soss(self.datafiles, centroids,
-                                           soss_width)
+                                           soss_width, oof_width=oof_width,
+                                           baseline_ints=self.baseline_ints,
+                                           timeseries_o1=self.timeseries_o1,
+                                           timeseries_o2=self.timeseries_o2,
+                                           pixel_masks=self.pixel_masks)
             else:
                 raise ValueError('Invalid extraction method')
 
@@ -259,7 +273,9 @@ def specprofilestep(datafiles, empirical=True, output_dir='./'):
     return filename
 
 
-def box_extract_soss(datafiles, centroids, soss_width):
+def box_extract_soss(datafiles, centroids, soss_width, oof_width=None,
+                     pixel_masks=None, timeseries_o1=None, timeseries_o2=None,
+                     baseline_ints=None):
     """Perform a simple box aperture extraction on SOSS orders 1 and 2.
 
     Parameters
@@ -304,11 +320,62 @@ def box_extract_soss(datafiles, centroids, soss_width):
     ii = np.where(np.isfinite(y2))
     x2, y2 = x1[ii], y2[ii]
 
+    # Do window 1/f correction.
+    if oof_width is not None:
+        fancyprint('Performing window 1/f correction.')
+        if isinstance(timeseries_o1, str):
+            fancyprint('Reading order 1 timeseries file '
+                       '{}.'.format(timeseries_o1))
+            try:
+                timeseries1 = np.load(timeseries_o1)
+            except ValueError:
+                msg = '1D or 2D timeseries must be provided to use window ' \
+                      '1/f method.'
+                raise ValueError(msg)
+        # If passed light curve is 1D, extend to 2D.
+        if np.ndim(timeseries1) == 1:
+            dimx = np.shape(cube)[-1]
+            timeseries1 = np.repeat(timeseries1[:, np.newaxis], dimx, axis=1)
+        # Check if separate timeseries is passed for order 2.
+        if timeseries_o2 is None:
+            fancyprint('Using the same timeseries for orders 1 and 2.',
+                       msg_type='WARNING')
+            timeseries2 = np.copy(timeseries1)
+        else:
+            fancyprint('Reading order 2 timeseries file '
+                       '{}.'.format(timeseries_o2))
+            timeseries2 = np.load(timeseries_o2)
+            # If passed light curve is 1D, extend to 2D.
+            if np.ndim(timeseries2) == 1:
+                dimx = np.shape(cube)[-1]
+                timeseries2 = np.repeat(timeseries2[:, np.newaxis], dimx,
+                                        axis=1)
+
+        # Create difference cube.
+        assert baseline_ints is not None
+        baseline_ints = utils.format_out_frames(baseline_ints)
+        deepstack = utils.make_deepstack(cube[baseline_ints])
+        diff_cube1 = cube - deepstack[None, :, :] * timeseries1[:, None, :]
+        diff_cube2 = cube - deepstack[None, :, :] * timeseries2[:, None, :]
+
+        # Ensure window is a ~appropriate width.
+        assert oof_width >= (soss_width + 10)
+
+        # Perform the window 1/f correction seperately for each order.
+        cube1 = window_oneoverf(cube, diff_cube1, x1, y1, soss_width,
+                                oof_width, pixel_masks)
+        cube2 = window_oneoverf(cube, diff_cube2, x2, y2, soss_width,
+                                oof_width, pixel_masks)
+    else:
+        cube1 = cube
+        cube2 = cube
+
+    # Do the extraction.
     fancyprint('Performing simple aperture extraction.')
     fancyprint('Extracting Order 1')
-    flux_o1, ferr_o1 = do_box_extraction(cube, ecube, y1, width=soss_width)
+    flux_o1, ferr_o1 = do_box_extraction(cube1, ecube, y1, width=soss_width)
     fancyprint('Extracting Order 2')
-    flux_o2, ferr_o2 = do_box_extraction(cube, ecube, y2, width=soss_width,
+    flux_o2, ferr_o2 = do_box_extraction(cube2, ecube, y2, width=soss_width,
                                          extract_end=len(y2))
 
     # Get default wavelength solution.
@@ -604,11 +671,69 @@ def format_extracted_spectra(datafiles, times, extract_params, target_name,
     return spectra
 
 
+def window_oneoverf(cube, diff_cube, xpos, ypos, soss_width, oof_width,
+                    pixel_masks=None):
+    """
+
+    Parameters
+    ----------
+    cube
+    diff_cube
+    xpos
+    ypos
+    soss_width
+    oof_width
+    pixel_masks
+
+    Returns
+    -------
+    """
+
+    cube_corr = np.ones_like(cube)
+    nint, dimy, dimx = np.shape(cube)
+
+    # Get outlier masks.
+    if pixel_masks is None:
+        fancyprint('No outlier maps passed, ignoring outliers.')
+        outliers = np.zeros((nint, dimy, dimx))
+    else:
+        for i, file in enumerate(pixel_masks):
+            fancyprint('Reading outlier map {}'.format(file))
+            if i == 0:
+                # Get second extension which will be flags without tracemask.
+                outliers = fits.getdata(file, 2)
+            else:
+                outliers = np.concatenate([outliers, fits.getdata(file, 2)])
+    outliers = np.where(outliers == 0, 1, np.nan)
+    # Apply the outlier mask.
+    diff_cube *= outliers
+
+    for x, y in zip(xpos, ypos):
+        # Define extent of the window.
+        up_w = np.ceil(np.min([y + oof_width//2, dimy-1])).astype(int)
+        low_w = np.floor(np.max([y - oof_width//2, 0])).astype(int)
+        up_b = np.ceil(np.min([y + soss_width // 2, dimy-1])).astype(int)
+        low_b = np.floor(np.max([y - soss_width // 2, 0])).astype(int)
+        # Stack the window rows.
+        window = np.concatenate([diff_cube[:, low_w:low_b, x],
+                                 diff_cube[:, up_b:up_w, x]], axis=1)
+        # Subtract the 1/f calculated in the window from the cube column.
+        if np.shape(window)[1] != 0:
+            cube_corr[:, :, x] = cube[:, :, x] - np.nanmedian(window, axis=1)[:, None]
+        # In case the extraction box is the entire frame, don't subtract
+        # anything so that this doesn't fail.
+        else:
+            cube_corr[:, :, x] = cube[:, :, x]
+
+    return cube_corr
+
+
 def run_stage3(results, save_results=True, root_dir='./', force_redo=False,
                extract_method='box', specprofile=None, centroids=None,
                soss_width=40, st_teff=None, st_logg=None, st_met=None,
                planet_letter='b', output_tag='', do_plot=False,
-               show_plot=False):
+               show_plot=False, timeseries_o1=None, timeseries_o2=None,
+               pixel_masks=None, oof_width=None, baseline_ints=None):
     """Run the supreme-SPOON Stage 3 pipeline: 1D spectral extraction, using
     a combination of the official STScI DMS and custom steps.
 
@@ -677,10 +802,13 @@ def run_stage3(results, save_results=True, root_dir='./', force_redo=False,
     # Custom/default DMS step.
     step = Extract1DStep(results, extract_method=extract_method,
                          st_teff=st_teff, st_logg=st_logg, st_met=st_met,
-                         planet_letter=planet_letter,  output_dir=outdir)
+                         planet_letter=planet_letter,  output_dir=outdir,
+                         baseline_ints=baseline_ints, pixel_masks=pixel_masks,
+                         timeseries_o1=timeseries_o1,
+                         timeseries_o2=timeseries_o2)
     spectra = step.run(soss_width=soss_width, specprofile=specprofile,
                        centroids=centroids, save_results=save_results,
                        force_redo=force_redo, do_plot=do_plot,
-                       show_plot=show_plot)
+                       show_plot=show_plot, oof_width=oof_width)
 
     return spectra
