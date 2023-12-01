@@ -261,24 +261,25 @@ class OneOverFStep:
         # If no output files are detected, run the step.
         else:
             if self.method == 'achromatic':
-                results = oneoverfstep(self.datafiles,
-                                       baseline_ints=self.baseline_ints,
-                                       background=self.background,
-                                       smoothed_wlc=self.smoothed_wlc,
-                                       output_dir=self.output_dir,
-                                       save_results=save_results,
-                                       pixel_masks=self.pixel_masks,
-                                       fileroots=self.fileroots,
-                                       **kwargs)
+                results = oneoverfstep_achromatic(self.datafiles,
+                                                  baseline_ints=self.baseline_ints,
+                                                  background=self.background,
+                                                  smoothed_wlc=self.smoothed_wlc,
+                                                  output_dir=self.output_dir,
+                                                  save_results=save_results,
+                                                  pixel_masks=self.pixel_masks,
+                                                  fileroots=self.fileroots,
+                                                  **kwargs)
             else:
-                results = oneoverfstep_v2(self.datafiles,
-                                          baseline_ints=self.baseline_ints,
-                                          background=self.background,
-                                          output_dir=self.output_dir,
-                                          save_results=save_results,
-                                          pixel_masks=self.pixel_masks,
-                                          fileroots=self.fileroots,
-                                          do_plot=do_plot, show_plot=show_plot)
+                results = oneoverfstep_chromatic(self.datafiles,
+                                                 baseline_ints=self.baseline_ints,
+                                                 background=self.background,
+                                                 output_dir=self.output_dir,
+                                                 save_results=save_results,
+                                                 pixel_masks=self.pixel_masks,
+                                                 fileroots=self.fileroots,
+                                                 do_plot=do_plot,
+                                                 show_plot=show_plot)
             # Do step plots if requested.
             if do_plot is True:
                 if save_results is True:
@@ -711,9 +712,10 @@ def jumpstep_in_time(datafile, window=5, thresh=10, fileroot=None,
     return datafile
 
 
-def oneoverfstep(datafiles, baseline_ints, even_odd_rows=True,
-                 background=None, smoothed_wlc=None, output_dir=None,
-                 save_results=True, pixel_masks=None, fileroots=None):
+def oneoverfstep_achromatic(datafiles, baseline_ints, even_odd_rows=True,
+                            background=None, smoothed_wlc=None,
+                            output_dir=None, save_results=True,
+                            pixel_masks=None, fileroots=None):
     """Custom achromatic 1/f correction routine to be applied at the group or
     integration level. A median stack is constructed using all out-of-transit
     integrations and subtracted from each individual integration. The
@@ -907,9 +909,10 @@ def oneoverfstep(datafiles, baseline_ints, even_odd_rows=True,
     return corrected_rampmodels
 
 
-def oneoverfstep_v2(datafiles, baseline_ints, background=None,
-                    output_dir=None, save_results=True, pixel_masks=None,
-                    fileroots=None, do_plot=False, show_plot=False):
+def oneoverfstep_chromatic(datafiles, baseline_ints, background=None,
+                           output_dir=None, save_results=True,
+                           pixel_masks=None, fileroots=None, do_plot=False,
+                           show_plot=False):
     """Custom chomratic 1/f correction routine to be applied at the group or
     integration level. 1/f noise level and median frame scaling is calculated
     independently for each pixel column. Outlier pixels and background
