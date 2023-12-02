@@ -323,47 +323,49 @@ def box_extract_soss(datafiles, centroids, soss_width, oof_width=None,
     # Do window 1/f correction.
     if oof_width is not None:
         fancyprint('Performing window 1/f correction.')
+        if timeseries_o1 is None:
+            msg = '1D or 2D timeseries must be provided to use window ' \
+                  '1/f method.'
+            raise ValueError(msg)
+        fancyprint('Reading order 1 timeseries file.')
         if isinstance(timeseries_o1, str):
-            fancyprint('Reading order 1 timeseries file '
-                       '{}.'.format(timeseries_o1))
-            try:
-                timeseries1 = np.load(timeseries_o1)
-            except ValueError:
-                msg = '1D or 2D timeseries must be provided to use window ' \
-                      '1/f method.'
-                raise ValueError(msg)
+            timeseries_o1 = np.load(timeseries_o1)
         # If passed light curve is 1D, extend to 2D.
-        if np.ndim(timeseries1) == 1:
+        if np.ndim(timeseries_o1) == 1:
             dimx = np.shape(cube)[-1]
-            timeseries1 = np.repeat(timeseries1[:, np.newaxis], dimx, axis=1)
+            timeseries_o1 = np.repeat(timeseries_o1[:, np.newaxis], dimx,
+                                      axis=1)
+
         # Check if separate timeseries is passed for order 2.
         if timeseries_o2 is None:
             fancyprint('Using the same timeseries for orders 1 and 2.',
                        msg_type='WARNING')
-            timeseries2 = np.copy(timeseries1)
+            timeseries_o2 = np.copy(timeseries_o1)
         else:
-            fancyprint('Reading order 2 timeseries file '
-                       '{}.'.format(timeseries_o2))
-            timeseries2 = np.load(timeseries_o2)
+            fancyprint('Reading order 2 timeseries file.')
+            if isinstance(timeseries_o2, str):
+                timeseries_o2 = np.load(timeseries_o2)
             # If passed light curve is 1D, extend to 2D.
-            if np.ndim(timeseries2) == 1:
+            if np.ndim(timeseries_o2) == 1:
                 dimx = np.shape(cube)[-1]
-                timeseries2 = np.repeat(timeseries2[:, np.newaxis], dimx,
-                                        axis=1)
+                timeseries_o2 = np.repeat(timeseries_o2[:, np.newaxis], dimx,
+                                          axis=1)
 
         # Create difference cube.
         assert baseline_ints is not None
         baseline_ints = utils.format_out_frames(baseline_ints)
         deepstack = utils.make_deepstack(cube[baseline_ints])
-        diff_cube1 = cube - deepstack[None, :, :] * timeseries1[:, None, :]
-        diff_cube2 = cube - deepstack[None, :, :] * timeseries2[:, None, :]
+        diff_cube1 = cube - deepstack[None, :, :] * timeseries_o1[:, None, :]
+        diff_cube2 = cube - deepstack[None, :, :] * timeseries_o2[:, None, :]
 
         # Ensure window is a ~appropriate width.
         assert oof_width >= (soss_width + 10)
 
         # Perform the window 1/f correction seperately for each order.
+        fancyprint('Doing order 1 1/f window correction.')
         cube1 = window_oneoverf(cube, diff_cube1, x1, y1, soss_width,
                                 oof_width, pixel_masks)
+        fancyprint('Doing order 2 1/f window correction.')
         cube2 = window_oneoverf(cube, diff_cube2, x2, y2, soss_width,
                                 oof_width, pixel_masks)
     else:

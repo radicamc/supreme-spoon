@@ -70,6 +70,8 @@ if np.ndim(background_model) == 3:
     background_model = background_model[0]
 if config['timeseries'] is not None:
     config['timeseries'] = np.load(config['timeseries'])
+if config['timeseries_o2'] is not None:
+    config['timeseries_o2'] = np.load(config['timeseries_o2'])
 if config['centroids'] is not None:
     config['centroids'] = pd.read_csv(config['centroids'], comment='#')
 if config['f277w'] is not None:
@@ -144,6 +146,6 @@ if 3 in config['run_stages']:
                                 oof_width=config['oof_width'],
                                 timeseries_o1=config['timeseries'],
                                 timeseries_o2=config['timeseries_o2'],
-                                pixel_masks=config['outlier maps'])
+                                pixel_masks=config['outlier_maps'])
 
 fancyprint('Done')
