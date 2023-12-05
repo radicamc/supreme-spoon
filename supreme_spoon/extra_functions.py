@@ -18,8 +18,10 @@ import ray
 from scipy.interpolate import interp2d
 from scipy.ndimage import median_filter
 from scipy.optimize import curve_fit
+from scipy.signal import medfilt
 import shutil
 
+from supreme_spoon import utils
 from supreme_spoon.utils import fancyprint
 
 
@@ -141,6 +143,50 @@ def get_throughput_from_photom_file(photom_path):
     thpt2 = 1 / (scale2 * 3e8 / w2 ** 2)
 
     return w1, w2, thpt1, thpt2
+
+
+def make_smoothed_2d_lightcurve(spec, baseline_ints, nint, dimx, filename,
+                                order=1, tscale=3, wscale=9):
+    """Smooth extracted 2D SOSS light curves on specified time and wavelength
+    scales to use as input for chromatic 1/f correction.
+
+    Parameters
+    ----------
+    spec : array-like(float)
+        Extracted 2D light curves.
+    baseline_ints : int, array-like(int)
+        Integrations or ingress and/or egress.
+    nint : int
+        Number of integration in exposure.
+    dimx : int
+        Number of wavelength bins in exposure.
+    filename : str
+        File to which to save results.
+    order : int
+        SOSS diffraction order being considered.
+    tscale : int
+        Timescale, in integrations, on which to smooth. Must be odd.
+    wscale : int
+        Timescale, in wavelength bins, on which to smooth. Must be odd.
+    """
+
+    # Normalize light curves.
+    baseline_ints = utils.format_out_frames(baseline_ints)
+    spec /= np.nanmedian(spec[baseline_ints], axis=0)
+
+    # Smooth on desired scale.
+    spec_smoothed = medfilt(spec, (tscale, wscale))
+
+    # Put back on full size wavelength axis.
+    ref_file = np.ones((nint, dimx))
+    if order == 1:
+        ref_file[:, 4:-4] = spec_smoothed
+    else:
+        ref_file[:, 1206:1770] = spec_smoothed
+
+    # Save file.
+    suffix = 'lcestimate_2d_o{}.npy'.format(order)
+    np.save(filename + suffix, ref_file)
 
 
 # ====== Deprecated CCF Stability Functions --- May Have Later Uses?? =====
