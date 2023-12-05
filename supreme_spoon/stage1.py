@@ -135,6 +135,10 @@ class SuperBiasStep:
         self.output_dir = output_dir
         self.datafiles = utils.sort_datamodels(input_data)
         self.fileroots = utils.get_filename_root(self.datafiles)
+        if self.fileroots[0][-3] == 'o':
+            self.order = self.fileroots[0][-2]
+        else:
+            self.order = None
 
     def run(self, save_results=True, force_redo=False, do_plot=False,
             show_plot=False, **kwargs):
@@ -167,7 +171,12 @@ class SuperBiasStep:
         # Do step plot if requested.
         if do_plot is True:
             if save_results is True:
-                plot_file = self.output_dir + self.tag.replace('fits', 'pdf')
+                if self.order is not None:
+                    plot_file = self.output_dir + self.tag.replace(
+                        '.fits', '_o{}.pdf'.format(self.order))
+                else:
+                    plot_file = self.output_dir + self.tag.replace(
+                        '.fits', '.pdf')
             else:
                 plot_file = None
             plotting.make_superbias_plot(results, outfile=plot_file,
@@ -197,7 +206,7 @@ class OneOverFStep:
         self.method = method
 
     def run(self, save_results=True, force_redo=False, do_plot=False,
-            show_plot=False, **kwargs):
+            show_plot=False, order=None, **kwargs):
         """Method to run the step.
         """
 
@@ -206,6 +215,8 @@ class OneOverFStep:
         results = []
         for i in range(len(self.datafiles)):
             # If an output file for this segment already exists, skip the step.
+            if self.method == 'scale-chromatic':
+                self.fileroots[i] += 'o{}_'.format(order)
             expected_file = self.output_dir + self.fileroots[i] + self.tag
             if expected_file not in all_files:
                 do_step = 0
@@ -220,11 +231,6 @@ class OneOverFStep:
             if self.method in ['scale-chromatic', 'scale-achromatic']:
                 # To use reference files to calculate 1/f noise.
                 method = self.method.split('-')[-1]
-                # For chromatic corrections, if input files are not for a
-                # single order, run both orders.
-                if self.fileroots[0][-3] != 'o':
-
-
                 results = oneoverfstep_scale(self.datafiles,
                                              baseline_ints=self.baseline_ints,
                                              background=self.background,
@@ -236,7 +242,7 @@ class OneOverFStep:
                                              method=method, order=order,
                                              **kwargs)
             elif self.method == 'solve':
-                # To use a MLE to solve for the 1/f noise.
+                # To use MLE to solve for the 1/f noise.
                 results = oneoverfstep_solve(self.datafiles,
                                              baseline_ints=self.baseline_ints,
                                              background=self.background,
@@ -261,10 +267,16 @@ class OneOverFStep:
             # Do step plots if requested.
             if do_plot is True:
                 if save_results is True:
-                    plot_file1 = self.output_dir + self.tag.replace('.fits',
-                                                                    '_1.pdf')
-                    plot_file2 = self.output_dir + self.tag.replace('.fits',
-                                                                    '_2.pdf')
+                    if self.method == 'scale-chromatic':
+                        plot_file1 = self.output_dir + self.tag.replace(
+                            '.fits', '_o{}_1.pdf'.format(order))
+                        plot_file2 = self.output_dir + self.tag.replace(
+                            '.fits', '_o{}_2.pdf'.format(order))
+                    else:
+                        plot_file1 = self.output_dir + self.tag.replace(
+                            '.fits', '_1.pdf')
+                        plot_file2 = self.output_dir + self.tag.replace(
+                            '.fits', '_2.pdf')
                 else:
                     plot_file1, plot_file2 = None, None
                 plotting.make_oneoverf_plot(results,
@@ -294,6 +306,10 @@ class LinearityStep:
         self.output_dir = output_dir
         self.datafiles = utils.sort_datamodels(input_data)
         self.fileroots = utils.get_filename_root(self.datafiles)
+        if self.fileroots[0][-3] == 'o':
+            self.order = self.fileroots[0][-2]
+        else:
+            self.order = None
 
     def run(self, save_results=True, force_redo=False, do_plot=False,
             show_plot=False, **kwargs):
@@ -326,8 +342,12 @@ class LinearityStep:
         # Do step plot if requested.
         if do_plot is True:
             if save_results is True:
-                plot_file = self.output_dir + self.tag.replace('fits',
-                                                               'pdf')
+                if self.order is not None:
+                    plot_file = self.output_dir + self.tag.replace(
+                        '.fits', '_o{}.pdf'.format(self.order))
+                else:
+                    plot_file = self.output_dir + self.tag.replace(
+                        '.fits', '.pdf')
             else:
                 plot_file = None
             plotting.make_linearity_plot(results, self.datafiles,
@@ -350,6 +370,10 @@ class JumpStep:
         self.output_dir = output_dir
         self.datafiles = utils.sort_datamodels(input_data)
         self.fileroots = utils.get_filename_root(self.datafiles)
+        if self.fileroots[0][-3] == 'o':
+            self.order = self.fileroots[0][-2]
+        else:
+            self.order = None
 
     def run(self, save_results=True, force_redo=False, rejection_threshold=15,
             flag_in_time=False, time_rejection_threshold=10, time_window=5,
@@ -405,8 +429,12 @@ class JumpStep:
         # Do step plot if requested.
         if do_plot is True:
             if save_results is True:
-                plot_file = self.output_dir + self.tag.replace('fits',
-                                                               'pdf')
+                if self.order is not None:
+                    plot_file = self.output_dir + self.tag.replace(
+                        '.fits', '_o{}.pdf'.format(self.order))
+                else:
+                    plot_file = self.output_dir + self.tag.replace(
+                        '.fits', '.pdf')
             else:
                 plot_file = None
             plotting.make_jump_location_plot(results, outfile=plot_file,
@@ -910,8 +938,10 @@ def oneoverfstep_scale(datafiles, baseline_ints, even_odd_rows=True,
         if save_results is True:
             suffix = 'oneoverfstep.fits'
             # Add order suffix if chomratic method was used.
-            if method == 'chomratic':
+            if method == 'chromatic':
                 if fileroots[n][-3:-1] != 'o{}'.format(order):
+                    if fileroots[n][-3] == 'o':
+                        suffix = suffix[:-3]
                     suffix = 'o{}_'.format(order) + suffix
             newfile.write(output_dir + fileroots[n] + suffix)
 
@@ -1137,11 +1167,12 @@ def oneoverfstep_solve(datafiles, baseline_ints, background=None,
 
 
 def run_stage1(results, background_model, baseline_ints=None,
-               oof_method='scale', smoothed_wlc=None, save_results=True,
-               pixel_masks=None, force_redo=False, deepframe=None,
-               rejection_threshold=15, flag_in_time=False,
-               time_rejection_threshold=10, root_dir='./', output_tag='',
-               skip_steps=None, do_plot=False, show_plot=False, **kwargs):
+               oof_method='scale-achromatic', oof_order=None,
+               timeseries=None, save_results=True, pixel_masks=None,
+               force_redo=False, deepframe=None, rejection_threshold=15,
+               flag_in_time=False, time_rejection_threshold=10, root_dir='./',
+               output_tag='', skip_steps=None, do_plot=False, show_plot=False,
+               **kwargs):
     """Run the supreme-SPOON Stage 1 pipeline: detector level processing,
     using a combination of official STScI DMS and custom steps. Documentation
     for the official DMS steps can be found here:
@@ -1157,9 +1188,12 @@ def run_stage1(results, background_model, baseline_ints=None,
     baseline_ints : array-like[int]
         Integration numbers for transit ingress and egress.
     oof_method : str
-        Whether to apply "scale" or "solve" 1/f correction algorithms.
-    smoothed_wlc : array-like[float], None
-        Estimate of the normalized light curve.
+        1/f correction method. Options are "scale-chromatic",
+        "scale-achromatic", "solve", or "window".
+    oof_order : int, None
+        If oof_method is scale-chromatic, the diffraction order to correct.
+    timeseries : array-like[float], None
+        Estimate of the normalized light curve, either 1D or 2D.
     save_results : bool
         If True, save results of each step to file.
     pixel_masks : array-like[str], None
@@ -1260,10 +1294,11 @@ def run_stage1(results, background_model, baseline_ints=None,
             step_kwargs = {}
         step = OneOverFStep(results, baseline_ints=baseline_ints,
                             output_dir=outdir, method=oof_method,
-                            timeseries=smoothed_wlc, pixel_masks=pixel_masks,
+                            timeseries=timeseries, pixel_masks=pixel_masks,
                             background=background_model)
         results = step.run(save_results=save_results, force_redo=force_redo,
-                           do_plot=do_plot, show_plot=show_plot, **step_kwargs)
+                           do_plot=do_plot, show_plot=show_plot,
+                           order=oof_order, **step_kwargs)
 
     # ===== Linearity Correction Step =====
     # Default DMS step.

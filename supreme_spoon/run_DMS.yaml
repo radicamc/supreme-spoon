@@ -14,14 +14,18 @@ input_filetag : 'uncal'
 # Background model. Default model available here:
 # https://jwst-docs.stsci.edu/jwst-near-infrared-imager-and-slitless-spectrograph/niriss-observing-strategies/niriss-soss-recommended-strategies
 background_file : 'model_background256.npy'
+# 1/f correction method; either 'scale-achromatic', 'scale-chromatic', 'solve', or 'window'.
+oof_method : 'scale-achromatic'
+# If oof_method is "scale-chromatic", the diffraction order to correct.
+oof_order : None
+# For 1/f correction; estimate of 1D or 2D timeseries for order 1 or 2 (optional).
+timeseries : None
+# For 1/f correction; estimate of 1D or 2D timeseries for order 2. Only necessary for oof_method is "window" (optional).
+timeseries_o2 : None
 # For 1/f correction; outlier pixel maps (optional).
 outlier_maps : None
-# For 1/f correction; estimate of 1D or 2D timeseries for order 1 (optional).
-timeseries : None
-# For 1/f correction; estimate of 1D or 2D timeseries for order 2. Only necessary for window 1/f correction (optional).
-timeseries_o2 : None
-# 1/f correction method; either 'scale' (recommended), 'solve', or 'window'.
-oof_method : 'scale'
+# For window 1/f correction; if oof_method is "window", window size will be oof_width - soss_width (optional).
+oof_width: None
 # For jump detection; sigma threshold for a pixel to be flagged as an outlier.
 jump_threshold : 15
 # For jump detection; whether to also flag outliers in the time domain.
@@ -40,8 +44,7 @@ space_outlier_threshold : 15
 time_outlier_threshold : 10
 # If True, create a mask of the target trace orders.
 generate_tracemask : True
-# If True, calculate the stability of the SOSS trace over the course of the
-# TSO using principle component analysis.
+# If True, calculate the stability of the SOSS trace over the course of the TSO using principle component analysis.
 calculate_stability : True
 # Number of principle components to extract. Only necessary if calculate_stability is True.
 pca_components : 10
@@ -51,8 +54,8 @@ generate_lc : True
 smoothing_scale : None
 # If True, use an F277W filter exposure to create a mask of background order 0s.
 generate_order0_mask : False
-# Path to a processed (superbias and background subtracted) F277W exposure data frame
-# (optional). Only necessary if generate_order0_mask is True.
+# Path to a processed (superbias and background subtracted) F277W exposure data frame (optional). Only necessary if
+# generate_order0_mask is True.
 f277w : None
 # List of Stage 2 steps to skip, if any.
 stage2_skip : None
@@ -64,15 +67,13 @@ stage2_kwargs : {}
 extract_method : 'box'
 # Box width to extract around the trace center.
 soss_width : 40
-# For window 1/f correction, window will be oof_width - soss_width (optional).
-oof_width: None
 # Specprofile reference file for ATOCA (optional).
 specprofile : None
 # File with centroids for all three orders for box extraction (optional).
 centroids : None
 # Stellar effective temperature in K for wavelength calibration (optional).
 st_teff : None
-# Stellar log surface gravity for wavelength calibration (optional)
+# Stellar log surface gravity for wavelength calibration (optional).
 st_logg: None
 # Stellar metallicity as [Fe/H] for wavelength calibration (optional).
 st_met : None
