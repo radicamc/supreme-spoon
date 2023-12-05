@@ -26,49 +26,6 @@ from supreme_spoon import utils, plotting
 from supreme_spoon.utils import fancyprint
 
 
-class GroupScaleStep:
-    """Wrapper around default calwebb_detector1 Group Scale Correction step.
-    """
-
-    def __init__(self, input_data, output_dir):
-        """Step initializer.
-        """
-
-        self.tag = 'groupscalestep.fits'
-        self.output_dir = output_dir
-        self.datafiles = utils.sort_datamodels(input_data)
-        self.fileroots = utils.get_filename_root(self.datafiles)
-
-    def run(self, save_results=True, force_redo=False, **kwargs):
-        """Method to run the step.
-        """
-
-        results = []
-        all_files = glob.glob(self.output_dir + '*')
-        for i, segment in enumerate(self.datafiles):
-            # If an output file for this segment already exists, skip the step.
-            expected_file = self.output_dir + self.fileroots[i] + self.tag
-            if expected_file in all_files and force_redo is False:
-                fancyprint('File {} already exists.'.format(expected_file))
-                fancyprint('Skipping Group Scale Step.')
-                res = expected_file
-            # If no output files are detected, run the step.
-            else:
-                step = calwebb_detector1.group_scale_step.GroupScaleStep()
-                res = step.call(segment, output_dir=self.output_dir,
-                                save_results=save_results, **kwargs)
-                # Verify that filename is correct.
-                if save_results is True:
-                    current_name = self.output_dir + res.meta.filename
-                    if expected_file != current_name:
-                        res.close()
-                        os.rename(current_name, expected_file)
-                        res = datamodels.open(expected_file)
-            results.append(res)
-
-        return results
-
-
 class DQInitStep:
     """Wrapper around default calwebb_detector1 Data Quality Initialization
     step.
@@ -178,6 +135,10 @@ class SuperBiasStep:
         self.output_dir = output_dir
         self.datafiles = utils.sort_datamodels(input_data)
         self.fileroots = utils.get_filename_root(self.datafiles)
+        if self.fileroots[0][-3] == 'o':
+            self.order = self.fileroots[0][-2]
+        else:
+            self.order = None
 
     def run(self, save_results=True, force_redo=False, do_plot=False,
             show_plot=False, **kwargs):
@@ -210,7 +171,12 @@ class SuperBiasStep:
         # Do step plot if requested.
         if do_plot is True:
             if save_results is True:
-                plot_file = self.output_dir + self.tag.replace('fits', 'pdf')
+                if self.order is not None:
+                    plot_file = self.output_dir + self.tag.replace(
+                        '.fits', '_o{}.pdf'.format(self.order))
+                else:
+                    plot_file = self.output_dir + self.tag.replace(
+                        '.fits', '.pdf')
             else:
                 plot_file = None
             plotting.make_superbias_plot(results, outfile=plot_file,
@@ -224,7 +190,7 @@ class OneOverFStep:
     """
 
     def __init__(self, input_data, baseline_ints, output_dir,
-                 method='achromatic', smoothed_wlc=None, pixel_masks=None,
+                 method='scale-achromatic', timeseries=None, pixel_masks=None,
                  background=None):
         """Step initializer.
         """
@@ -232,7 +198,7 @@ class OneOverFStep:
         self.tag = 'oneoverfstep.fits'
         self.output_dir = output_dir
         self.baseline_ints = baseline_ints
-        self.smoothed_wlc = smoothed_wlc
+        self.timeseries = timeseries
         self.pixel_masks = pixel_masks
         self.background = background
         self.datafiles = utils.sort_datamodels(input_data)
@@ -240,13 +206,18 @@ class OneOverFStep:
         self.method = method
 
     def run(self, save_results=True, force_redo=False, do_plot=False,
-            show_plot=False, **kwargs):
+            show_plot=False, order=None, **kwargs):
         """Method to run the step.
         """
 
         all_files = glob.glob(self.output_dir + '*')
         do_step = 1
         results = []
+        if self.method == 'scale-chromatic':
+            # Add order suffix to expected file if not already there.
+            for i in range(len(self.datafiles)):
+                if self.fileroots[i][-3:] != 'o{}_'.format(order):
+                    self.fileroots[i] += 'o{}_'.format(order)
         for i in range(len(self.datafiles)):
             # If an output file for this segment already exists, skip the step.
             expected_file = self.output_dir + self.fileroots[i] + self.tag
@@ -260,42 +231,64 @@ class OneOverFStep:
             fancyprint('Skipping 1/f Correction Step.')
         # If no output files are detected, run the step.
         else:
-            if self.method == 'achromatic':
-                results = oneoverfstep_achromatic(self.datafiles,
-                                                  baseline_ints=self.baseline_ints,
-                                                  background=self.background,
-                                                  smoothed_wlc=self.smoothed_wlc,
-                                                  output_dir=self.output_dir,
-                                                  save_results=save_results,
-                                                  pixel_masks=self.pixel_masks,
-                                                  fileroots=self.fileroots,
-                                                  **kwargs)
+            if self.method in ['scale-chromatic', 'scale-achromatic']:
+                # To use reference files to calculate 1/f noise.
+                method = self.method.split('-')[-1]
+                results = oneoverfstep_scale(self.datafiles,
+                                             baseline_ints=self.baseline_ints,
+                                             background=self.background,
+                                             timeseries=self.timeseries,
+                                             output_dir=self.output_dir,
+                                             save_results=save_results,
+                                             pixel_masks=self.pixel_masks,
+                                             fileroots=self.fileroots,
+                                             method=method, order=order,
+                                             **kwargs)
+            elif self.method == 'solve':
+                # To use MLE to solve for the 1/f noise.
+                results = oneoverfstep_solve(self.datafiles,
+                                             baseline_ints=self.baseline_ints,
+                                             background=self.background,
+                                             output_dir=self.output_dir,
+                                             save_results=save_results,
+                                             pixel_masks=self.pixel_masks,
+                                             fileroots=self.fileroots,
+                                             do_plot=do_plot,
+                                             show_plot=show_plot)
+            elif self.method == 'window':
+                # If window method selected, treat this during Stage 3. Just
+                # return the inputs.
+                msg = 'window 1/f method selected. 1/f correction will be ' \
+                      'treated during spectral extraction.'
+                fancyprint(msg, msg_type='WARNING')
+                return self.datafiles
             else:
-                results = oneoverfstep_chromatic(self.datafiles,
-                                                 baseline_ints=self.baseline_ints,
-                                                 background=self.background,
-                                                 output_dir=self.output_dir,
-                                                 save_results=save_results,
-                                                 pixel_masks=self.pixel_masks,
-                                                 fileroots=self.fileroots,
-                                                 do_plot=do_plot,
-                                                 show_plot=show_plot)
+                # Raise error otherwise.
+                msg = 'Unrecognized 1/f correction: {}'.format(self.method)
+                raise ValueError(msg)
+
             # Do step plots if requested.
             if do_plot is True:
                 if save_results is True:
-                    plot_file1 = self.output_dir + self.tag.replace('.fits',
-                                                                    '_1.pdf')
-                    plot_file2 = self.output_dir + self.tag.replace('.fits',
-                                                                    '_2.pdf')
+                    if self.method == 'scale-chromatic':
+                        plot_file1 = self.output_dir + self.tag.replace(
+                            '.fits', '_o{}_1.pdf'.format(order))
+                        plot_file2 = self.output_dir + self.tag.replace(
+                            '.fits', '_o{}_2.pdf'.format(order))
+                    else:
+                        plot_file1 = self.output_dir + self.tag.replace(
+                            '.fits', '_1.pdf')
+                        plot_file2 = self.output_dir + self.tag.replace(
+                            '.fits', '_2.pdf')
                 else:
                     plot_file1, plot_file2 = None, None
                 plotting.make_oneoverf_plot(results,
-                                            timeseries=self.smoothed_wlc,
+                                            timeseries=self.timeseries,
                                             baseline_ints=self.baseline_ints,
                                             outfile=plot_file1,
                                             show_plot=show_plot)
                 plotting.make_oneoverf_psd(results, self.datafiles,
-                                           timeseries=self.smoothed_wlc,
+                                           timeseries=self.timeseries,
                                            baseline_ints=self.baseline_ints,
                                            pixel_masks=self.pixel_masks,
                                            outfile=plot_file2,
@@ -316,6 +309,10 @@ class LinearityStep:
         self.output_dir = output_dir
         self.datafiles = utils.sort_datamodels(input_data)
         self.fileroots = utils.get_filename_root(self.datafiles)
+        if self.fileroots[0][-3] == 'o':
+            self.order = self.fileroots[0][-2]
+        else:
+            self.order = None
 
     def run(self, save_results=True, force_redo=False, do_plot=False,
             show_plot=False, **kwargs):
@@ -348,8 +345,12 @@ class LinearityStep:
         # Do step plot if requested.
         if do_plot is True:
             if save_results is True:
-                plot_file = self.output_dir + self.tag.replace('fits',
-                                                               'pdf')
+                if self.order is not None:
+                    plot_file = self.output_dir + self.tag.replace(
+                        '.fits', '_o{}.pdf'.format(self.order))
+                else:
+                    plot_file = self.output_dir + self.tag.replace(
+                        '.fits', '.pdf')
             else:
                 plot_file = None
             plotting.make_linearity_plot(results, self.datafiles,
@@ -372,6 +373,10 @@ class JumpStep:
         self.output_dir = output_dir
         self.datafiles = utils.sort_datamodels(input_data)
         self.fileroots = utils.get_filename_root(self.datafiles)
+        if self.fileroots[0][-3] == 'o':
+            self.order = self.fileroots[0][-2]
+        else:
+            self.order = None
 
     def run(self, save_results=True, force_redo=False, rejection_threshold=15,
             flag_in_time=False, time_rejection_threshold=10, time_window=5,
@@ -427,8 +432,12 @@ class JumpStep:
         # Do step plot if requested.
         if do_plot is True:
             if save_results is True:
-                plot_file = self.output_dir + self.tag.replace('fits',
-                                                               'pdf')
+                if self.order is not None:
+                    plot_file = self.output_dir + self.tag.replace(
+                        '.fits', '_o{}.pdf'.format(self.order))
+                else:
+                    plot_file = self.output_dir + self.tag.replace(
+                        '.fits', '.pdf')
             else:
                 plot_file = None
             plotting.make_jump_location_plot(results, outfile=plot_file,
@@ -712,11 +721,11 @@ def jumpstep_in_time(datafile, window=5, thresh=10, fileroot=None,
     return datafile
 
 
-def oneoverfstep_achromatic(datafiles, baseline_ints, even_odd_rows=True,
-                            background=None, smoothed_wlc=None,
-                            output_dir=None, save_results=True,
-                            pixel_masks=None, fileroots=None):
-    """Custom achromatic 1/f correction routine to be applied at the group or
+def oneoverfstep_scale(datafiles, baseline_ints, even_odd_rows=True,
+                       background=None, timeseries=None, output_dir=None,
+                       save_results=True, pixel_masks=None, fileroots=None,
+                       method='achromatic', order=1):
+    """Custom 1/f correction routine to be applied at the group or
     integration level. A median stack is constructed using all out-of-transit
     integrations and subtracted from each individual integration. The
     column-wise median of this difference image is then subtracted from the
@@ -735,8 +744,8 @@ def oneoverfstep_achromatic(datafiles, baseline_ints, even_odd_rows=True,
         If True, calculate 1/f noise seperately for even and odd numbered rows.
     background : str, array-like[float], None
         Model of background flux.
-    smoothed_wlc : array-like[float], str, None
-        Estimate of the normalized light curve, or path to file containing it.
+    timeseries : array-like[float], str, None
+        Estimate of normalized light curve(s), or path to file.
     output_dir : str, None
         Directory to which to save results. Only necessary if saving results.
     save_results : bool
@@ -746,6 +755,10 @@ def oneoverfstep_achromatic(datafiles, baseline_ints, even_odd_rows=True,
         3D (nints, dimy, dimx), or 2D (dimy, dimx).
     fileroots : array-like[str], None
         Root names for output files. Only necessary if saving results.
+    method : str
+        Whether correction will be chromatic or achromatic.
+    order : int
+        For chomratic corrections, order to correct.
 
     Returns
     -------
@@ -753,7 +766,8 @@ def oneoverfstep_achromatic(datafiles, baseline_ints, even_odd_rows=True,
         RampModels for each segment, corrected for 1/f noise.
     """
 
-    fancyprint('Starting achromatic 1/f correction step.')
+    fancyprint('Starting 1/f correction step using the scale-{} '
+               'method.'.format(method))
 
     # If saving results, ensure output directory and fileroots are provided.
     if save_results is True:
@@ -762,6 +776,14 @@ def oneoverfstep_achromatic(datafiles, baseline_ints, even_odd_rows=True,
         # Output directory formatting.
         if output_dir[-1] != '/':
             output_dir += '/'
+
+    # Ensure method is correct.
+    if method not in ['chromatic', 'achromatic']:
+        msg = 'method must be one of "chromatic" or "achromatic"'
+        raise ValueError(msg)
+    if method == 'achromatic':
+        fancyprint('Performing achromatic correction. Ignoring specified '
+                   'order: {}.'.format(order), msg_type='WARNING')
 
     # Format the baseline frames.
     baseline_ints = utils.format_out_frames(baseline_ints)
@@ -794,23 +816,40 @@ def oneoverfstep_achromatic(datafiles, baseline_ints, even_odd_rows=True,
 
     # In order to subtract off the trace as completely as possible, the median
     # stack must be scaled, via the transit curve, to the flux level of each
-    # integration.
-    # Try to open light curve file. If not, estimate it from data.
-    if isinstance(smoothed_wlc, str):
+    # integration. This can be done via two methods: using the white light
+    # curve (i.e., assuming the scaling is not wavelength dependent), or using
+    # extracted 2D light curves, such that the scaling is wavelength dependent.
+    # Try to open light curve file. If not, estimate it (1D only) from data.
+    if isinstance(timeseries, str):
         try:
-            smoothed_wlc = np.load(smoothed_wlc)
+            timeseries = np.load(timeseries)
         except (ValueError, FileNotFoundError):
-            fancyprint('Light curve file cannot be opened. It will be '
-                       'estimated from current data.', msg_type='WARNING')
-            smoothed_wlc = None
+            if method == 'achromatic':
+                fancyprint('Light curve file cannot be opened. It will be '
+                           'estimated from current data.', msg_type='WARNING')
+                timeseries = None
+            else:
+                msg = '2D light curves must be provided to use chomatic ' \
+                      'method.'
+                raise ValueError(msg)
     # If no lightcurve is provided, estimate it from the current data.
-    if smoothed_wlc is None:
+    if timeseries is None:
         postage = cube[:, -1, 20:60, 1500:1550]
         timeseries = np.nansum(postage, axis=(1, 2))
         timeseries = timeseries / np.nanmedian(timeseries[baseline_ints])
         # Smooth the time series on a timescale of roughly 2%.
-        smoothed_wlc = median_filter(timeseries,
-                                     int(0.02*np.shape(cube)[0]))
+        timeseries = median_filter(timeseries,
+                                   int(0.02*np.shape(cube)[0]))
+    # If passed light curve is 1D, extend to 2D.
+    if np.ndim(timeseries) == 1:
+        # If 1D timeseries is passed cannot do chromatic correction.
+        if method == 'chromatic':
+            fancyprint('2D light curves are required for chromatic '
+                       'correction, but 1D ones were passed. Swicthing to '
+                       'achomratic correction', msg_type='WARNING')
+            method = 'achromatic'
+        dimx = np.shape(currentfile.data)[-1]
+        timeseries = np.repeat(timeseries[:, np.newaxis], dimx, axis=1)
 
     # Background must be subtracted to accurately subtract off the target
     # trace and isolate 1/f noise. However, the background flux must also be
@@ -859,15 +898,16 @@ def oneoverfstep_achromatic(datafiles, baseline_ints, even_odd_rows=True,
             # ints from the start of the exposure.
             ii = current_int + i
             # Create the difference image.
-            sub = currentfile.data[i] - deepstack * smoothed_wlc[ii]
+            if np.ndim(currentfile.data) == 4:
+                sub = currentfile.data[i] - deepstack * timeseries[ii, None, None, :]
+            else:
+                sub = currentfile.data[i] - deepstack * timeseries[ii, None, :]
             # Apply the outlier mask.
             sub *= outliers[i, :, :]
             with warnings.catch_warnings():
                 warnings.simplefilter('ignore', category=RuntimeWarning)
                 if even_odd_rows is True:
                     # Calculate 1/f scaling seperately for even and odd rows.
-                    # This *should* be taken care of by the RefPixStep, but it
-                    # doesn't hurt to do it again.
                     dc = np.zeros_like(sub)
                     # For group-level corrections.
                     if np.ndim(currentfile.data) == 4:
@@ -909,11 +949,10 @@ def oneoverfstep_achromatic(datafiles, baseline_ints, even_odd_rows=True,
     return corrected_rampmodels
 
 
-def oneoverfstep_chromatic(datafiles, baseline_ints, background=None,
-                           output_dir=None, save_results=True,
-                           pixel_masks=None, fileroots=None, do_plot=False,
-                           show_plot=False):
-    """Custom chomratic 1/f correction routine to be applied at the group or
+def oneoverfstep_solve(datafiles, baseline_ints, background=None,
+                       output_dir=None, save_results=True, pixel_masks=None,
+                       fileroots=None, do_plot=False, show_plot=False):
+    """Custom 1/f correction routine to be applied at the group or
     integration level. 1/f noise level and median frame scaling is calculated
     independently for each pixel column. Outlier pixels and background
     contaminants can (should) be masked to improve the estimation.
@@ -948,7 +987,7 @@ def oneoverfstep_chromatic(datafiles, baseline_ints, background=None,
         RampModels for each segment, corrected for 1/f noise.
     """
 
-    fancyprint('Starting chromatic 1/f correction step.')
+    fancyprint('Starting 1/f correction step using the solve method.')
 
     # If saving results, ensure output directory and fileroots are provided.
     if save_results is True:
@@ -1129,11 +1168,12 @@ def oneoverfstep_chromatic(datafiles, baseline_ints, background=None,
 
 
 def run_stage1(results, background_model, baseline_ints=None,
-               oof_method='achromatic', smoothed_wlc=None, save_results=True,
-               pixel_masks=None, force_redo=False, deepframe=None,
-               rejection_threshold=15, flag_in_time=False,
-               time_rejection_threshold=10, root_dir='./', output_tag='',
-               skip_steps=None, do_plot=False, show_plot=False, **kwargs):
+               oof_method='scale-achromatic', oof_order=None,
+               timeseries=None, save_results=True, pixel_masks=None,
+               force_redo=False, deepframe=None, rejection_threshold=15,
+               flag_in_time=False, time_rejection_threshold=10, root_dir='./',
+               output_tag='', skip_steps=None, do_plot=False, show_plot=False,
+               **kwargs):
     """Run the supreme-SPOON Stage 1 pipeline: detector level processing,
     using a combination of official STScI DMS and custom steps. Documentation
     for the official DMS steps can be found here:
@@ -1149,9 +1189,12 @@ def run_stage1(results, background_model, baseline_ints=None,
     baseline_ints : array-like[int]
         Integration numbers for transit ingress and egress.
     oof_method : str
-        Whether to apply "chromatic" or "achromatic" 1/f correction algorithms.
-    smoothed_wlc : array-like[float], None
-        Estimate of the normalized light curve.
+        1/f correction method. Options are "scale-chromatic",
+        "scale-achromatic", "solve", or "window".
+    oof_order : int, None
+        If oof_method is scale-chromatic, the diffraction order to correct.
+    timeseries : array-like[float], None
+        Estimate of the normalized light curve, either 1D or 2D.
     save_results : bool
         If True, save results of each step to file.
     pixel_masks : array-like[str], None
@@ -1202,17 +1245,6 @@ def run_stage1(results, background_model, baseline_ints=None,
     if skip_steps is None:
         skip_steps = []
 
-    # ===== Group Scale Step =====
-    # Default DMS step.
-    if 'GroupScaleStep' not in skip_steps:
-        if 'GroupScaleStep' in kwargs.keys():
-            step_kwargs = kwargs['GroupScaleStep']
-        else:
-            step_kwargs = {}
-        step = GroupScaleStep(results, output_dir=outdir)
-        results = step.run(save_results=save_results, force_redo=force_redo,
-                           **step_kwargs)
-
     # ===== Data Quality Initialization Step =====
     # Default/Custom DMS step.
     if 'DQInitStep' not in skip_steps:
@@ -1262,11 +1294,12 @@ def run_stage1(results, background_model, baseline_ints=None,
         else:
             step_kwargs = {}
         step = OneOverFStep(results, baseline_ints=baseline_ints,
-                            output_dir=outdir, pixel_masks=pixel_masks,
-                            smoothed_wlc=smoothed_wlc, method=oof_method,
+                            output_dir=outdir, method=oof_method,
+                            timeseries=timeseries, pixel_masks=pixel_masks,
                             background=background_model)
         results = step.run(save_results=save_results, force_redo=force_redo,
-                           do_plot=do_plot, show_plot=show_plot, **step_kwargs)
+                           do_plot=do_plot, show_plot=show_plot,
+                           order=oof_order, **step_kwargs)
 
     # ===== Linearity Correction Step =====
     # Default DMS step.

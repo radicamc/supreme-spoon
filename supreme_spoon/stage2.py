@@ -130,6 +130,10 @@ class BackgroundStep:
         self.datafiles = utils.sort_datamodels(input_data)
         self.fileroots = utils.get_filename_root(self.datafiles)
         self.fileroot_noseg = utils.get_filename_root_noseg(self.fileroots)
+        if self.fileroots[0][-3] == 'o':
+            self.order = self.fileroots[0][-2]
+        else:
+            self.order = None
 
     def run(self, save_results=True, force_redo=False, do_plot=False,
             show_plot=False, **kwargs):
@@ -174,8 +178,12 @@ class BackgroundStep:
             # Do step plot if requested.
             if do_plot is True:
                 if save_results is True:
-                    plot_file = self.output_dir + self.tag.replace('fits',
-                                                                   'pdf')
+                    if self.order is not None:
+                        plot_file = self.output_dir + self.tag.replace(
+                            '.fits', '_o{}.pdf'.format(self.order))
+                    else:
+                        plot_file = self.output_dir + self.tag.replace(
+                            '.fits', '.pdf')
                 else:
                     plot_file = None
                 plotting.make_background_plot(results, outfile=plot_file,
@@ -241,6 +249,10 @@ class BadPixStep:
         self.datafiles = utils.sort_datamodels(input_data)
         self.fileroots = utils.get_filename_root(self.datafiles)
         self.fileroot_noseg = utils.get_filename_root_noseg(self.fileroots)
+        if self.fileroots[0][-3] == 'o':
+            self.order = self.fileroots[0][-2]
+        else:
+            self.order = None
 
     def run(self, space_thresh=15, time_thresh=10, box_size=5,
             save_results=True, force_redo=False, do_plot=False,
@@ -274,7 +286,7 @@ class BadPixStep:
                                       fileroot_noseg=self.fileroot_noseg,
                                       space_thresh=space_thresh,
                                       time_thresh=time_thresh,
-                                      box_size=box_size,
+                                      box_size=box_size, order=self.order,
                                       do_plot=do_plot, show_plot=show_plot)
             results, deepframe = step_results
 
@@ -490,7 +502,7 @@ def backgroundstep(datafiles, background_model, output_dir='./',
 def badpixstep(datafiles, baseline_ints, space_thresh=15, time_thresh=10,
                box_size=5, output_dir='./', save_results=True,
                fileroots=None, fileroot_noseg='', do_plot=False,
-               show_plot=False):
+               show_plot=False, order=None):
     """Identify and correct outlier pixels remaining in the dataset, using
     both a spatial and temporal approach. First, find spatial outlier pixels
     in the median stack and correct them in each integration via the median of
@@ -523,6 +535,8 @@ def badpixstep(datafiles, baseline_ints, space_thresh=15, time_thresh=10,
     show_plot : bool
         If True, show the step diagnostic plot instead of/in addition to
         saving it to file.
+    order : int, None
+        Diffraction order.
 
     Returns
     -------
@@ -686,7 +700,10 @@ def badpixstep(datafiles, baseline_ints, space_thresh=15, time_thresh=10,
 
     if do_plot is True:
         if save_results is True:
-            outfile = output_dir + 'badpixstep.pdf'
+            if order is not None:
+                outfile = output_dir + 'o{}_badpixstep.pdf'.format(order)
+            else:
+                outfile = output_dir + 'badpixstep.pdf'
         else:
             outfile = None
         hotpix = np.where(hotpix != 0)
@@ -1078,12 +1095,12 @@ def soss_stability_pca(cube, n_components=10, outfile=None, do_plot=False,
 
 def run_stage2(results, background_model, baseline_ints, save_results=True,
                force_redo=False, space_thresh=15, time_thresh=15,
-               calculate_stability=True, pca_components=10, smoothed_wlc=None,
-               oof_method='achromatic', root_dir='./', output_tag='',
-               smoothing_scale=None, skip_steps=None, generate_lc=True,
-               generate_tracemask=True, mask_width=45, pixel_masks=None,
-               generate_order0_mask=True, f277w=None, do_plot=False,
-               show_plot=False, **kwargs):
+               calculate_stability=True, pca_components=10, timeseries=None,
+               oof_method='scale-achromatic', oof_order=None, root_dir='./',
+               output_tag='', smoothing_scale=None, skip_steps=None,
+               generate_lc=True, generate_tracemask=True, mask_width=45,
+               pixel_masks=None, generate_order0_mask=True, f277w=None,
+               do_plot=False,  show_plot=False, **kwargs):
     """Run the supreme-SPOON Stage 2 pipeline: spectroscopic processing,
     using a combination of official STScI DMS and custom steps. Documentation
     for the official DMS steps can be found here:
@@ -1110,10 +1127,13 @@ def run_stage2(results, background_model, baseline_ints, save_results=True,
         the TSO using a PCA method.
     pca_components : int
         Number of PCA components to calculate.
-    smoothed_wlc : array-like[float], None
+    timeseries : array-like[float], None
         Estimate of the normalized light curve.
     oof_method : str
-        Whether to apply "chromatic" or "achromatic" 1/f correction algorithms.
+        1/f correction method. Options are "scale-chromatic",
+        "scale-achromatic", "solve", or "window".
+    oof_order : int, None
+        If oof_method is scale-chromatic, the diffraction order to correct.
     root_dir : str
         Directory from which all relative paths are defined.
     output_tag : str
@@ -1219,11 +1239,12 @@ def run_stage2(results, background_model, baseline_ints, save_results=True,
         else:
             step_kwargs = {}
         step = stage1.OneOverFStep(results, baseline_ints=baseline_ints,
-                                   output_dir=outdir, pixel_masks=pixel_masks,
-                                   smoothed_wlc=smoothed_wlc,
-                                   method=oof_method)
+                                   output_dir=outdir, method=oof_method,
+                                   timeseries=timeseries,
+                                   pixel_masks=pixel_masks)
         results = step.run(save_results=save_results, force_redo=force_redo,
-                           do_plot=do_plot, show_plot=show_plot, **step_kwargs)
+                           do_plot=do_plot, show_plot=show_plot,
+                           order=oof_order, **step_kwargs)
 
     # ===== Bad Pixel Correction Step =====
     # Custom DMS step.

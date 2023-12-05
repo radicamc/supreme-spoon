@@ -21,6 +21,7 @@ from supreme_spoon.stage3 import run_stage3
 from supreme_spoon.utils import fancyprint, parse_config, unpack_input_dir, \
     verify_path
 
+# ===== Setup =====
 # Read config file.
 try:
     config_file = sys.argv[1]
@@ -68,19 +69,27 @@ for file in input_files:
 background_model = np.load(config['background_file'])
 if np.ndim(background_model) == 3:
     background_model = background_model[0]
-if config['smoothed_wlc'] is not None:
-    config['smoothed_wlc'] = np.load(config['smoothed_wlc'])
+if config['timeseries'] is not None:
+    config['timeseries'] = np.load(config['timeseries'])
+if config['timeseries_o2'] is not None:
+    config['timeseries_o2'] = np.load(config['timeseries_o2'])
 if config['centroids'] is not None:
     config['centroids'] = pd.read_csv(config['centroids'], comment='#')
 if config['f277w'] is not None:
     config['f277w'] = np.load(config['f277w'])
 
+# Check that extraction method and 1/f correction method are compatible.
+if config['extract_method'] == 'atoca':
+    if config['oof_method'] not in ['scale-achromatic', 'solve']:
+        raise ValueError('1/f correction method {} not compatible with '
+                         'atoca extraction.'.format(config['oof_method']))
+
 # ===== Run Stage 1 =====
 if 1 in config['run_stages']:
     stage1_results = run_stage1(input_files, background_model=background_model,
                                 baseline_ints=config['baseline_ints'],
-                                smoothed_wlc=config['smoothed_wlc'],
                                 oof_method=config['oof_method'],
+                                oof_order=config['oof_order'],
                                 save_results=config['save_results'],
                                 pixel_masks=config['outlier_maps'],
                                 force_redo=config['force_redo'],
@@ -90,6 +99,7 @@ if 1 in config['run_stages']:
                                 output_tag=config['output_tag'],
                                 skip_steps=config['stage1_skip'],
                                 do_plot=config['do_plots'],
+                                timeseries=config['timeseries'],
                                 **config['stage1_kwargs'])
 else:
     stage1_results = input_files
@@ -109,6 +119,9 @@ if 2 in config['run_stages']:
                                 time_thresh=config['time_outlier_threshold'],
                                 calculate_stability=config['calculate_stability'],
                                 pca_components=config['pca_components'],
+                                timeseries=config['timeseries'],
+                                oof_method=config['oof_method'],
+                                oof_order=config['oof_order'],
                                 output_tag=config['output_tag'],
                                 smoothing_scale=config['smoothing_scale'],
                                 skip_steps=config['stage2_skip'],
@@ -118,8 +131,6 @@ if 2 in config['run_stages']:
                                 pixel_masks=config['outlier_maps'],
                                 generate_order0_mask=config['generate_order0_mask'],
                                 f277w=config['f277w'],
-                                smoothed_wlc=config['smoothed_wlc'],
-                                oof_method=config['oof_method'],
                                 do_plot=config['do_plots'],
                                 **config['stage2_kwargs'])
 else:
@@ -127,6 +138,10 @@ else:
 
 # ===== Run Stage 3 =====
 if 3 in config['run_stages']:
+    if config['oof_method'] == 'window':
+        window_oof = True
+    else:
+        window_oof = False
     stage3_results = run_stage3(stage2_results,
                                 save_results=config['save_results'],
                                 force_redo=config['force_redo'],
@@ -139,6 +154,14 @@ if 3 in config['run_stages']:
                                 st_met=config['st_met'],
                                 planet_letter=config['planet_letter'],
                                 output_tag=config['output_tag'],
-                                do_plot=config['do_plots'])
+                                do_plot=config['do_plots'],
+                                baseline_ints=config['baseline_ints'],
+                                window_oof=window_oof,
+                                oof_width=config['oof_width'],
+                                timeseries_o1=config['timeseries'],
+                                timeseries_o2=config['timeseries_o2'],
+                                pixel_masks=config['outlier_maps'],
+                                datafiles2=config['datafiles_o2'],
+                                **config['stage3_kwargs'])
 
 fancyprint('Done')
