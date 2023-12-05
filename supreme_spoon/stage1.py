@@ -214,8 +214,10 @@ class OneOverFStep:
         do_step = 1
         results = []
         if self.method == 'scale-chromatic':
+            # Add order suffix to expected file if not already there.
             for i in range(len(self.datafiles)):
-                self.fileroots[i] += 'o{}_'.format(order)
+                if self.fileroots[i][-3:] != 'o{}_'.format(order):
+                    self.fileroots[i] += 'o{}_'.format(order)
         for i in range(len(self.datafiles)):
             # If an output file for this segment already exists, skip the step.
             expected_file = self.output_dir + self.fileroots[i] + self.tag
