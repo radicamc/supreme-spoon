@@ -224,7 +224,7 @@ class OneOverFStep:
     """
 
     def __init__(self, input_data, baseline_ints, output_dir,
-                 method='achromatic', timeseries=None, pixel_masks=None,
+                 method='scale-achromatic', timeseries=None, pixel_masks=None,
                  background=None):
         """Step initializer.
         """
@@ -260,26 +260,47 @@ class OneOverFStep:
             fancyprint('Skipping 1/f Correction Step.')
         # If no output files are detected, run the step.
         else:
-            if self.method == 'achromatic':
-                results = oneoverfstep_achromatic(self.datafiles,
-                                                  baseline_ints=self.baseline_ints,
-                                                  background=self.background,
-                                                  timeseries=self.timeseries,
-                                                  output_dir=self.output_dir,
-                                                  save_results=save_results,
-                                                  pixel_masks=self.pixel_masks,
-                                                  fileroots=self.fileroots,
-                                                  **kwargs)
+            if self.method in ['scale-chromatic', 'scale-achromatic']:
+                # To use reference files to calculate 1/f noise.
+                method = self.method.split('-')[-1]
+                # For chromatic corrections, if input files are not for a
+                # single order, run both orders.
+                if self.fileroots[0][-3] != 'o':
+
+
+                results = oneoverfstep_scale(self.datafiles,
+                                             baseline_ints=self.baseline_ints,
+                                             background=self.background,
+                                             timeseries=self.timeseries,
+                                             output_dir=self.output_dir,
+                                             save_results=save_results,
+                                             pixel_masks=self.pixel_masks,
+                                             fileroots=self.fileroots,
+                                             method=method, order=order,
+                                             **kwargs)
+            elif self.method == 'solve':
+                # To use a MLE to solve for the 1/f noise.
+                results = oneoverfstep_solve(self.datafiles,
+                                             baseline_ints=self.baseline_ints,
+                                             background=self.background,
+                                             output_dir=self.output_dir,
+                                             save_results=save_results,
+                                             pixel_masks=self.pixel_masks,
+                                             fileroots=self.fileroots,
+                                             do_plot=do_plot,
+                                             show_plot=show_plot)
+            elif self.method == 'window':
+                # If window method selected, treat this during Stage 3. Just
+                # return the inputs.
+                msg = 'window 1/f method selected. 1/f correction will be ' \
+                      'treated during spectral extraction.'
+                fancyprint(msg, msg_type='WARNING')
+                return self.datafiles
             else:
-                results = oneoverfstep_chromatic(self.datafiles,
-                                                 baseline_ints=self.baseline_ints,
-                                                 background=self.background,
-                                                 output_dir=self.output_dir,
-                                                 save_results=save_results,
-                                                 pixel_masks=self.pixel_masks,
-                                                 fileroots=self.fileroots,
-                                                 do_plot=do_plot,
-                                                 show_plot=show_plot)
+                # Raise error otherwise.
+                msg = 'Unrecognized 1/f correction: {}'.format(self.method)
+                raise ValueError(msg)
+
             # Do step plots if requested.
             if do_plot is True:
                 if save_results is True:
@@ -712,11 +733,11 @@ def jumpstep_in_time(datafile, window=5, thresh=10, fileroot=None,
     return datafile
 
 
-def oneoverfstep_achromatic(datafiles, baseline_ints, even_odd_rows=True,
-                            background=None, timeseries=None,
-                            output_dir=None, save_results=True,
-                            pixel_masks=None, fileroots=None):
-    """Custom achromatic 1/f correction routine to be applied at the group or
+def oneoverfstep_scale(datafiles, baseline_ints, even_odd_rows=True,
+                       background=None, timeseries=None, output_dir=None,
+                       save_results=True, pixel_masks=None, fileroots=None,
+                       method='achromatic', order=1):
+    """Custom 1/f correction routine to be applied at the group or
     integration level. A median stack is constructed using all out-of-transit
     integrations and subtracted from each individual integration. The
     column-wise median of this difference image is then subtracted from the
@@ -746,6 +767,10 @@ def oneoverfstep_achromatic(datafiles, baseline_ints, even_odd_rows=True,
         3D (nints, dimy, dimx), or 2D (dimy, dimx).
     fileroots : array-like[str], None
         Root names for output files. Only necessary if saving results.
+    method : str
+        Whether correction will be chromatic or achromatic.
+    order : int
+        For chomratic corrections, order to correct.
 
     Returns
     -------
@@ -762,6 +787,11 @@ def oneoverfstep_achromatic(datafiles, baseline_ints, even_odd_rows=True,
         # Output directory formatting.
         if output_dir[-1] != '/':
             output_dir += '/'
+
+    # Ensure method is correct.
+    if method not in ['chromatic', 'achromatic']:
+        msg = 'method must be one of "chromatic" or "achromatic"'
+        raise ValueError(msg)
 
     # Format the baseline frames.
     baseline_ints = utils.format_out_frames(baseline_ints)
@@ -802,9 +832,14 @@ def oneoverfstep_achromatic(datafiles, baseline_ints, even_odd_rows=True,
         try:
             timeseries = np.load(timeseries)
         except (ValueError, FileNotFoundError):
-            fancyprint('Light curve file cannot be opened. It will be '
-                       'estimated from current data.', msg_type='WARNING')
-            timeseries = None
+            if method == 'achromatic':
+                fancyprint('Light curve file cannot be opened. It will be '
+                           'estimated from current data.', msg_type='WARNING')
+                timeseries = None
+            else:
+                msg = '2D light curves must be provided to use chomatic ' \
+                      'method.'
+                raise ValueError(msg)
     # If no lightcurve is provided, estimate it from the current data.
     if timeseries is None:
         postage = cube[:, -1, 20:60, 1500:1550]
@@ -815,6 +850,12 @@ def oneoverfstep_achromatic(datafiles, baseline_ints, even_odd_rows=True,
                                    int(0.02*np.shape(cube)[0]))
     # If passed light curve is 1D, extend to 2D.
     if np.ndim(timeseries) == 1:
+        # If 1D timeseries is passed cannot do chromatic correction.
+        if method == 'chromatic':
+            fancyprint('2D light curves are required for chromatic '
+                       'correction, but 1D ones were passed. Swicthing to '
+                       'achomratic correction', msg_type='WARNING')
+            method = 'achromatic'
         dimx = np.shape(currentfile.data)[-1]
         timeseries = np.repeat(timeseries[:, np.newaxis], dimx, axis=1)
 
@@ -911,16 +952,19 @@ def oneoverfstep_achromatic(datafiles, baseline_ints, even_odd_rows=True,
         # Save the results if requested.
         if save_results is True:
             suffix = 'oneoverfstep.fits'
+            # Add order suffix if chomratic method was used.
+            if method == 'chomratic':
+                if fileroots[n][-3:-1] != 'o{}'.format(order):
+                    suffix = 'o{}_'.format(order) + suffix
             newfile.write(output_dir + fileroots[n] + suffix)
 
     return corrected_rampmodels
 
 
-def oneoverfstep_chromatic(datafiles, baseline_ints, background=None,
-                           output_dir=None, save_results=True,
-                           pixel_masks=None, fileroots=None, do_plot=False,
-                           show_plot=False):
-    """Custom chomratic 1/f correction routine to be applied at the group or
+def oneoverfstep_solve(datafiles, baseline_ints, background=None,
+                       output_dir=None, save_results=True, pixel_masks=None,
+                       fileroots=None, do_plot=False, show_plot=False):
+    """Custom 1/f correction routine to be applied at the group or
     integration level. 1/f noise level and median frame scaling is calculated
     independently for each pixel column. Outlier pixels and background
     contaminants can (should) be masked to improve the estimation.
@@ -1136,7 +1180,7 @@ def oneoverfstep_chromatic(datafiles, baseline_ints, background=None,
 
 
 def run_stage1(results, background_model, baseline_ints=None,
-               oof_method='achromatic', smoothed_wlc=None, save_results=True,
+               oof_method='scale', smoothed_wlc=None, save_results=True,
                pixel_masks=None, force_redo=False, deepframe=None,
                rejection_threshold=15, flag_in_time=False,
                time_rejection_threshold=10, root_dir='./', output_tag='',
@@ -1156,7 +1200,7 @@ def run_stage1(results, background_model, baseline_ints=None,
     baseline_ints : array-like[int]
         Integration numbers for transit ingress and egress.
     oof_method : str
-        Whether to apply "chromatic" or "achromatic" 1/f correction algorithms.
+        Whether to apply "scale" or "solve" 1/f correction algorithms.
     smoothed_wlc : array-like[float], None
         Estimate of the normalized light curve.
     save_results : bool

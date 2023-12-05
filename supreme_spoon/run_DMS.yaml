@@ -20,8 +20,8 @@ outlier_maps : None
 timeseries : None
 # For 1/f correction; estimate of 1D or 2D timeseries for order 2. Only necessary for window 1/f correction (optional).
 timeseries_o2 : None
-# 1/f correction method; either 'chromatic' or 'achromatic'.
-oof_method : 'achromatic'
+# 1/f correction method; either 'scale' (recommended), 'solve', or 'window'.
+oof_method : 'scale'
 # For jump detection; sigma threshold for a pixel to be flagged as an outlier.
 jump_threshold : 15
 # For jump detection; whether to also flag outliers in the time domain.

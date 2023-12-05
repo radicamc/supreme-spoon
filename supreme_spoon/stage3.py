@@ -275,7 +275,7 @@ def specprofilestep(datafiles, empirical=True, output_dir='./'):
 
 def box_extract_soss(datafiles, centroids, soss_width, oof_width=None,
                      pixel_masks=None, timeseries_o1=None, timeseries_o2=None,
-                     baseline_ints=None):
+                     baseline_ints=None, window_oof=False):
     """Perform a simple box aperture extraction on SOSS orders 1 and 2.
 
     Parameters
@@ -286,6 +286,19 @@ def box_extract_soss(datafiles, centroids, soss_width, oof_width=None,
         Dictionary of centroid positions for all SOSS orders.
     soss_width : int
         Width of extraction box.
+    oof_width : int
+        Width of window to use to calculate 1/f.
+    pixel_masks : array-like[str], None
+        List of paths to maps of pixels to mask for each data segment. Can be
+        3D (nints, dimy, dimx), or 2D (dimy, dimx).
+    timeseries_o1 : array-like[float], str, None
+        Estimate of normalized light curve(s) for order 1, or path to file.
+    timeseries_o2 : array-like[float], str, None
+        Estimate of normalized light curve(s) for order 2, or path to file.
+    baseline_ints : array-like[int]
+        Integration numbers of ingress and egress.
+    window_oof : bool
+        If True, correct 1/f noise using window around trace before extracting.
 
     Returns
     -------
@@ -321,8 +334,21 @@ def box_extract_soss(datafiles, centroids, soss_width, oof_width=None,
     x2, y2 = x1[ii], y2[ii]
 
     # Do window 1/f correction.
-    if oof_width is not None:
+    if window_oof is True:
         fancyprint('Performing window 1/f correction.')
+
+        # Ensure window is a ~appropriate width.
+        if oof_width is None:
+            fancyprint('No 1/f window width provided, using default width '
+                       'of {}'.format(soss_width+30), msg_type='WARNING')
+            oof_width = soss_width + 30
+        if oof_width < (soss_width + 10):
+            fancyprint('1/f window width must be at least 10 pixels wider '
+                       'than extraction width. Using default width '
+                       'of {}'.format(soss_width+30), msg_type='WARNING')
+            oof_width = soss_width + 30
+
+        # Get timeseries for difference image scaling.
         if timeseries_o1 is None:
             msg = '1D or 2D timeseries must be provided to use window ' \
                   '1/f method.'
@@ -335,7 +361,6 @@ def box_extract_soss(datafiles, centroids, soss_width, oof_width=None,
             dimx = np.shape(cube)[-1]
             timeseries_o1 = np.repeat(timeseries_o1[:, np.newaxis], dimx,
                                       axis=1)
-
         # Check if separate timeseries is passed for order 2.
         if timeseries_o2 is None:
             fancyprint('Using the same timeseries for orders 1 and 2.',
@@ -357,9 +382,6 @@ def box_extract_soss(datafiles, centroids, soss_width, oof_width=None,
         deepstack = utils.make_deepstack(cube[baseline_ints])
         diff_cube1 = cube - deepstack[None, :, :] * timeseries_o1[:, None, :]
         diff_cube2 = cube - deepstack[None, :, :] * timeseries_o2[:, None, :]
-
-        # Ensure window is a ~appropriate width.
-        assert oof_width >= (soss_width + 10)
 
         # Perform the window 1/f correction seperately for each order.
         fancyprint('Doing order 1 1/f window correction.')
@@ -675,20 +697,31 @@ def format_extracted_spectra(datafiles, times, extract_params, target_name,
 
 def window_oneoverf(cube, diff_cube, xpos, ypos, soss_width, oof_width,
                     pixel_masks=None):
-    """
+    """Subtract 1/f noise from the trace of an individual order using a window
+    of pixels around the extraction box.
 
     Parameters
     ----------
-    cube
-    diff_cube
-    xpos
-    ypos
-    soss_width
-    oof_width
-    pixel_masks
+    cube : array-like(float)
+        Datacube.
+    diff_cube : array-like(float)
+        Datacube of difference images.
+    xpos : array-like(float)
+        Trace x positions.
+    ypos : array-like(float)
+        Trace y positions.
+    soss_width : int
+        Extractin width.
+    oof_width : int
+        Width of window to use to calculate 1/f.
+    pixel_masks : array-like[str], None
+        List of paths to maps of pixels to mask for each data segment. Can be
+        3D (nints, dimy, dimx), or 2D (dimy, dimx).
 
     Returns
     -------
+    cube_corr : np.array(float)
+        Datacube corrected for 1/f.
     """
 
     cube_corr = np.ones_like(cube)
@@ -773,6 +806,17 @@ def run_stage3(results, save_results=True, root_dir='./', force_redo=False,
     show_plot : bool
         Only necessary if do_plot is True. Show the diagnostic plots in
         addition to/instead of saving to file.
+    oof_width : int
+        Width of window to use to calculate 1/f.
+    pixel_masks : array-like[str], None
+        List of paths to maps of pixels to mask for each data segment. Can be
+        3D (nints, dimy, dimx), or 2D (dimy, dimx).
+    timeseries_o1 : array-like[float], str, None
+        Estimate of normalized light curve(s) for order 1, or path to file.
+    timeseries_o2 : array-like[float], str, None
+        Estimate of normalized light curve(s) for order 2, or path to file.
+    baseline_ints : array-like[int]
+        Integration numbers of ingress and egress.
 
     Returns
     -------

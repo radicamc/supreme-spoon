@@ -109,7 +109,7 @@ if 2 in config['run_stages']:
                                 force_redo=config['force_redo'],
                                 space_thresh=config['space_outlier_threshold'],
                                 time_thresh=config['time_outlier_threshold'],
-                                calculate_stability=config[ 'calculate_stability'],
+                                calculate_stability=config['calculate_stability'],
                                 pca_components=config['pca_components'],
                                 timeseries=config['timeseries'],
                                 oof_method=config['oof_method'],
@@ -120,7 +120,7 @@ if 2 in config['run_stages']:
                                 generate_tracemask=config['generate_tracemask'],
                                 mask_width=mask_width,
                                 pixel_masks=config['outlier_maps'],
-                                generate_order0_mask=config[ 'generate_order0_mask'],
+                                generate_order0_mask=config['generate_order0_mask'],
                                 f277w=config['f277w'],
                                 do_plot=config['do_plots'],
                                 **config['stage2_kwargs'])
