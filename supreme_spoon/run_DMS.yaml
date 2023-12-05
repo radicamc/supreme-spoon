@@ -25,7 +25,7 @@ timeseries_o2 : None
 # For 1/f correction; outlier pixel maps (optional).
 outlier_maps : None
 # For window 1/f correction; if oof_method is "window", window size will be oof_width - soss_width (optional).
-oof_width: None
+oof_width : None
 # For jump detection; sigma threshold for a pixel to be flagged as an outlier.
 jump_threshold : 15
 # For jump detection; whether to also flag outliers in the time domain.
@@ -79,6 +79,10 @@ st_logg: None
 st_met : None
 # Planet letter designation.
 planet_letter : 'b'
+# If chromatic 1/f correction was performed, list of extraction-ready order 2 datafiles.
+datafiles2 : None
+# DMS Stage 3 kwargs. Format should be: {'step_name': {'kwd': value}}.
+stage3_kwargs : {}
 
 # ===== Other General Parameters =====
 # Name tag for output file directory.

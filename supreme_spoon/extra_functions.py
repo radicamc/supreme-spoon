@@ -5,7 +5,7 @@ Created on Mon Nov 20 15:08 2023
 
 @author: MCR
 
-Extra functions to be used alongside the main pipeline.
+Extra functions for use alongside the main pipeline.
 """
 
 from astropy.io import fits

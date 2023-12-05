@@ -73,7 +73,7 @@ class Extract1DStep:
     def __init__(self, input_data, extract_method, st_teff=None, st_logg=None,
                  st_met=None, planet_letter='b', output_dir='./',
                  baseline_ints=None, timeseries_o1=None, timeseries_o2=None,
-                 pixel_masks=None,):
+                 pixel_masks=None, input_data2=None):
         """Step initializer.
         """
 
@@ -91,10 +91,14 @@ class Extract1DStep:
         self.timeseries_o1 = timeseries_o1
         self.timeseries_o2 = timeseries_o2
         self.pixel_masks = pixel_masks
+        if input_data2 is not None:
+            self.datafiles2 = utils.sort_datamodels(input_data2)
+        else:
+            self.datafiles2 = None
 
     def run(self, soss_width=40, specprofile=None, centroids=None,
-            oof_width=None, save_results=True, force_redo=False,
-            do_plot=False, show_plot=False):
+            oof_width=None, window_oof=False, save_results=True,
+            force_redo=False, do_plot=False, show_plot=False):
         """Method to run the step.
         """
 
@@ -121,7 +125,7 @@ class Extract1DStep:
                 for i, segment in enumerate(self.datafiles):
                     # Initialize extraction parameters for ATOCA.
                     soss_modelname = self.fileroots[i][:-1]
-                    if oof_width is not None:
+                    if window_oof is True:
                         fancyprint('Window 1/f correction cannot be '
                                    'performed with ATOCA extraction.',
                                    msg_type='WARNING')
@@ -156,19 +160,21 @@ class Extract1DStep:
                         raise ValueError('Centroids must be provided for box '
                                          'extraction')
                 results = box_extract_soss(self.datafiles, centroids,
-                                           soss_width, oof_width=oof_width,
+                                           soss_width, window_oof=window_oof,
+                                           oof_width=oof_width,
                                            baseline_ints=self.baseline_ints,
                                            timeseries_o1=self.timeseries_o1,
                                            timeseries_o2=self.timeseries_o2,
-                                           pixel_masks=self.pixel_masks)
+                                           pixel_masks=self.pixel_masks,
+                                           datafiles2=self.datafiles2)
             else:
                 raise ValueError('Invalid extraction method')
 
             # Do step plot if requested - only for atoca.
             if do_plot is True and self.extract_method == 'atoca':
                 if save_results is True:
-                    plot_file = self.output_dir + self.tag.replace('fits',
-                                                                   'pdf')
+                    plot_file = self.output_dir + self.tag.replace('.fits',
+                                                                   '.pdf')
                 else:
                     plot_file = None
                 models = []
@@ -275,7 +281,7 @@ def specprofilestep(datafiles, empirical=True, output_dir='./'):
 
 def box_extract_soss(datafiles, centroids, soss_width, oof_width=None,
                      pixel_masks=None, timeseries_o1=None, timeseries_o2=None,
-                     baseline_ints=None, window_oof=False):
+                     baseline_ints=None, window_oof=False, datafiles2=None):
     """Perform a simple box aperture extraction on SOSS orders 1 and 2.
 
     Parameters
@@ -299,6 +305,9 @@ def box_extract_soss(datafiles, centroids, soss_width, oof_width=None,
         Integration numbers of ingress and egress.
     window_oof : bool
         If True, correct 1/f noise using window around trace before extracting.
+    datafiles2 : array-like[str], array-like[jwst.RampModel], None
+        Input datamodels for order 2 if chromatic 1/f corrections were applied
+        and both orders are to be extracted simultaneously.
 
     Returns
     -------
@@ -326,17 +335,26 @@ def box_extract_soss(datafiles, centroids, soss_width, oof_width=None,
             else:
                 cube = np.concatenate([cube, datamodel.data])
                 ecube = np.concatenate([ecube, datamodel.err])
+    if datafiles2 is not None:
+        for i, file in enumerate(datafiles2):
+            with utils.open_filetype(file) as datamodel:
+                if i == 0:
+                    cube2 = datamodel.data
+                    ecube2 = datamodel.err
+                else:
+                    cube2 = np.concatenate([cube2, datamodel.data])
+                    ecube2 = np.concatenate([ecube2, datamodel.err])
 
-    # Get centroid positions
+    # Get centroid positions.
     x1 = centroids['xpos'].values
     y1, y2 = centroids['ypos o1'].values, centroids['ypos o2'].values
     ii = np.where(np.isfinite(y2))
     x2, y2 = x1[ii], y2[ii]
 
+    # ===== Window 1/f Correction ======
     # Do window 1/f correction.
     if window_oof is True:
         fancyprint('Performing window 1/f correction.')
-
         # Ensure window is a ~appropriate width.
         if oof_width is None:
             fancyprint('No 1/f window width provided, using default width '
@@ -390,16 +408,21 @@ def box_extract_soss(datafiles, centroids, soss_width, oof_width=None,
         fancyprint('Doing order 2 1/f window correction.')
         cube2 = window_oneoverf(cube, diff_cube2, x2, y2, soss_width,
                                 oof_width, pixel_masks)
+        ecube2 = ecube
+    elif datafiles2 is not None:
+        cube1 = cube
     else:
         cube1 = cube
         cube2 = cube
+        ecube2 = ecube
 
+    # ===== Extraction ======
     # Do the extraction.
     fancyprint('Performing simple aperture extraction.')
     fancyprint('Extracting Order 1')
     flux_o1, ferr_o1 = do_box_extraction(cube1, ecube, y1, width=soss_width)
     fancyprint('Extracting Order 2')
-    flux_o2, ferr_o2 = do_box_extraction(cube2, ecube, y2, width=soss_width,
+    flux_o2, ferr_o2 = do_box_extraction(cube2, ecube2, y2, width=soss_width,
                                          extract_end=len(y2))
 
     # Get default wavelength solution.
@@ -768,7 +791,8 @@ def run_stage3(results, save_results=True, root_dir='./', force_redo=False,
                soss_width=40, st_teff=None, st_logg=None, st_met=None,
                planet_letter='b', output_tag='', do_plot=False,
                show_plot=False, timeseries_o1=None, timeseries_o2=None,
-               pixel_masks=None, oof_width=None, baseline_ints=None):
+               pixel_masks=None, window_oof=False, oof_width=None,
+               baseline_ints=None, datafiles2=None):
     """Run the supreme-SPOON Stage 3 pipeline: 1D spectral extraction, using
     a combination of the official STScI DMS and custom steps.
 
@@ -806,6 +830,9 @@ def run_stage3(results, save_results=True, root_dir='./', force_redo=False,
     show_plot : bool
         Only necessary if do_plot is True. Show the diagnostic plots in
         addition to/instead of saving to file.
+    window_oof : bool
+        If True, subtract 1/f noise using a window around the trace before
+        extracting.
     oof_width : int
         Width of window to use to calculate 1/f.
     pixel_masks : array-like[str], None
@@ -817,6 +844,9 @@ def run_stage3(results, save_results=True, root_dir='./', force_redo=False,
         Estimate of normalized light curve(s) for order 2, or path to file.
     baseline_ints : array-like[int]
         Integration numbers of ingress and egress.
+    datafiles2 : array-like[str], array-like[CubeModel]
+        If chromatic 1/f correction was performed; extraction ready order 2
+        outputs.
 
     Returns
     -------
@@ -851,10 +881,11 @@ def run_stage3(results, save_results=True, root_dir='./', force_redo=False,
                          planet_letter=planet_letter,  output_dir=outdir,
                          baseline_ints=baseline_ints, pixel_masks=pixel_masks,
                          timeseries_o1=timeseries_o1,
-                         timeseries_o2=timeseries_o2)
+                         timeseries_o2=timeseries_o2, input_data2=datafiles2)
     spectra = step.run(soss_width=soss_width, specprofile=specprofile,
                        centroids=centroids, save_results=save_results,
                        force_redo=force_redo, do_plot=do_plot,
-                       show_plot=show_plot, oof_width=oof_width)
+                       show_plot=show_plot, window_oof=window_oof,
+                       oof_width=oof_width)
 
     return spectra

@@ -21,6 +21,7 @@ from supreme_spoon.stage3 import run_stage3
 from supreme_spoon.utils import fancyprint, parse_config, unpack_input_dir, \
     verify_path
 
+# ===== Setup =====
 # Read config file.
 try:
     config_file = sys.argv[1]
@@ -137,6 +138,10 @@ else:
 
 # ===== Run Stage 3 =====
 if 3 in config['run_stages']:
+    if config['oof_method'] == 'window':
+        window_oof = True
+    else:
+        window_oof = False
     stage3_results = run_stage3(stage2_results,
                                 save_results=config['save_results'],
                                 force_redo=config['force_redo'],
@@ -151,9 +156,12 @@ if 3 in config['run_stages']:
                                 output_tag=config['output_tag'],
                                 do_plot=config['do_plots'],
                                 baseline_ints=config['baseline_ints'],
+                                window_oof=window_oof,
                                 oof_width=config['oof_width'],
                                 timeseries_o1=config['timeseries'],
                                 timeseries_o2=config['timeseries_o2'],
-                                pixel_masks=config['outlier_maps'])
+                                pixel_masks=config['outlier_maps'],
+                                datafiles2=config['datafiles2'],
+                                **config['stage3_kwargs'])
 
 fancyprint('Done')
