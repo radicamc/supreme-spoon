@@ -79,8 +79,8 @@ st_logg: None
 st_met : None
 # Planet letter designation.
 planet_letter : 'b'
-# If chromatic 1/f correction was performed, list of extraction-ready order 2 datafiles.
-datafiles2 : None
+# If chromatic 1/f correction was performed, list of order 2 datafiles to extract.
+datafiles_o2 : None
 # DMS Stage 3 kwargs. Format should be: {'step_name': {'kwd': value}}.
 stage3_kwargs : {}
 

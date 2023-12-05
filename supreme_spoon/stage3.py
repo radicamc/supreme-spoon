@@ -335,15 +335,22 @@ def box_extract_soss(datafiles, centroids, soss_width, oof_width=None,
             else:
                 cube = np.concatenate([cube, datamodel.data])
                 ecube = np.concatenate([ecube, datamodel.err])
+    # If order 2 specific datafiles are passed, read them in to include them
+    # in the extraction.
     if datafiles2 is not None:
-        for i, file in enumerate(datafiles2):
-            with utils.open_filetype(file) as datamodel:
-                if i == 0:
-                    cube2 = datamodel.data
-                    ecube2 = datamodel.err
-                else:
-                    cube2 = np.concatenate([cube2, datamodel.data])
-                    ecube2 = np.concatenate([ecube2, datamodel.err])
+        # Unless window 1/f option is selected.
+        if window_oof is True:
+            fancyprint('Window 1/f correction selected, ignorning passed '
+                       'order 2 datafiles.', msg_type='WARNING')
+        else:
+            for i, file in enumerate(datafiles2):
+                with utils.open_filetype(file) as datamodel:
+                    if i == 0:
+                        cube2 = datamodel.data
+                        ecube2 = datamodel.err
+                    else:
+                        cube2 = np.concatenate([cube2, datamodel.data])
+                        ecube2 = np.concatenate([ecube2, datamodel.err])
 
     # Get centroid positions.
     x1 = centroids['xpos'].values

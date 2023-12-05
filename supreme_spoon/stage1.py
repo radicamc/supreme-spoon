@@ -763,7 +763,8 @@ def oneoverfstep_scale(datafiles, baseline_ints, even_odd_rows=True,
         RampModels for each segment, corrected for 1/f noise.
     """
 
-    fancyprint('Starting achromatic 1/f correction step.')
+    fancyprint('Starting 1/f correction step using the scale-{} '
+               'method.'.format(method))
 
     # If saving results, ensure output directory and fileroots are provided.
     if save_results is True:
@@ -777,6 +778,9 @@ def oneoverfstep_scale(datafiles, baseline_ints, even_odd_rows=True,
     if method not in ['chromatic', 'achromatic']:
         msg = 'method must be one of "chromatic" or "achromatic"'
         raise ValueError(msg)
+    if method == 'achromatic':
+        fancyprint('Performing achromatic correction. Ignoring specified '
+                   'order: {}.'.format(order), msg_type='WARNING')
 
     # Format the baseline frames.
     baseline_ints = utils.format_out_frames(baseline_ints)
@@ -986,7 +990,7 @@ def oneoverfstep_solve(datafiles, baseline_ints, background=None,
         RampModels for each segment, corrected for 1/f noise.
     """
 
-    fancyprint('Starting chromatic 1/f correction step.')
+    fancyprint('Starting 1/f correction step using the solve method.')
 
     # If saving results, ensure output directory and fileroots are provided.
     if save_results is True:

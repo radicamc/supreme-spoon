@@ -161,7 +161,7 @@ if 3 in config['run_stages']:
                                 timeseries_o1=config['timeseries'],
                                 timeseries_o2=config['timeseries_o2'],
                                 pixel_masks=config['outlier_maps'],
-                                datafiles2=config['datafiles2'],
+                                datafiles2=config['datafiles_o2'],
                                 **config['stage3_kwargs'])
 
 fancyprint('Done')
