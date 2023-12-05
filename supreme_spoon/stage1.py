@@ -213,10 +213,11 @@ class OneOverFStep:
         all_files = glob.glob(self.output_dir + '*')
         do_step = 1
         results = []
+        if self.method == 'scale-chromatic':
+            for i in range(len(self.datafiles)):
+                self.fileroots[i] += 'o{}_'.format(order)
         for i in range(len(self.datafiles)):
             # If an output file for this segment already exists, skip the step.
-            if self.method == 'scale-chromatic':
-                self.fileroots[i] += 'o{}_'.format(order)
             expected_file = self.output_dir + self.fileroots[i] + self.tag
             if expected_file not in all_files:
                 do_step = 0
@@ -941,12 +942,6 @@ def oneoverfstep_scale(datafiles, baseline_ints, even_odd_rows=True,
         # Save the results if requested.
         if save_results is True:
             suffix = 'oneoverfstep.fits'
-            # Add order suffix if chomratic method was used.
-            if method == 'chromatic':
-                if fileroots[n][-3:-1] != 'o{}'.format(order):
-                    if fileroots[n][-3] == 'o':
-                        suffix = suffix[:-3]
-                    suffix = 'o{}_'.format(order) + suffix
             newfile.write(output_dir + fileroots[n] + suffix)
 
     return corrected_rampmodels

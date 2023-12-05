@@ -1096,11 +1096,11 @@ def soss_stability_pca(cube, n_components=10, outfile=None, do_plot=False,
 def run_stage2(results, background_model, baseline_ints, save_results=True,
                force_redo=False, space_thresh=15, time_thresh=15,
                calculate_stability=True, pca_components=10, timeseries=None,
-               oof_method='achromatic', root_dir='./', output_tag='',
-               smoothing_scale=None, skip_steps=None, generate_lc=True,
-               generate_tracemask=True, mask_width=45, pixel_masks=None,
-               generate_order0_mask=True, f277w=None, do_plot=False,
-               show_plot=False, **kwargs):
+               oof_method='scale-achromatic', oof_order=None, root_dir='./',
+               output_tag='', smoothing_scale=None, skip_steps=None,
+               generate_lc=True, generate_tracemask=True, mask_width=45,
+               pixel_masks=None, generate_order0_mask=True, f277w=None,
+               do_plot=False,  show_plot=False, **kwargs):
     """Run the supreme-SPOON Stage 2 pipeline: spectroscopic processing,
     using a combination of official STScI DMS and custom steps. Documentation
     for the official DMS steps can be found here:
@@ -1130,7 +1130,10 @@ def run_stage2(results, background_model, baseline_ints, save_results=True,
     timeseries : array-like[float], None
         Estimate of the normalized light curve.
     oof_method : str
-        Whether to apply "chromatic" or "achromatic" 1/f correction algorithms.
+        1/f correction method. Options are "scale-chromatic",
+        "scale-achromatic", "solve", or "window".
+    oof_order : int, None
+        If oof_method is scale-chromatic, the diffraction order to correct.
     root_dir : str
         Directory from which all relative paths are defined.
     output_tag : str
@@ -1240,7 +1243,8 @@ def run_stage2(results, background_model, baseline_ints, save_results=True,
                                    timeseries=timeseries,
                                    pixel_masks=pixel_masks)
         results = step.run(save_results=save_results, force_redo=force_redo,
-                           do_plot=do_plot, show_plot=show_plot, **step_kwargs)
+                           do_plot=do_plot, show_plot=show_plot,
+                           order=oof_order, **step_kwargs)
 
     # ===== Bad Pixel Correction Step =====
     # Custom DMS step.
