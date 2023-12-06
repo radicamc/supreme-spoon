@@ -473,9 +473,14 @@ def make_oneoverf_chromatic_plot(m_e, m_o, b_e, b_o, ngroup, outfile=None,
     for i in range(ngroup):
         for j, obj in enumerate(to_plot):
             ax = fig.add_subplot(gs[i, j])
-            plt.imshow(obj[i], aspect='auto', origin='lower',
-                       vmin=np.nanpercentile(obj[i], 25),
-                       vmax=np.nanpercentile(obj[i], 75))
+            if j < 2:
+                plt.imshow(obj[i], aspect='auto', origin='lower',
+                           vmin=np.nanpercentile(obj[i], 5),
+                           vmax=np.nanpercentile(obj[i], 95))
+            else:
+                plt.imshow(obj[i], aspect='auto', origin='lower',
+                           vmin=np.nanpercentile(obj[i], 25),
+                           vmax=np.nanpercentile(obj[i], 75))
             if j != 0:
                 ax.yaxis.set_major_formatter(plt.NullFormatter())
             if i != ngroup-1:

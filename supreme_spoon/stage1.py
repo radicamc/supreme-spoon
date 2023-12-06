@@ -185,6 +185,49 @@ class SuperBiasStep:
         return results
 
 
+class DarkCurrentStep:
+    """Wrapper around default calwebb_detector1 Dark Current Subtraction step.
+    """
+
+    def __init__(self, input_data, output_dir):
+        """Step initializer.
+        """
+
+        self.tag = 'darkcurrentstep.fits'
+        self.output_dir = output_dir
+        self.datafiles = utils.sort_datamodels(input_data)
+        self.fileroots = utils.get_filename_root(self.datafiles)
+
+    def run(self, save_results=True, force_redo=False, **kwargs):
+        """Method to run the step.
+        """
+
+        results = []
+        all_files = glob.glob(self.output_dir + '*')
+        for i, segment in enumerate(self.datafiles):
+            # If an output file for this segment already exists, skip the step.
+            expected_file = self.output_dir + self.fileroots[i] + self.tag
+            if expected_file in all_files and force_redo is False:
+                fancyprint('File {} already exists.'.format(expected_file))
+                fancyprint('Skipping Dark Current Subtraction Step.')
+                res = expected_file
+            # If no output files are detected, run the step.
+            else:
+                step = calwebb_detector1.dark_current_step.DarkCurrentStep()
+                res = step.call(segment, output_dir=self.output_dir,
+                                save_results=save_results, **kwargs)
+                # Verify that filename is correct.
+                if save_results is True:
+                    current_name = self.output_dir + res.meta.filename
+                    if expected_file != current_name:
+                        res.close()
+                        os.rename(current_name, expected_file)
+                        res = datamodels.open(expected_file)
+            results.append(res)
+
+        return results
+
+
 class OneOverFStep:
     """Wrapper around custom 1/f Correction Step.
     """
@@ -829,7 +872,7 @@ def oneoverfstep_scale(datafiles, baseline_ints, even_odd_rows=True,
                            'estimated from current data.', msg_type='WARNING')
                 timeseries = None
             else:
-                msg = '2D light curves must be provided to use chomatic ' \
+                msg = '2D light curves must be provided to use chromatic ' \
                       'method.'
                 raise ValueError(msg)
     # If no lightcurve is provided, estimate it from the current data.
@@ -1093,7 +1136,6 @@ def oneoverfstep_solve(datafiles, baseline_ints, background=None,
         # Find pixels which deviate more than 10 sigma.
         scale = np.abs(cube - cube_filt) / scatter
         ii = np.where(scale > 10)
-        print(len(ii[0]))
         err[ii] = np.inf
 
         # Do the chromatic 1/f calculation.
@@ -1277,6 +1319,17 @@ def run_stage1(results, background_model, baseline_ints=None,
         step = SuperBiasStep(results, output_dir=outdir)
         results = step.run(save_results=save_results, force_redo=force_redo,
                            do_plot=do_plot, show_plot=show_plot, **step_kwargs)
+
+    # ===== Dark Current Subtraction Step =====
+    # Default DMS step.
+    if 'DarkCurrentStep' not in skip_steps:
+        if 'DarkCurrentStep' in kwargs.keys():
+            step_kwargs = kwargs['DarkCurrentStep']
+        else:
+            step_kwargs = {}
+        step = DarkCurrentStep(results, output_dir=outdir)
+        results = step.run(save_results=save_results, force_redo=force_redo,
+                           **step_kwargs)
 
     if 'OneOverFStep' not in skip_steps:
         # ===== Background Subtraction Step =====

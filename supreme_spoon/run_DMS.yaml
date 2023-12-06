@@ -20,7 +20,7 @@ oof_method : 'scale-achromatic'
 oof_order : None
 # For 1/f correction; estimate of 1D or 2D timeseries for order 1 or 2 (optional).
 timeseries : None
-# For 1/f correction; estimate of 1D or 2D timeseries for order 2. Only necessary for oof_method is "window" (optional).
+# For 1/f correction; estimate of 1D or 2D timeseries for order 2. Only necessary if oof_method is "window" (optional).
 timeseries_o2 : None
 # For 1/f correction; outlier pixel maps (optional).
 outlier_maps : None
