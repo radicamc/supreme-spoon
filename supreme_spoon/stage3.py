@@ -400,7 +400,7 @@ def box_extract_soss(datafiles, centroids, soss_width, oof_width=None,
         # Do diagnostic plot if requested.
         if do_plot is True:
             if save_results is True:
-                outfile = output_dir + '_aperture_optimization.pdf'
+                outfile = output_dir + 'aperture_optimization.pdf'
             else:
                 outfile = None
             plotting.make_soss_width_plot(scatter, ii, outfile=outfile,

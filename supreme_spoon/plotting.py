@@ -561,7 +561,7 @@ def make_oneoverf_plot(results, baseline_ints, timeseries=None,
 
 def make_oneoverf_psd(results, old_results, timeseries, baseline_ints,
                       nsample=25,  pixel_masks=None, tframe=5.494, tpix=1e-5,
-                      tgap=1.2e-4, outfile=None, show_plot=True):
+                      tgap=1.2e-4, outfile=None, show_plot=True, window=False):
     """Make a PSD plot to see PSD of background before and after 1/f removal.
     """
 
@@ -584,11 +584,16 @@ def make_oneoverf_psd(results, old_results, timeseries, baseline_ints,
                 old_cube = np.concatenate([old_cube, datamodel.data])
     old_cube = np.where(np.isnan(old_cube), np.nanmedian(old_cube), old_cube)
     if pixel_masks is not None:
+        if window is True:
+            ext = 5
+        else:
+            ext = 1
         for i, file in enumerate(pixel_masks):
             if i == 0:
-                mask_cube = fits.getdata(file)
+                mask_cube = fits.getdata(file, ext)
             else:
-                mask_cube = np.concatenate([mask_cube, fits.getdata(file)])
+                mask_cube = np.concatenate([mask_cube,
+                                            fits.getdata(file, ext)])
     else:
         mask_cube = None
 

@@ -10,6 +10,7 @@ Custom JWST DMS pipeline steps for Stage 1 (detector level processing).
 
 from astropy.io import fits
 import bottleneck as bn
+import copy
 import glob
 import numpy as np
 import os
@@ -330,12 +331,16 @@ class OneOverFStep:
                                             baseline_ints=self.baseline_ints,
                                             outfile=plot_file1,
                                             show_plot=show_plot)
+                if self.method in ['solve', 'scale-chromatic', 'scale-achromatic-window']:
+                    window = True
+                else:
+                    window = False
                 plotting.make_oneoverf_psd(results, self.datafiles,
                                            timeseries=self.timeseries,
                                            baseline_ints=self.baseline_ints,
                                            pixel_masks=self.pixel_masks,
                                            outfile=plot_file2,
-                                           show_plot=show_plot)
+                                           show_plot=show_plot, window=window)
 
         return results
 
@@ -1074,15 +1079,9 @@ def oneoverfstep_solve(datafiles, baseline_ints, background=None,
                 else:
                     dqcube = np.concatenate([dqcube, currentfile.dq], axis=0)
     # Set errors to variance of data along integration axis.
-    err = np.nanstd(cube[baseline_ints], axis=0)
-    err = np.repeat(err[np.newaxis], cube.shape[0], axis=0)
-
-    # Generate the 3D deep stack (ngroup, dimy, dimx) using only
-    # baseline integrations.
-    fancyprint('Generating a deep stack for each group using baseline '
-               'integrations...')
-    deepstack = utils.make_deepstack(cube[baseline_ints])
-    deepstack = np.repeat(deepstack[np.newaxis], cube.shape[0], axis=0)
+    err1 = np.nanstd(cube[baseline_ints], axis=0)
+    err1 = np.repeat(err1[np.newaxis], cube.shape[0], axis=0)
+    err2 = copy.deepcopy(err1)
 
     # Background must be subtracted to accurately subtract off the target
     # trace and isolate 1/f noise. However, the background flux must also be
@@ -1101,82 +1100,138 @@ def oneoverfstep_solve(datafiles, baseline_ints, background=None,
         ngroup = 0
 
     # Get outlier masks.
+    # Ideally, for this algorithm, we only want to consider pixels quite near
+    # to the trace.
     if pixel_masks is None:
         fancyprint('No outlier maps passed, ignoring outliers.')
-        outliers = np.zeros((nint, dimy, dimx))
+        fancyprint('For optimal performance, an appropriate trace mask should '
+                   'be used.', msg_type='WARNING')
+        outliers1 = np.zeros((nint, dimy, dimx))
+        outliers2 = np.zeros((nint, dimy, dimx))
     else:
         for i, file in enumerate(pixel_masks):
             fancyprint('Reading outlier map {}'.format(file))
             if i == 0:
-                # Get second extension which will be flags without tracemask.
-                outliers = fits.getdata(file, 2)
+                # Get bad pixel map.
+                badpix = fits.getdata(file, 2)
+                # For order 1, extension 3 has the proper trace mask. It is,
+                # rather, extension 4 for order 2.
+                trace1 = fits.getdata(file, 3)
+                trace2 = fits.getdata(file, 4)
             else:
-                outliers = np.concatenate([outliers, fits.getdata(file, 2)])
-    # If correction is at group level, extend outlier map along group axis.
-    if ngroup != 0:
-        outliers = np.repeat(outliers[:, np.newaxis], ngroup, axis=1)
+                badpix = np.concatenate([badpix, fits.getdata(file, 2)])
+                trace1 = np.concatenate([trace1, fits.getdata(file, 3)])
+                trace2 = np.concatenate([trace2, fits.getdata(file, 4)])
+        # Combine trace and bad pixel masks.
+        outliers1 = (badpix.astype(bool) | trace1.astype(bool)).astype(int)
+        outliers2 = (badpix.astype(bool) | trace2.astype(bool)).astype(int)
+        # Also mask O2 redwards of ~0.9µm (x<~1100).
+        outliers2[:, :, :1100] = 1
 
     # Mask any pixels with non-zero dq flags.
     ii = np.where((dqcube != 0))
-    err[ii] = np.inf
+    err1[ii] = np.inf
+    err2[ii] = np.inf
+    err1[err1 == 0] = np.inf
+    err2[err2 == 0] = np.inf
     # Apply the outlier mask.
-    ii = np.where(outliers != 0)
-    err[ii] = np.inf
+    ii = np.where(outliers1 != 0)
+    ii2 = np.where(outliers2 != 0)
+    if ngroup == 0:
+        err1[ii] = np.inf
+        err2[ii2] = np.inf
+    else:
+        for g in range(ngroup):
+            err1[:, g][ii] = np.inf
+            err2[:, g][ii2] = np.inf
 
     # Calculate 1/f noise using a wavelength-dependent scaling.
-    slopes_e, oofs_e, slopes_o, oofs_o = [], [], [], []
-    if ngroup == 0:
-        # Integration-level correction.
-        # Mask any potential jumps.
-        cube_filt = medfilt(cube, (5, 1, 1))
-        # Calculate the point-to-point scatter along the temporal axis.
-        scatter = np.median(np.abs(0.5 * (cube[0:-2] + cube[2:]) -
-                                   cube[1:-1]), axis=0)
-        scatter = np.where(scatter == 0, np.inf, scatter)
-        # Find pixels which deviate more than 10 sigma.
-        scale = np.abs(cube - cube_filt) / scatter
-        ii = np.where(scale > 10)
-        err[ii] = np.inf
+    for order, err in zip([1, 2], [err1, err2]):
+        fancyprint('Starting order {}.'.format(order))
+        # Don't do anything for order 2 if SUBSTRIP96.
+        if order == 2 and dimy == 96:
+            continue
+        # Generate the 3D deep stack (ngroup, dimy, dimx) using only
+        # baseline integrations.
+        fancyprint('Generating a deep stack for each group using baseline '
+                   'integrations...')
+        deepstack = utils.make_deepstack(cube[baseline_ints])
+        deepstack = np.repeat(deepstack[np.newaxis], cube.shape[0], axis=0)
 
-        # Do the chromatic 1/f calculation.
-        m_e, b_e, m_o, b_o = utils.line_mle(deepstack, cube, err)
-        oof = np.zeros_like(cube)
-        oof[:, ::2, :] = b_e[:, None, :]
-        oof[:, 1::2, :] = b_o[:, None, :]
-        slopes_e.append(m_e)
-        slopes_o.append(m_o)
-        oofs_e.append(b_e)
-        oofs_o.append(b_o)
-        ngroup = 1
-    else:
-        # Group-level correction.
-        oof = np.zeros_like(cube)
-        # Treat each group individually.
-        for g in tqdm(range(ngroup)):
+        slopes_e, oofs_e, slopes_o, oofs_o = [], [], [], []
+        if ngroup == 0:
+            # Integration-level correction.
+            oof = np.zeros_like(cube)
             # Mask any potential jumps.
-            cube_filt = medfilt(cube[:, g], (5, 1, 1))
+            cube_filt = medfilt(cube, (5, 1, 1))
             # Calculate the point-to-point scatter along the temporal axis.
-            scatter = np.median(np.abs(0.5 * (cube[0:-2, g] + cube[2:, g]) -
-                                       cube[1:-1, g]), axis=0)
+            scatter = np.median(np.abs(0.5 * (cube[0:-2] + cube[2:]) -
+                                       cube[1:-1]), axis=0)
             scatter = np.where(scatter == 0, np.inf, scatter)
             # Find pixels which deviate more than 10 sigma.
-            scale = np.abs(cube[:, g] - cube_filt) / scatter
+            scale = np.abs(cube - cube_filt) / scatter
             ii = np.where(scale > 10)
-            err[:, g][ii] = np.inf
+            err[ii] = np.inf
 
             # Do the chromatic 1/f calculation.
-            m_e, b_e, m_o, b_o = utils.line_mle(deepstack[:, g], cube[:, g],
-                                                err[:, g])
-            oof[:, g, ::2] = b_e[:, None, :]
-            oof[:, g, 1::2] = b_o[:, None, :]
+            m_e, b_e, m_o, b_o = utils.line_mle(deepstack, cube, err)
+            oof[:, ::2, :] = b_e[:, None, :]
+            oof[:, 1::2, :] = b_o[:, None, :]
             slopes_e.append(m_e)
             slopes_o.append(m_o)
             oofs_e.append(b_e)
             oofs_o.append(b_o)
+            plot_group = 1
+        else:
+            # Group-level correction.
+            oof = np.zeros_like(cube)
+            # Treat each group individually.
+            for g in tqdm(range(ngroup)):
+                # Mask any potential jumps.
+                cube_filt = medfilt(cube[:, g], (5, 1, 1))
+                # Calculate the point-to-point scatter along the temporal axis.
+                scatter = np.median(np.abs(0.5 * (cube[0:-2, g] + cube[2:, g])
+                                           - cube[1:-1, g]), axis=0)
+                scatter = np.where(scatter == 0, np.inf, scatter)
+                # Find pixels which deviate more than 10 sigma.
+                scale = np.abs(cube[:, g] - cube_filt) / scatter
+                ii = np.where(scale > 10)
+                err[:, g][ii] = np.inf
 
-    # Subtract the 1/f contribution.
-    oof[np.isnan(oof)] = 0
-    cube_corr = cube - oof
+                # Do the chromatic 1/f calculation.
+                m_e, b_e, m_o, b_o = utils.line_mle(deepstack[:, g],
+                                                    cube[:, g], err[:, g])
+                oof[:, g, ::2] = b_e[:, None, :]
+                oof[:, g, 1::2] = b_o[:, None, :]
+                slopes_e.append(m_e)
+                slopes_o.append(m_o)
+                oofs_e.append(b_e)
+                oofs_o.append(b_o)
+            plot_group = ngroup
+
+        # Replace any NaNs (that could happen if an entire column is masked)
+        # with zeros.
+        oof[np.isnan(oof)] = 0
+        # Subtract the 1/f contribution.
+        if order == 1:
+            # For order 1, subtract the 1/f value from the whole column.
+            cube_corr = cube - oof
+            cube = cube_corr
+        else:
+            # For order 2, only subtract it from around the order 2 trace.
+            trace2 = np.where(trace2 == 1, 0, 1)
+            if ngroup != 0:
+                cube_corr = cube_corr - oof * trace2[:, None, :, :]
+            else:
+                cube_corr = cube_corr - oof * trace2
+
+        # Do step plot if requested.
+        if do_plot is True:
+            outfile = output_dir + 'oneoverfstep_o{}_3.pdf'.format(order)
+            plotting.make_oneoverf_chromatic_plot(slopes_e, slopes_o, oofs_e,
+                                                  oofs_o, plot_group,
+                                                  outfile=outfile,
+                                                  show_plot=show_plot)
 
     # Add back the zodi background.
     if background is not None:
@@ -1198,13 +1253,6 @@ def oneoverfstep_solve(datafiles, baseline_ints, background=None,
         if save_results is True:
             suffix = 'oneoverfstep.fits'
             newfile.write(output_dir + fileroots[n] + suffix)
-
-    # Do step plot if requested.
-    if do_plot is True:
-        outfile = output_dir + 'oneoverfstep_3.pdf'
-        plotting.make_oneoverf_chromatic_plot(slopes_e, slopes_o, oofs_e,
-                                              oofs_o, ngroup, outfile=outfile,
-                                              show_plot=show_plot)
 
     return corrected_rampmodels
 
