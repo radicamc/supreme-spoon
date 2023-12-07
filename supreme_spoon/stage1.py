@@ -299,13 +299,6 @@ class OneOverFStep:
                                              fileroots=self.fileroots,
                                              do_plot=do_plot,
                                              show_plot=show_plot)
-            elif self.method == 'window':
-                # If window method selected, treat this during Stage 3. Just
-                # return the inputs.
-                msg = 'window 1/f method selected. 1/f correction will be ' \
-                      'treated during spectral extraction.'
-                fancyprint(msg, msg_type='WARNING')
-                return self.datafiles
             else:
                 # Raise error otherwise.
                 msg = 'Unrecognized 1/f correction: {}'.format(self.method)
