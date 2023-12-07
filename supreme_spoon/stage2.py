@@ -22,7 +22,6 @@ from tqdm import tqdm
 import warnings
 
 from jwst import datamodels
-from jwst.extract_1d.soss_extract import soss_boxextract
 from jwst.pipeline import calwebb_spec2
 
 import supreme_spoon.stage1 as stage1
@@ -307,7 +306,8 @@ class TracingStep:
         self.fileroots = utils.get_filename_root(self.datafiles)
         self.fileroot_noseg = utils.get_filename_root_noseg(self.fileroots)
 
-    def run(self, generate_tracemask=True, mask_width=45, pixel_flags=None,
+    def run(self, generate_tracemask=True, inner_mask_width=40,
+            outer_mask_width=70, pixel_flags=None,
             generate_order0_mask=True, f277w=None,
             calculate_stability=True, pca_components=10,
             save_results=True, force_redo=False, generate_lc=True,
@@ -346,7 +346,8 @@ class TracingStep:
                                        calculate_stability=calculate_stability,
                                        pca_components=pca_components,
                                        generate_tracemask=generate_tracemask,
-                                       mask_width=mask_width,
+                                       inner_mask_width=inner_mask_width,
+                                       outer_mask_width=outer_mask_width,
                                        pixel_flags=pixel_flags,
                                        generate_order0_mask=generate_order0_mask,
                                        f277w=f277w, generate_lc=generate_lc,
@@ -716,11 +717,12 @@ def badpixstep(datafiles, baseline_ints, space_thresh=15, time_thresh=10,
 
 
 def tracingstep(datafiles, deepframe=None, calculate_stability=True,
-                pca_components=10, generate_tracemask=True, mask_width=45,
-                pixel_flags=None, generate_order0_mask=False, f277w=None,
-                generate_lc=True, baseline_ints=None, smoothing_scale=None,
-                output_dir='./', save_results=True, fileroot_noseg='',
-                do_plot=False, show_plot=False):
+                pca_components=10, generate_tracemask=True,
+                inner_mask_width=40, outer_mask_width=70, pixel_flags=None,
+                generate_order0_mask=False, f277w=None, generate_lc=True,
+                baseline_ints=None, smoothing_scale=None, output_dir='./',
+                save_results=True, fileroot_noseg='', do_plot=False,
+                show_plot=False):
     """A multipurpose step to perform some initial analysis of the 2D
     dataframes and produce products which can be useful in further reduction
     iterations. The five functionalities are detailed below:
@@ -748,9 +750,12 @@ def tracingstep(datafiles, deepframe=None, calculate_stability=True,
         Number of PCA stability components to calcaulte.
     generate_tracemask : bool
         If True, generate a mask of the target diffraction orders.
-    mask_width : int
-        Mask width, in pixels, around the trace centroids. Only necesssary if
-        generate_tracemask is True.
+    inner_mask_width : int
+        Inner mask width, in pixels, around the trace centroids. Only
+        necesssary if generate_tracemask is True.
+    outer_mask_width : int
+        Outer mask width, in pixels, around the trace centroids. Only
+        necesssary if generate_tracemask is True.
     pixel_flags: None, str, array-like[str]
         Paths to files containing existing pixel flags to which the trace mask
         should be added. Only necesssary if generate_tracemask is True.
@@ -838,27 +843,57 @@ def tracingstep(datafiles, deepframe=None, calculate_stability=True,
     tracemask = None
     if generate_tracemask is True:
         fancyprint('Generating trace masks.')
-        weights1 = soss_boxextract.get_box_weights(y1, mask_width,
-                                                   (dimy, dimx),
-                                                   cols=x1.astype(int))
-        weights1 = np.where(weights1 == 0, 0, 1)
-        # Make masks for other 2 orders for SUBSTRIP256.
+        # Get bounds of inner and outer masks.
+        low_in = np.max([np.zeros_like(y1),
+                         y1 - inner_mask_width/2], axis=0).astype(int)
+        up_in = np.min([dimy*np.ones_like(y1),
+                        y1 + inner_mask_width/2], axis=0).astype(int)
+        low_out = np.max([np.zeros_like(y1),
+                          y1 - outer_mask_width/2], axis=0).astype(int)
+        up_out = np.min([dimy*np.ones_like(y1),
+                         y1 + outer_mask_width/2], axis=0).astype(int)
+        # Create inner and outer masks.
+        mask1_in, mask1_out = np.zeros((dimy, dimx)), np.zeros((dimy, dimx))
+        for i, x in enumerate(x1):
+            mask1_in[low_in[i]:up_in[i], int(x)] = 1
+            mask1_out[low_out[i]:up_out[i], int(x)] = 1
+        # Include orders 2 and 3 for SUBSTRIP256.
         if subarray != 'SUBSTRIP96':
-            weights2 = soss_boxextract.get_box_weights(y2, mask_width,
-                                                       (dimy, dimx),
-                                                       cols=x2.astype(int))
-            weights2 = np.where(weights2 == 0, 0, 1)
-            weights3 = soss_boxextract.get_box_weights(y3, mask_width,
-                                                       (dimy, dimx),
-                                                       cols=x3.astype(int))
-            weights3 = np.where(weights3 == 0, 0, 1)
+            # Order 2 -- inner and outer masks.
+            low_in = np.max([np.zeros_like(y2),
+                             y2 - inner_mask_width/2], axis=0).astype(int)
+            up_in = np.min([dimy*np.ones_like(y2),
+                            y2 + inner_mask_width/2], axis=0).astype(int)
+            low_out = np.max([np.zeros_like(y2),
+                              y2 - outer_mask_width/2], axis=0).astype(int)
+            up_out = np.min([dimy*np.ones_like(y2),
+                             y2 + outer_mask_width/2], axis=0).astype(int)
+            mask2_in, mask2_out = np.zeros((dimy, dimx)), np.zeros((dimy, dimx))
+            for i, x in enumerate(x2):
+                mask2_in[low_in[i]:up_in[i], int(x)] = 1
+                mask2_out[low_out[i]:up_out[i], int(x)] = 1
+            # Order 3 -- only need inner mask.
+            low = np.max([np.zeros_like(y3),
+                          y3 - inner_mask_width/2], axis=0).astype(int)
+            up = np.min([dimy*np.ones_like(y3),
+                         y3 + inner_mask_width/2], axis=0).astype(int)
+            mask3 = np.zeros((dimy, dimx))
+            for i, x in enumerate(x3):
+                mask3[low[i]:up[i], int(x)] = 1
+        # But not for SUBSTRIP96.
         else:
-            weights2 = np.zeros_like(weights1)
-            weights3 = np.zeros_like(weights1)
+            mask2_in = np.zeros_like(mask1_in)
+            mask2_out = np.zeros_like(mask1_in)
+            mask3 = np.zeros_like(mask1_in)
 
         # Combine the masks for each order.
-        tracemask = weights1.astype(bool) | weights2.astype(bool) | \
-            weights3.astype(bool)
+        tracemask = mask1_in.astype(bool) | mask2_in.astype(bool) |\
+            mask3.astype(bool)
+        # Make individual order masks.
+        mask1, mask2 = ~mask1_in.astype(bool), ~mask2_in.astype(bool)
+        # Make window masks.
+        window1 = ~(mask1_out - mask1_in).astype(bool)
+        window2 = ~(mask2_out - mask2_in).astype(bool)
 
         # Save the trace mask to file if requested.
         if save_results is True:
@@ -868,29 +903,51 @@ def tracingstep(datafiles, deepframe=None, calculate_stability=True,
                 # Ensure there is one pixel flag file per data file
                 assert len(pixel_flags) == len(datafiles)
                 # Combine tracemask with existing flags and overwrite old file.
-                parts = pixel_flags[0].split('seg')
-                outfile = parts[0] + 'seg' + 'XXX' + parts[1][3:]
-                fancyprint('Trace mask added to {}'.format(outfile))
                 for flag_file in pixel_flags:
                     # Check if file already has extensions with and without
                     # trace mask.
-                    if len(fits.open(flag_file)) == 3:
+                    if len(fits.open(flag_file)) >= 3:
                         old_flags = fits.getdata(flag_file, 2)
                     else:
                         old_flags = fits.getdata(flag_file)
-                    new_flags = old_flags.astype(bool) | tracemask
+                    nint = np.shape(old_flags)[0]
+
+                    # Save all kinds of pixels maps.
+                    hdu = fits.PrimaryHDU()
                     # First extension will be combined flags.
-                    hdu1 = fits.PrimaryHDU()
-                    hdu2 = fits.ImageHDU(new_flags.astype(int))
+                    this_flag = old_flags.astype(bool) | tracemask
+                    hdu1 = fits.ImageHDU(this_flag.astype(int))
                     # Second extension is flags without the trace mask.
-                    hdu3 = fits.ImageHDU(old_flags.astype(int))
-                    hdul = fits.HDUList([hdu1, hdu2, hdu3])
+                    hdu2 = fits.ImageHDU(old_flags.astype(int))
+                    # Third extension is inner order 1 mask.
+                    this_flag = np.repeat(mask1[np.newaxis], nint, axis=0)
+                    hdu3 = fits.ImageHDU(this_flag.astype(int))
+                    # Fourth extension is inner order 2 mask.
+                    this_flag = np.repeat(mask2[np.newaxis], nint, axis=0)
+                    hdu4 = fits.ImageHDU(this_flag.astype(int))
+                    # Fifth extension is order 1 window.
+                    this_flag = np.repeat(window1[np.newaxis], nint, axis=0)
+                    hdu5 = fits.ImageHDU(this_flag.astype(int))
+                    # Sixth extension is order 2 window.
+                    this_flag = np.repeat(window2[np.newaxis], nint, axis=0)
+                    hdu6 = fits.ImageHDU(this_flag.astype(int))
+                    # And write to file.
+                    hdul = fits.HDUList([hdu, hdu1, hdu2, hdu3, hdu4, hdu5,
+                                         hdu6])
                     hdul.writeto(flag_file, overwrite=True)
+                # Overwrite old flags file.
+                parts = pixel_flags[0].split('seg')
+                outfile = parts[0] + 'seg' + 'XXX' + parts[1][3:]
+                fancyprint('Trace mask added to {}'.format(outfile))
             else:
-                hdu = fits.PrimaryHDU(tracemask.astype(int))
-                suffix = 'tracemask_width{}.fits'.format(mask_width)
+                hdul = [fits.PrimaryHDU()]
+                to_save = [tracemask, mask1, mask2, window1, window2]
+                for item in to_save:
+                    hdul.append(fits.ImageHDU(item.astype(int)))
+                hdul = fits.HDUList(hdul)
+                suffix = 'tracemask.fits'
                 outfile = output_dir + fileroot_noseg + suffix
-                hdu.writeto(outfile, overwrite=True)
+                hdul.writeto(outfile, overwrite=True)
                 fancyprint('Trace mask saved to {}'.format(outfile))
 
     # ===== PART 3: Create order 0 background contamination mask =====
@@ -919,21 +976,25 @@ def tracingstep(datafiles, deepframe=None, calculate_stability=True,
                     # Ensure there is one pixel flag file per data file
                     assert len(pixel_flags) == len(datafiles)
                     # Combine with existing flags and overwrite old file.
+                    for flag_file in pixel_flags:
+                        hdul = [fits.PrimaryHDU()]
+                        with fits.open(flag_file) as old_flags:
+                            for ext in range(1, len(old_flags)):
+                                # Add order 0 flags to first two extensions.
+                                if ext > 2:
+                                    this_flag = old_flags[ext].data
+                                    this_hdu = fits.ImageHDU(this_flag)
+                                    hdul.append(this_hdu)
+                                else:
+                                    this_flag = old_flags[ext].data.astype(bool) | order0mask.astype(bool)
+                                    this_hdu = fits.ImageHDU(this_flag.astype(int))
+                                    hdul.append(this_hdu)
+                        hdul = fits.HDUList(hdul)
+                        hdul.writeto(flag_file, overwrite=True)
+                    # Overwrite old flags file.
                     parts = pixel_flags[0].split('seg')
                     outfile = parts[0] + 'seg' + 'XXX' + parts[1][3:]
                     fancyprint('Order 0 mask added to {}'.format(outfile))
-                    for flag_file in pixel_flags:
-                        old_flags = fits.open(flag_file)
-                        # Add flags to both file extensions.
-                        new_flags1 = old_flags[1].data.astype(bool) | order0mask.astype(bool)
-                        new_flags2 = old_flags[2].data.astype(bool) | order0mask.astype(bool)
-                        # First extension will be combined flags.
-                        hdu1 = fits.PrimaryHDU()
-                        hdu2 = fits.ImageHDU(new_flags1.astype(int))
-                        # Second extension is flags without the trace mask.
-                        hdu3 = fits.ImageHDU(new_flags2.astype(int))
-                        hdul = fits.HDUList([hdu1, hdu2, hdu3])
-                        hdul.writeto(flag_file, overwrite=True)
 
                 else:
                     hdu = fits.PrimaryHDU(order0mask)
@@ -946,8 +1007,7 @@ def tracingstep(datafiles, deepframe=None, calculate_stability=True,
     # If requested, calculate the stability of the SOSS trace over the course
     # of the TSO using PCA.
     if calculate_stability is True:
-        fancyprint('Calculating trace stability using the PCA method...'
-                   ' This might take a while.')
+        fancyprint('Calculating trace stability using the PCA method...')
         assert save_results is True, 'save_results must be True to run ' \
                                      'soss_stability.'
 
@@ -1103,9 +1163,10 @@ def run_stage2(results, background_model, baseline_ints, save_results=True,
                calculate_stability=True, pca_components=10, timeseries=None,
                oof_method='scale-achromatic', oof_order=None, root_dir='./',
                output_tag='', smoothing_scale=None, skip_steps=None,
-               generate_lc=True, generate_tracemask=True, mask_width=45,
-               pixel_masks=None, generate_order0_mask=True, f277w=None,
-               do_plot=False,  show_plot=False, **kwargs):
+               generate_lc=True, generate_tracemask=True, inner_mask_width=40,
+               outer_mask_width=70, pixel_masks=None,
+               generate_order0_mask=True, f277w=None, do_plot=False,
+               show_plot=False, **kwargs):
     """Run the supreme-SPOON Stage 2 pipeline: spectroscopic processing,
     using a combination of official STScI DMS and custom steps. Documentation
     for the official DMS steps can be found here:
@@ -1151,9 +1212,12 @@ def run_stage2(results, background_model, baseline_ints, save_results=True,
         If True, produce a smoothed order 1 white light curve.
     generate_tracemask : bool
         If True, generate a mask of the target diffraction orders.
-    mask_width : int
-        Mask width, in pixels, around the trace centroids. Only necesssary if
-        generate_tracemask is True.
+    inner_mask_width : int
+        Inner mask width, in pixels, around the trace centroids. Only
+        necesssary if generate_tracemask is True.
+    outer_mask_width : int
+        Outer mask width, in pixels, around the trace centroids. Only
+        necesssary if generate_tracemask is True.
     pixel_masks: None, str, array-like[str]
         Paths to files containing existing pixel flags to which the trace mask
         should be added. Only necesssary if generate_tracemask is True.
@@ -1276,7 +1340,9 @@ def run_stage2(results, background_model, baseline_ints, save_results=True,
         step_results = step.run(calculate_stability=calculate_stability,
                                 pca_components=pca_components,
                                 generate_tracemask=generate_tracemask,
-                                mask_width=mask_width, pixel_flags=pixel_masks,
+                                inner_mask_width=inner_mask_width,
+                                outer_mask_width=outer_mask_width,
+                                pixel_flags=pixel_masks,
                                 generate_order0_mask=generate_order0_mask,
                                 f277w=f277w,
                                 generate_lc=generate_lc,

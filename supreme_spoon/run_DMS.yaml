@@ -14,7 +14,7 @@ input_filetag : 'uncal'
 # Background model. Default model available here:
 # https://jwst-docs.stsci.edu/jwst-near-infrared-imager-and-slitless-spectrograph/niriss-observing-strategies/niriss-soss-recommended-strategies
 background_file : 'model_background256.npy'
-# 1/f correction method; either 'scale-achromatic', 'scale-chromatic', 'solve', or 'window'.
+# 1/f correction method; either 'scale-achromatic', 'scale-achromatic-window', 'scale-chromatic', or 'solve'.
 oof_method : 'scale-achromatic'
 # If oof_method is "scale-chromatic", the diffraction order to correct.
 oof_order : None
@@ -44,6 +44,10 @@ space_outlier_threshold : 15
 time_outlier_threshold : 10
 # If True, create a mask of the target trace orders.
 generate_tracemask : True
+# Width, in pixels, of inner trace mask. Only necessary if generate_tracemask is true.
+inner_mask_width : 40
+# Width, in pixels, of outer trace mask. Only necessary if generate_tracemask is true.
+outer_mask_width : 70
 # If True, calculate the stability of the SOSS trace over the course of the TSO using principle component analysis.
 calculate_stability : True
 # Number of principle components to extract. Only necessary if calculate_stability is True.
