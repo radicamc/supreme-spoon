@@ -725,6 +725,29 @@ def make_pca_plot(pcs, var, projections, show_plot=False, outfile=None):
         plt.show()
 
 
+def make_soss_width_plot(scatter, min_width, outfile=None, show_plot=True):
+    """Make plot showing optimization of extraction box.
+    """
+
+    plt.figure(figsize=(8, 5))
+    plt.plot(np.linspace(10, 60, 51), scatter, c='royalblue')
+    plt.scatter(np.linspace(10, 60, 51)[min_width], scatter[min_width],
+                marker='*', c='red', s=100, zorder=2)
+
+    plt.xlabel('Aperture Width', fontsize=14)
+    plt.ylabel('Scatter', fontsize=14)
+    plt.yticks(fontsize=10)
+    plt.xticks(fontsize=10)
+
+    if outfile is not None:
+        plt.savefig(outfile, bbox_inches='tight')
+        fancyprint('Plot saved to {}'.format(outfile))
+    if show_plot is False:
+        plt.close()
+    else:
+        plt.show()
+
+
 def make_superbias_plot(results, outfile=None, show_plot=True):
     """Nine-panel plot for superbias subtraction results.
     """

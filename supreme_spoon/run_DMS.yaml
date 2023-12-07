@@ -65,7 +65,8 @@ stage2_kwargs : {}
 # ===== Stage 3 Input Files & Parameters =====
 # Extraction method: box or atoca.
 extract_method : 'box'
-# Box width to extract around the trace center.
+# Box width to extract around the trace center. Passing 'optimize' will find and use the aperture width that minimizes
+# the white light curve scatter.
 soss_width : 40
 # Specprofile reference file for ATOCA (optional).
 specprofile : None

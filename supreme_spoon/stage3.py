@@ -166,7 +166,15 @@ class Extract1DStep:
                                            timeseries_o1=self.timeseries_o1,
                                            timeseries_o2=self.timeseries_o2,
                                            pixel_masks=self.pixel_masks,
-                                           datafiles2=self.datafiles2)
+                                           datafiles2=self.datafiles2,
+                                           do_plot=do_plot,
+                                           show_plot=show_plot,
+                                           output_dir=self.output_dir,
+                                           save_results=save_results)
+                if soss_width == 'optimize':
+                    # Get optimized width.
+                    soss_width = int(results[-1])
+                results = results[:-1]
             else:
                 raise ValueError('Invalid extraction method')
 
@@ -281,7 +289,9 @@ def specprofilestep(datafiles, empirical=True, output_dir='./'):
 
 def box_extract_soss(datafiles, centroids, soss_width, oof_width=None,
                      pixel_masks=None, timeseries_o1=None, timeseries_o2=None,
-                     baseline_ints=None, window_oof=False, datafiles2=None):
+                     baseline_ints=None, window_oof=False, datafiles2=None,
+                     do_plot=False, show_plot=False, save_results=True,
+                     output_dir='./'):
     """Perform a simple box aperture extraction on SOSS orders 1 and 2.
 
     Parameters
@@ -290,8 +300,8 @@ def box_extract_soss(datafiles, centroids, soss_width, oof_width=None,
         Input datamodels or paths to datamodels for each segment.
     centroids : dict
         Dictionary of centroid positions for all SOSS orders.
-    soss_width : int
-        Width of extraction box.
+    soss_width : int, str
+        Width of extraction box. Or 'optimize'.
     oof_width : int
         Width of window to use to calculate 1/f.
     pixel_masks : array-like[str], None
@@ -308,6 +318,15 @@ def box_extract_soss(datafiles, centroids, soss_width, oof_width=None,
     datafiles2 : array-like[str], array-like[jwst.RampModel], None
         Input datamodels for order 2 if chromatic 1/f corrections were applied
         and both orders are to be extracted simultaneously.
+    do_plot : bool
+        If True, do the step diagnostic plot.
+    show_plot : bool
+        If True, show the step diagnostic plot instead of/in addition to
+        saving it to file.
+    output_dir : str
+        Directory to which to output results.
+    save_results : bool
+        If True, save results to file.
 
     Returns
     -------
@@ -323,6 +342,8 @@ def box_extract_soss(datafiles, centroids, soss_width, oof_width=None,
         2D extracted flux for order 2.
     ferr_o2 : array_like[float]
         2D flux errors for order 2.
+    soss_width : int
+        Optimized aperture width.
     """
 
     datafiles = np.atleast_1d(datafiles)
@@ -357,6 +378,33 @@ def box_extract_soss(datafiles, centroids, soss_width, oof_width=None,
     y1, y2 = centroids['ypos o1'].values, centroids['ypos o2'].values
     ii = np.where(np.isfinite(y2))
     x2, y2 = x1[ii], y2[ii]
+
+    # ===== Optimize Aperture Width =====
+    if soss_width == 'optimize':
+        fancyprint('Optimizing extraction width...')
+        # Extract order 1 with a variety of widths and find the one that
+        # minimizes the white light curve scatter.
+        scatter = []
+        for w in tqdm(range(10, 61)):
+            flux = do_box_extraction(cube, ecube, y1, width=w,
+                                     progress=False)[0]
+            wlc = np.nansum(flux, axis=1)
+            s = np.median(np.abs(0.5*(wlc[0:-2] + wlc[2:]) - wlc[1:-1]))
+            scatter.append(s)
+        scatter = np.array(scatter)
+        # Find the width that minimizes the scatter.
+        ii = np.argmin(scatter)
+        soss_width = np.linspace(10, 60, 51)[ii]
+        fancyprint('Using width of {} pxiels.'.format(int(soss_width)))
+
+        # Do diagnostic plot if requested.
+        if do_plot is True:
+            if save_results is True:
+                outfile = output_dir + '_aperture_optimization.pdf'
+            else:
+                outfile = None
+            plotting.make_soss_width_plot(scatter, ii, outfile=outfile,
+                                          show_plot=show_plot)
 
     # ===== Window 1/f Correction ======
     # Do window 1/f correction.
@@ -439,11 +487,11 @@ def box_extract_soss(datafiles, centroids, soss_width, oof_width=None,
     wave_o1 = np.mean(fits.getdata(wavemap, 1)[20:-20, 20:-20], axis=0)
     wave_o2 = np.mean(fits.getdata(wavemap, 2)[20:-20, 20:-20], axis=0)
 
-    return wave_o1, flux_o1, ferr_o1, wave_o2, flux_o2, ferr_o2
+    return wave_o1, flux_o1, ferr_o1, wave_o2, flux_o2, ferr_o2, soss_width
 
 
 def do_box_extraction(cube, err, ypos, width, extract_start=0,
-                      extract_end=None):
+                      extract_end=None, progress=True):
     """Do intrapixel aperture extraction.
 
     Parameters
@@ -460,6 +508,8 @@ def do_box_extraction(cube, err, ypos, width, extract_start=0,
         Detector X-position at which to start extraction.
     extract_end : int, None
         Detector X-position at which to end extraction.
+    progress : bool
+        if True, show extraction progress bar.
 
     Returns
     -------
@@ -486,7 +536,7 @@ def do_box_extraction(cube, err, ypos, width, extract_start=0,
     edge_low = np.max([ypos - width / 2, np.zeros_like(ypos)], axis=0)
 
     # Loop over all integrations and sum flux within the extraction aperture.
-    for i in tqdm(range(nint)):
+    for i in tqdm(range(nint), disable=not progress):
         for x in range(extract_start, extract_end):
             # First sum the whole pixel components within the aperture.
             up_whole = np.floor(edge_up[x - extract_start]).astype(int)

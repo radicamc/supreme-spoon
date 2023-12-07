@@ -108,8 +108,12 @@ else:
 if 2 in config['run_stages']:
     if config['soss_width'] <= 40:
         mask_width = 45
+    elif config['soss_width'] == 'optimize':
+        config['generate_tracemask'] = False
+        mask_width = None
     else:
         mask_width = config['soss_width'] + 5
+
     stage2_results = run_stage2(stage1_results,
                                 background_model=background_model,
                                 baseline_ints=config['baseline_ints'],
