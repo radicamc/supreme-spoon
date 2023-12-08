@@ -112,7 +112,6 @@ if 2 in config['run_stages']:
                                 timeseries=config['timeseries'],
                                 timeseries_o2=config['timeseries_o2'],
                                 oof_method=config['oof_method'],
-                                oof_order=config['oof_order'],
                                 output_tag=config['output_tag'],
                                 smoothing_scale=config['smoothing_scale'],
                                 skip_steps=config['stage2_skip'],
