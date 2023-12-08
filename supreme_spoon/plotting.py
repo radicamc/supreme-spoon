@@ -585,15 +585,22 @@ def make_oneoverf_psd(results, old_results, timeseries, baseline_ints,
     old_cube = np.where(np.isnan(old_cube), np.nanmedian(old_cube), old_cube)
     if pixel_masks is not None:
         if window is True:
-            ext = 5
+            for i, file in enumerate(pixel_masks):
+                mask_in = fits.getdata(file, 3)
+                mask_out = fits.getdata(file, 5)
+                window = ~(mask_out - mask_in).astype(bool)
+                if i == 0:
+                    mask_cube = window
+                else:
+                    mask_cube = np.concatenate([mask_cube, window])
         else:
-            ext = 1
-        for i, file in enumerate(pixel_masks):
-            if i == 0:
-                mask_cube = fits.getdata(file, ext)
-            else:
-                mask_cube = np.concatenate([mask_cube,
-                                            fits.getdata(file, ext)])
+            for i, file in enumerate(pixel_masks):
+                data = fits.getdata(file, 1)
+                if i == 0:
+                    mask_cube = data
+                else:
+                    mask_cube = np.concatenate([mask_cube, data])
+
     else:
         mask_cube = None
 

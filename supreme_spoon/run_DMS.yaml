@@ -16,11 +16,9 @@ input_filetag : 'uncal'
 background_file : 'model_background256.npy'
 # 1/f correction method; either 'scale-achromatic', 'scale-achromatic-window', 'scale-chromatic', or 'solve'.
 oof_method : 'scale-achromatic'
-# If oof_method is "scale-chromatic", the diffraction order to correct.
-oof_order : None
-# For 1/f correction; estimate of 1D or 2D timeseries for order 1 or 2 (optional).
+# For 1/f correction; estimate of 1D or 2D timeseries for order 1 (optional).
 timeseries : None
-# For 1/f correction; estimate of 1D or 2D timeseries for order 2. Only necessary if oof_method is "window" (optional).
+# For 1/f correction; estimate of 2D timeseries for order 2. Only necessary if oof_method is "scale-chromatic".
 timeseries_o2 : None
 # For 1/f correction; outlier pixel maps (optional).
 outlier_maps : None

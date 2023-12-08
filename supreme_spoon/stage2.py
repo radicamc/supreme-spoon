@@ -667,8 +667,7 @@ def badpixstep(datafiles, baseline_ints, space_thresh=15, time_thresh=10,
     # Make a final, corrected deepframe for the baseline intergations.
     deepframe_fnl = utils.make_deepstack(newdata[baseline_ints])
 
-    results = []
-    current_int = 0
+    results, current_int = [], 0
     # Save interpolated data.
     for n, file in enumerate(datafiles):
         with utils.open_filetype(file) as currentfile:
@@ -890,10 +889,9 @@ def tracingstep(datafiles, deepframe=None, calculate_stability=True,
         tracemask = mask1_in.astype(bool) | mask2_in.astype(bool) |\
             mask3.astype(bool)
         # Make individual order masks.
-        mask1, mask2 = ~mask1_in.astype(bool), ~mask2_in.astype(bool)
+        mask_in1, mask_in2 = ~mask1_in.astype(bool), ~mask2_in.astype(bool)
         # Make window masks.
-        window1 = ~(mask1_out - mask1_in).astype(bool)
-        window2 = ~(mask2_out - mask2_in).astype(bool)
+        mask_out1, mask_out2 = ~mask1_out.astype(bool), ~mask2_out.astype(bool)
 
         # Save the trace mask to file if requested.
         if save_results is True:
@@ -920,16 +918,16 @@ def tracingstep(datafiles, deepframe=None, calculate_stability=True,
                     # Second extension is flags without the trace mask.
                     hdu2 = fits.ImageHDU(old_flags.astype(int))
                     # Third extension is inner order 1 mask.
-                    this_flag = np.repeat(mask1[np.newaxis], nint, axis=0)
+                    this_flag = np.repeat(mask_in1[np.newaxis], nint, axis=0)
                     hdu3 = fits.ImageHDU(this_flag.astype(int))
                     # Fourth extension is inner order 2 mask.
-                    this_flag = np.repeat(mask2[np.newaxis], nint, axis=0)
+                    this_flag = np.repeat(mask_in2[np.newaxis], nint, axis=0)
                     hdu4 = fits.ImageHDU(this_flag.astype(int))
-                    # Fifth extension is order 1 window.
-                    this_flag = np.repeat(window1[np.newaxis], nint, axis=0)
+                    # Fifth extension is outer order 1 mask.
+                    this_flag = np.repeat(mask_out1[np.newaxis], nint, axis=0)
                     hdu5 = fits.ImageHDU(this_flag.astype(int))
-                    # Sixth extension is order 2 window.
-                    this_flag = np.repeat(window2[np.newaxis], nint, axis=0)
+                    # Sixth extension is outer order 2 mask.
+                    this_flag = np.repeat(mask_out2[np.newaxis], nint, axis=0)
                     hdu6 = fits.ImageHDU(this_flag.astype(int))
                     # And write to file.
                     hdul = fits.HDUList([hdu, hdu1, hdu2, hdu3, hdu4, hdu5,
@@ -941,7 +939,7 @@ def tracingstep(datafiles, deepframe=None, calculate_stability=True,
                 fancyprint('Trace mask added to {}'.format(outfile))
             else:
                 hdul = [fits.PrimaryHDU()]
-                to_save = [tracemask, mask1, mask2, window1, window2]
+                to_save = [tracemask, mask_in1, mask_in2, mask_out1, mask_out2]
                 for item in to_save:
                     hdul.append(fits.ImageHDU(item.astype(int)))
                 hdul = fits.HDUList(hdul)
@@ -1161,10 +1159,10 @@ def soss_stability_pca(cube, n_components=10, outfile=None, do_plot=False,
 def run_stage2(results, background_model, baseline_ints, save_results=True,
                force_redo=False, space_thresh=15, time_thresh=15,
                calculate_stability=True, pca_components=10, timeseries=None,
-               oof_method='scale-achromatic', oof_order=None, root_dir='./',
-               output_tag='', smoothing_scale=None, skip_steps=None,
-               generate_lc=True, generate_tracemask=True, inner_mask_width=40,
-               outer_mask_width=70, pixel_masks=None,
+               timeseries_o2=None, oof_method='scale-achromatic',
+               root_dir='./', output_tag='', smoothing_scale=None,
+               skip_steps=None, generate_lc=True, generate_tracemask=True,
+               inner_mask_width=40, outer_mask_width=70, pixel_masks=None,
                generate_order0_mask=True, f277w=None, do_plot=False,
                show_plot=False, **kwargs):
     """Run the supreme-SPOON Stage 2 pipeline: spectroscopic processing,
@@ -1194,12 +1192,13 @@ def run_stage2(results, background_model, baseline_ints, save_results=True,
     pca_components : int
         Number of PCA components to calculate.
     timeseries : array-like[float], None
-        Estimate of the normalized light curve.
+        Normalized 1D or 2D light curve(s) for order 1.
+    timeseries_o2 : array-like[float], None
+        Normalized 2D light curves for order 2. Only necessary if oof_method
+         is "scale-chromatic".
     oof_method : str
         1/f correction method. Options are "scale-chromatic",
-        "scale-achromatic", "solve", or "window".
-    oof_order : int, None
-        If oof_method is scale-chromatic, the diffraction order to correct.
+        "scale-achromatic", "scale-achromatic-window", or "solve".
     root_dir : str
         Directory from which all relative paths are defined.
     output_tag : str
@@ -1310,10 +1309,11 @@ def run_stage2(results, background_model, baseline_ints, save_results=True,
         step = stage1.OneOverFStep(results, baseline_ints=baseline_ints,
                                    output_dir=outdir, method=oof_method,
                                    timeseries=timeseries,
+                                   timeseries_o2=timeseries_o2,
                                    pixel_masks=pixel_masks)
         results = step.run(save_results=save_results, force_redo=force_redo,
                            do_plot=do_plot, show_plot=show_plot,
-                           order=oof_order, **step_kwargs)
+                           **step_kwargs)
 
     # ===== Bad Pixel Correction Step =====
     # Custom DMS step.

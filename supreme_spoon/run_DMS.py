@@ -78,18 +78,11 @@ if config['centroids'] is not None:
 if config['f277w'] is not None:
     config['f277w'] = np.load(config['f277w'])
 
-# Check that extraction method and 1/f correction method are compatible.
-if config['extract_method'] == 'atoca':
-    if config['oof_method'] not in ['scale-achromatic', 'solve']:
-        raise ValueError('1/f correction method {} not compatible with '
-                         'atoca extraction.'.format(config['oof_method']))
-
 # ===== Run Stage 1 =====
 if 1 in config['run_stages']:
     stage1_results = run_stage1(input_files, background_model=background_model,
                                 baseline_ints=config['baseline_ints'],
                                 oof_method=config['oof_method'],
-                                oof_order=config['oof_order'],
                                 save_results=config['save_results'],
                                 pixel_masks=config['outlier_maps'],
                                 force_redo=config['force_redo'],
@@ -100,6 +93,7 @@ if 1 in config['run_stages']:
                                 skip_steps=config['stage1_skip'],
                                 do_plot=config['do_plots'],
                                 timeseries=config['timeseries'],
+                                timeseries_o2=config['timeseries_o2'],
                                 **config['stage1_kwargs'])
 else:
     stage1_results = input_files
@@ -116,6 +110,7 @@ if 2 in config['run_stages']:
                                 calculate_stability=config['calculate_stability'],
                                 pca_components=config['pca_components'],
                                 timeseries=config['timeseries'],
+                                timeseries_o2=config['timeseries_o2'],
                                 oof_method=config['oof_method'],
                                 oof_order=config['oof_order'],
                                 output_tag=config['output_tag'],

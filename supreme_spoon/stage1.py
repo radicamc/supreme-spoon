@@ -234,8 +234,8 @@ class OneOverFStep:
     """
 
     def __init__(self, input_data, baseline_ints, output_dir,
-                 method='scale-achromatic', timeseries=None, pixel_masks=None,
-                 background=None):
+                 method='scale-achromatic', timeseries=None,
+                 timeseries_o2=None, pixel_masks=None, background=None):
         """Step initializer.
         """
 
@@ -243,6 +243,7 @@ class OneOverFStep:
         self.output_dir = output_dir
         self.baseline_ints = baseline_ints
         self.timeseries = timeseries
+        self.timeseries_o2 = timeseries_o2
         self.pixel_masks = pixel_masks
         self.background = background
         self.datafiles = utils.sort_datamodels(input_data)
@@ -250,18 +251,13 @@ class OneOverFStep:
         self.method = method
 
     def run(self, save_results=True, force_redo=False, do_plot=False,
-            show_plot=False, order=None, **kwargs):
+            show_plot=False, **kwargs):
         """Method to run the step.
         """
 
         all_files = glob.glob(self.output_dir + '*')
         do_step = 1
         results = []
-        if self.method == 'scale-chromatic':
-            # Add order suffix to expected file if not already there.
-            for i in range(len(self.datafiles)):
-                if self.fileroots[i][-3:] != 'o{}_'.format(order):
-                    self.fileroots[i] += 'o{}_'.format(order)
         for i in range(len(self.datafiles)):
             # If an output file for this segment already exists, skip the step.
             expected_file = self.output_dir + self.fileroots[i] + self.tag
@@ -275,19 +271,20 @@ class OneOverFStep:
             fancyprint('Skipping 1/f Correction Step.')
         # If no output files are detected, run the step.
         else:
-            if self.method in ['scale-chromatic', 'scale-achromatic']:
-                # To use reference files to calculate 1/f noise.
-                method = self.method.split('-')[-1]
+            if self.method in ['scale-chromatic', 'scale-achromatic',
+                               'scale-achromatic-window']:
+                # To use "reference files" to calculate 1/f noise.
+                method = self.method.split('scale-')[-1]
                 results = oneoverfstep_scale(self.datafiles,
                                              baseline_ints=self.baseline_ints,
                                              background=self.background,
                                              timeseries=self.timeseries,
+                                             timeseries_o2=self.timeseries_o2,
                                              output_dir=self.output_dir,
                                              save_results=save_results,
                                              pixel_masks=self.pixel_masks,
                                              fileroots=self.fileroots,
-                                             method=method, order=order,
-                                             **kwargs)
+                                             method=method, **kwargs)
             elif self.method == 'solve':
                 # To use MLE to solve for the 1/f noise.
                 results = oneoverfstep_solve(self.datafiles,
@@ -307,16 +304,10 @@ class OneOverFStep:
             # Do step plots if requested.
             if do_plot is True:
                 if save_results is True:
-                    if self.method == 'scale-chromatic':
-                        plot_file1 = self.output_dir + self.tag.replace(
-                            '.fits', '_o{}_1.pdf'.format(order))
-                        plot_file2 = self.output_dir + self.tag.replace(
-                            '.fits', '_o{}_2.pdf'.format(order))
-                    else:
-                        plot_file1 = self.output_dir + self.tag.replace(
-                            '.fits', '_1.pdf')
-                        plot_file2 = self.output_dir + self.tag.replace(
-                            '.fits', '_2.pdf')
+                    plot_file1 = self.output_dir + self.tag.replace(
+                        '.fits', '_1.pdf')
+                    plot_file2 = self.output_dir + self.tag.replace(
+                        '.fits', '_2.pdf')
                 else:
                     plot_file1, plot_file2 = None, None
                 plotting.make_oneoverf_plot(results,
@@ -324,7 +315,8 @@ class OneOverFStep:
                                             baseline_ints=self.baseline_ints,
                                             outfile=plot_file1,
                                             show_plot=show_plot)
-                if self.method in ['solve', 'scale-chromatic', 'scale-achromatic-window']:
+                if self.method in ['solve', 'scale-chromatic',
+                                   'scale-achromatic-window']:
                     window = True
                 else:
                     window = False
@@ -763,9 +755,9 @@ def jumpstep_in_time(datafile, window=5, thresh=10, fileroot=None,
 
 
 def oneoverfstep_scale(datafiles, baseline_ints, even_odd_rows=True,
-                       background=None, timeseries=None, output_dir=None,
-                       save_results=True, pixel_masks=None, fileroots=None,
-                       method='achromatic', order=1):
+                       background=None, timeseries=None, timeseries_o2=None,
+                       output_dir=None, save_results=True, pixel_masks=None,
+                       fileroots=None, method='achromatic'):
     """Custom 1/f correction routine to be applied at the group or
     integration level. A median stack is constructed using all out-of-transit
     integrations and subtracted from each individual integration. The
@@ -787,23 +779,24 @@ def oneoverfstep_scale(datafiles, baseline_ints, even_odd_rows=True,
         Model of background flux.
     timeseries : array-like[float], str, None
         Estimate of normalized light curve(s), or path to file.
+    timeseries_o2 : array-like[float], str, None
+        Estimate of normalized light curve(s) for order 2, or path to file.
+        Only necessary if method is chromatic.
     output_dir : str, None
         Directory to which to save results. Only necessary if saving results.
     save_results : bool
         If True, save results to disk.
     pixel_masks : array-like[str], None
-        List of paths to maps of pixels to mask for each data segment. Can be
-        3D (nints, dimy, dimx), or 2D (dimy, dimx).
+        List of paths to maps of pixels to mask for each data segment. Should
+        be 3D (nints, dimy, dimx).
     fileroots : array-like[str], None
         Root names for output files. Only necessary if saving results.
     method : str
-        Whether correction will be chromatic or achromatic.
-    order : int
-        For chomratic corrections, order to correct.
+        Options are "chromatic", "achromatic", or "achromatic-window".
 
     Returns
     -------
-    corrected_rampmodels : array-like[CubeModel]
+    results : array-like[CubeModel]
         RampModels for each segment, corrected for 1/f noise.
     """
 
@@ -819,24 +812,16 @@ def oneoverfstep_scale(datafiles, baseline_ints, even_odd_rows=True,
             output_dir += '/'
 
     # Ensure method is correct.
-    if method not in ['chromatic', 'achromatic']:
-        msg = 'method must be one of "chromatic" or "achromatic"'
+    if method not in ['chromatic', 'achromatic', 'achromatic-window']:
+        msg = 'Method must be one of "chromatic", "achromatic", or ' \
+              '"achromatic-window".'
         raise ValueError(msg)
-    if method == 'achromatic':
-        fancyprint('Performing achromatic correction. Ignoring specified '
-                   'order: {}.'.format(order), msg_type='WARNING')
 
     # Format the baseline frames.
     baseline_ints = utils.format_out_frames(baseline_ints)
 
-    datafiles = np.atleast_1d(datafiles)
-    # If outlier maps are passed, ensure that there is one for each segment.
-    if pixel_masks is not None:
-        pixel_masks = np.atleast_1d(pixel_masks)
-        if len(pixel_masks) == 1:
-            pixel_masks = [pixel_masks[0] for d in datafiles]
-
     # Load in datamodels from all segments.
+    datafiles = np.atleast_1d(datafiles)
     for i, file in enumerate(datafiles):
         with utils.open_filetype(file) as currentfile:
             # FULL frame uses multiple amplifiers and probably has to be
@@ -849,11 +834,95 @@ def oneoverfstep_scale(datafiles, baseline_ints, even_odd_rows=True,
             else:
                 cube = np.concatenate([cube, currentfile.data], axis=0)
 
+    # Define the readout setup - can be 4D or 3D.
+    if np.ndim(cube) == 4:
+        nint, ngroup, dimy, dimx = np.shape(cube)
+    else:
+        nint, dimy, dimx = np.shape(cube)
+
     # Generate the 3D deep stack (ngroup, dimy, dimx) using only
     # baseline integrations.
     fancyprint('Generating a deep stack for each group using baseline '
                'integrations...')
     deepstack = utils.make_deepstack(cube[baseline_ints])
+
+    # If outlier maps are passed, ensure that there is one for each segment.
+    if pixel_masks is not None:
+        pixel_masks = np.atleast_1d(pixel_masks)
+        if len(pixel_masks) == 1:
+            pixel_masks = [pixel_masks[0] for d in datafiles]
+    # Read in the outlier maps - (nints, dimy, dimx) 3D cubes.
+    if pixel_masks is None:
+        if method in ['chromatic', 'achromatic-window']:
+            msg = 'Tracemasks are required for {} 1/f ' \
+                  'method.'.format(method)
+            raise ValueError(msg)
+        else:
+            fancyprint('No outlier maps passed, ignoring outliers.')
+            outliers1 = np.zeros((nint, dimy, dimx))
+    else:
+        for i, file in enumerate(pixel_masks):
+            fancyprint('Reading outlier map {}'.format(file))
+            if method in ['chromatic', 'achromatic-window']:
+                # Extensions 3 and 4 have inner trace masks.
+                thisin1 = fits.getdata(file, 3).astype(int)
+                thisin2 = fits.getdata(file, 4).astype(int)
+                # Extensions 5 and 6 have outer trace masks.
+                thisout1 = fits.getdata(file, 5).astype(int)
+                thisout2 = fits.getdata(file, 6).astype(int)
+                # Create the window as the difference between inner and outer
+                # masks.
+                window1 = ~(thisout1 - thisin1).astype(bool)
+                window2 = ~(thisout2 - thisin2).astype(bool)
+                # Get bad pixel map and combine with window.
+                badpix = fits.getdata(file).astype(bool)
+                thisoutlier1 = (window1 | badpix).astype(int)
+                thisoutlier2 = (window2 | badpix).astype(int)
+                # Create mask cubes.
+                if i == 0:
+                    outliers1 = thisoutlier1
+                    outliers2 = thisoutlier2
+                    out1 = thisout1
+                    out2 = thisout2
+                else:
+                    outliers1 = np.concatenate([outliers1, thisoutlier1])
+                    outliers2 = np.concatenate([outliers2, thisoutlier2])
+                    out1 = np.concatenate([out1, thisout1])
+                    out2 = np.concatenate([out2, thisout2])
+            else:
+                # Just want all flags.
+                if i == 0:
+                    outliers1 = fits.getdata(file)
+                else:
+                    outliers1 = np.concatenate([outliers1, fits.getdata(file)])
+                outliers2 = outliers1
+
+        # Identify and mask any potential jumps that are not flagged.
+        if np.ndim(cube) == 4:
+            thiscube = cube[:, -1]
+        else:
+            thiscube = cube
+        cube_filt = medfilt(thiscube, (5, 1, 1))
+        # Calculate the point-to-point scatter along the temporal axis.
+        scatter = np.median(np.abs(0.5 * (thiscube[0:-2] + thiscube[2:]) -
+                                   thiscube[1:-1]), axis=0)
+        scatter = np.where(scatter == 0, np.inf, scatter)
+        # Find pixels which deviate more than 10 sigma.
+        scale = np.abs(thiscube - cube_filt) / scatter
+        ii = np.where(scale > 10)
+        outliers1[ii] = 1
+        outliers2[ii] = 1
+
+        # The outlier map is 0 where good and >0 otherwise. As this
+        # will be applied multiplicatively, replace 0s with 1s and
+        # others with NaNs.
+        if method in ['chromatic', 'achromatic-window']:
+            outliers1 = np.where(outliers1 == 0, 1, np.nan)
+            outliers2 = np.where(outliers2 == 0, 1, np.nan)
+            # Also cut everything redder than ~0.9µm in order 2.
+            outliers2[:, :, :1100] = np.nan
+        else:
+            outliers1 = np.where(outliers1 == 0, 1, np.nan)
 
     # In order to subtract off the trace as completely as possible, the median
     # stack must be scaled, via the transit curve, to the flux level of each
@@ -885,73 +954,66 @@ def oneoverfstep_scale(datafiles, baseline_ints, even_odd_rows=True,
     if np.ndim(timeseries) == 1:
         # If 1D timeseries is passed cannot do chromatic correction.
         if method == 'chromatic':
-            fancyprint('2D light curves are required for chromatic '
-                       'correction, but 1D ones were passed. Swicthing to '
-                       'achomratic correction', msg_type='WARNING')
-            method = 'achromatic'
-        dimx = np.shape(currentfile.data)[-1]
-        timeseries = np.repeat(timeseries[:, np.newaxis], dimx, axis=1)
-
-    # Background must be subtracted to accurately subtract off the target
-    # trace and isolate 1/f noise. However, the background flux must also be
-    # corrected for non-linearity. Therefore, it should be added back after
-    # the 1/f is subtracted, in order to be re-subtracted later.
-    # Note: only relevant for group-level corrections.
-    if background is not None:
-        if isinstance(background, str):
-            background = np.load(background)
-
-    # Individually treat each segment.
-    corrected_rampmodels = []
-    current_int = 0
-    for n, currentfile in enumerate(datafiles):
-        currentfile = datamodels.open(currentfile)
-        fancyprint('Starting segment {} of {}.'.format(n+1, len(datafiles)))
-
-        # Define the readout setup - can be 4D (recommended) or 3D.
-        if np.ndim(currentfile.data) == 4:
-            nint, ngroup, dimy, dimx = np.shape(currentfile.data)
+            msg = '2D light curves are required for chromatic correction, ' \
+                  'but 1D ones were passed.'
+            raise ValueError(msg)
         else:
-            nint, dimy, dimx = np.shape(currentfile.data)
+            timeseries = np.repeat(timeseries[:, np.newaxis], dimx, axis=1)
+    # Get timeseries for order 2.
+    if method == 'chromatic':
+        if timeseries_o2 is None:
+            msg = '2D light curves for order 2 must be provided to use ' \
+                  'chromatic method.'
+            raise ValueError(msg)
+        if isinstance(timeseries_o2, str):
+            timeseries_o2 = np.load(timeseries_o2)
+        if np.ndim(timeseries_o2) == 1:
+            # If 1D timeseries is passed cannot do chromatic correction.
+            msg = '2D light curves are required for chromatic correction,' \
+                  ' but 1D ones were passed.'
+            raise ValueError(msg)
 
-        # Read in the outlier map - a (nints, dimy, dimx) 3D cube
-        if pixel_masks is None:
-            fancyprint('No outlier maps passed, ignoring outliers.')
-            outliers = np.zeros((nint, dimy, dimx))
-        else:
-            fancyprint('Using outlier map {}'.format(pixel_masks[n]))
-            outliers = fits.getdata(pixel_masks[n])
-            # If the outlier map is 2D (dimy, dimx) extend to int dimension.
-            if np.ndim(outliers) == 2:
-                outliers = np.repeat(outliers, nint)
-                outliers = outliers.reshape((dimy, dimx, nint))
-                outliers = outliers.transpose(2, 0, 1)
-        # The outlier map is 0 where good and >0 otherwise. As this will be
-        # applied multiplicatively, replace 0s with 1s and others with NaNs.
-        outliers = np.where(outliers == 0, 1, np.nan)
+    # Set up things that are needed for the 1/f correction with each method.
+    if method == 'achromatic':
+        # Orders to correct.
+        orders = [1]
+        # Pixel masks.
+        outliers = [outliers1]
+        # Timerseries.
+        timeseries = [timeseries]
+    elif method == 'achromatic-window':
+        orders = [1, 2]
+        outliers = [outliers1, outliers2]
+        timeseries = [timeseries, timeseries]
+    else:
+        orders = [1, 2]
+        outliers = [outliers1, outliers2]
+        timeseries = [timeseries, timeseries_o2]
 
-        # Initialize output storage arrays.
-        corr_data = np.copy(currentfile.data)
+    # For chromatic or windowed corrections, need to treat order 1 and
+    # order 2 seperately.
+    cube_corr = copy.deepcopy(cube)
+    for order, outlier, ts in zip(orders, outliers, timeseries):
+        if method != 'achromatic':
+            fancyprint('Starting order {}.'.format(order))
+
         # Loop over all integrations to determine the 1/f noise level via a
         # difference image, and correct it.
         for i in tqdm(range(nint)):
-            # i counts ints in this particular segment, whereas ii counts
-            # ints from the start of the exposure.
-            ii = current_int + i
             # Create the difference image.
-            if np.ndim(currentfile.data) == 4:
-                sub = currentfile.data[i] - deepstack * timeseries[ii, None, None, :]
+            if np.ndim(cube) == 4:
+                sub = cube[i] - deepstack * ts[i, None, None, :]
             else:
-                sub = currentfile.data[i] - deepstack * timeseries[ii, None, :]
+                sub = cube[i] - deepstack * ts[i, None, :]
             # Apply the outlier mask.
-            sub *= outliers[i, :, :]
+            sub *= outlier[i, :, :]
             with warnings.catch_warnings():
                 warnings.simplefilter('ignore', category=RuntimeWarning)
                 if even_odd_rows is True:
                     # Calculate 1/f scaling seperately for even and odd rows.
                     dc = np.zeros_like(sub)
                     # For group-level corrections.
-                    if np.ndim(currentfile.data) == 4:
+                    if np.ndim(cube) == 4:
                         dc[:, ::2] = bn.nanmedian(sub[:, ::2], axis=1)[:, None, :]
                         dc[:, 1::2] = bn.nanmedian(sub[:, 1::2], axis=1)[:, None, :]
                     # For integration-level corrections.
@@ -962,32 +1024,57 @@ def oneoverfstep_scale(datafiles, baseline_ints, even_odd_rows=True,
                     # Single 1/f scaling for all rows.
                     dc = np.zeros_like(sub)
                     # For group-level corrections.
-                    if np.ndim(currentfile.data == 4):
+                    if np.ndim(cube == 4):
                         dc[:, :, :] = bn.nanmedian(sub, axis=1)[:, None, :]
                     # For integration-level corrections.
                     else:
                         dc[:, :] = bn.nanmedian(sub, axis=0)[None, :]
             # Make sure no NaNs are in the DC map
             dc = np.where(np.isfinite(dc), dc, 0)
-            corr_data[i] -= dc
-        current_int += nint  # Increment the total integration counter.
+            # Subtract the 1/f map.
+            if method == 'achromatic':
+                # For achromatic method, just subtract the calculated 1/f
+                # values from the whole frame.
+                cube_corr[i] -= dc
+            else:
+                if order == 1:
+                    # For order 1, subtract 1/f values from whole frame.
+                    cube_corr[i] = cube_corr[i] - dc
+                else:
+                    # For order 2, subtract in a window around the trace.
+                    mask = (~(out2[i].astype(bool))).astype(int)
+                    cube_corr[i] = cube_corr[i] - dc * mask
 
+        # Rebuild the cube and deepframe.
+        if order == 1 and method != 'achromatic':
+            deepstack = utils.make_deepstack(cube_corr[baseline_ints])
+            cube = copy.deepcopy(cube_corr)
+
+    # Background must be subtracted to accurately subtract off the target
+    # trace and isolate 1/f noise. However, the background flux must also be
+    # corrected for non-linearity. Therefore, it should be added back after
+    # the 1/f is subtracted, in order to be re-subtracted later.
+    # Note: only relevant for group-level corrections.
+    if background is not None:
+        if isinstance(background, str):
+            background = np.load(background)
         # Add back the zodi background.
-        if background is not None:
-            corr_data += background
+        cube_corr += background
 
-        # Store results.
-        newfile = currentfile.copy()
-        currentfile.close()
-        newfile.data = corr_data
-        corrected_rampmodels.append(newfile)
+    results, current_int = [], 0
+    # Save 1/f corrected data.
+    for n, file in enumerate(datafiles):
+        with utils.open_filetype(file) as currentfile:
+            nints = np.shape(currentfile.data)[0]
+            currentfile.data = cube_corr[current_int:(current_int + nints)]
+            current_int += nints
+            if save_results is True:
+                with warnings.catch_warnings():
+                    warnings.simplefilter('ignore')
+                    currentfile.write(output_dir + fileroots[n] + 'oneoverfstep.fits')
+            results.append(currentfile)
 
-        # Save the results if requested.
-        if save_results is True:
-            suffix = 'oneoverfstep.fits'
-            newfile.write(output_dir + fileroots[n] + suffix)
-
-    return corrected_rampmodels
+    return results
 
 
 def oneoverfstep_solve(datafiles, baseline_ints, background=None,
@@ -1209,7 +1296,7 @@ def oneoverfstep_solve(datafiles, baseline_ints, background=None,
         if order == 1:
             # For order 1, subtract the 1/f value from the whole column.
             cube_corr = cube - oof
-            cube = cube_corr
+            cube = copy.deepcopy(cube_corr)
         else:
             # For order 2, only subtract it from around the order 2 trace.
             trace2 = np.where(trace2 == 1, 0, 1)
@@ -1251,8 +1338,8 @@ def oneoverfstep_solve(datafiles, baseline_ints, background=None,
 
 
 def run_stage1(results, background_model, baseline_ints=None,
-               oof_method='scale-achromatic', oof_order=None,
-               timeseries=None, save_results=True, pixel_masks=None,
+               oof_method='scale-achromatic', timeseries=None,
+               timeseries_o2=None, save_results=True, pixel_masks=None,
                force_redo=False, deepframe=None, rejection_threshold=15,
                flag_in_time=False, time_rejection_threshold=10, root_dir='./',
                output_tag='', skip_steps=None, do_plot=False, show_plot=False,
@@ -1273,11 +1360,11 @@ def run_stage1(results, background_model, baseline_ints=None,
         Integration numbers for transit ingress and egress.
     oof_method : str
         1/f correction method. Options are "scale-chromatic",
-        "scale-achromatic", "solve", or "window".
-    oof_order : int, None
-        If oof_method is scale-chromatic, the diffraction order to correct.
+        "scale-achromatic", "scale-achromatic-window", or "solve".
     timeseries : array-like[float], None
         Estimate of the normalized light curve, either 1D or 2D.
+    timeseries_o2 : array-like[float], None
+        Estimate of the normalized light curve for order 2, either 1D or 2D.
     save_results : bool
         If True, save results of each step to file.
     pixel_masks : array-like[str], None
@@ -1390,10 +1477,10 @@ def run_stage1(results, background_model, baseline_ints=None,
         step = OneOverFStep(results, baseline_ints=baseline_ints,
                             output_dir=outdir, method=oof_method,
                             timeseries=timeseries, pixel_masks=pixel_masks,
-                            background=background_model)
+                            background=background_model,
+                            timeseries_o2=timeseries_o2)
         results = step.run(save_results=save_results, force_redo=force_redo,
-                           do_plot=do_plot, show_plot=show_plot,
-                           order=oof_order, **step_kwargs)
+                           do_plot=do_plot, show_plot=show_plot, **step_kwargs)
 
     # ===== Linearity Correction Step =====
     # Default DMS step.
