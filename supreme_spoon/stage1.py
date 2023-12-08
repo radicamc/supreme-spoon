@@ -1046,7 +1046,8 @@ def oneoverfstep_scale(datafiles, baseline_ints, even_odd_rows=True,
     results, current_int = [], 0
     # Save 1/f corrected data.
     for n, file in enumerate(datafiles):
-        with utils.open_filetype(file) as currentfile:
+        with utils.open_filetype(file) as thisfile:
+            currentfile = thisfile.copy()
             nints = np.shape(currentfile.data)[0]
             currentfile.data = cube_corr[current_int:(current_int + nints)]
             current_int += nints
