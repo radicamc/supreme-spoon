@@ -129,10 +129,6 @@ class BackgroundStep:
         self.datafiles = utils.sort_datamodels(input_data)
         self.fileroots = utils.get_filename_root(self.datafiles)
         self.fileroot_noseg = utils.get_filename_root_noseg(self.fileroots)
-        if self.fileroots[0][-3] == 'o':
-            self.order = self.fileroots[0][-2]
-        else:
-            self.order = None
 
     def run(self, save_results=True, force_redo=False, do_plot=False,
             show_plot=False, **kwargs):
@@ -177,12 +173,7 @@ class BackgroundStep:
             # Do step plot if requested.
             if do_plot is True:
                 if save_results is True:
-                    if self.order is not None:
-                        plot_file = self.output_dir + self.tag.replace(
-                            '.fits', '_o{}.pdf'.format(self.order))
-                    else:
-                        plot_file = self.output_dir + self.tag.replace(
-                            '.fits', '.pdf')
+                    plot_file = self.output_dir + self.tag.replace('.fits', '.pdf')
                 else:
                     plot_file = None
                 plotting.make_background_plot(results, outfile=plot_file,
@@ -248,10 +239,6 @@ class BadPixStep:
         self.datafiles = utils.sort_datamodels(input_data)
         self.fileroots = utils.get_filename_root(self.datafiles)
         self.fileroot_noseg = utils.get_filename_root_noseg(self.fileroots)
-        if self.fileroots[0][-3] == 'o':
-            self.order = self.fileroots[0][-2]
-        else:
-            self.order = None
 
     def run(self, space_thresh=15, time_thresh=10, box_size=5,
             save_results=True, force_redo=False, do_plot=False,
@@ -285,8 +272,8 @@ class BadPixStep:
                                       fileroot_noseg=self.fileroot_noseg,
                                       space_thresh=space_thresh,
                                       time_thresh=time_thresh,
-                                      box_size=box_size, order=self.order,
-                                      do_plot=do_plot, show_plot=show_plot)
+                                      box_size=box_size, do_plot=do_plot,
+                                      show_plot=show_plot)
             results, deepframe = step_results
 
         return results, deepframe
@@ -503,7 +490,7 @@ def backgroundstep(datafiles, background_model, output_dir='./',
 def badpixstep(datafiles, baseline_ints, space_thresh=15, time_thresh=10,
                box_size=5, output_dir='./', save_results=True,
                fileroots=None, fileroot_noseg='', do_plot=False,
-               show_plot=False, order=None):
+               show_plot=False):
     """Identify and correct outlier pixels remaining in the dataset, using
     both a spatial and temporal approach. First, find spatial outlier pixels
     in the median stack and correct them in each integration via the median of
@@ -536,8 +523,6 @@ def badpixstep(datafiles, baseline_ints, space_thresh=15, time_thresh=10,
     show_plot : bool
         If True, show the step diagnostic plot instead of/in addition to
         saving it to file.
-    order : int, None
-        Diffraction order.
 
     Returns
     -------
@@ -700,10 +685,7 @@ def badpixstep(datafiles, baseline_ints, space_thresh=15, time_thresh=10,
 
     if do_plot is True:
         if save_results is True:
-            if order is not None:
-                outfile = output_dir + 'o{}_badpixstep.pdf'.format(order)
-            else:
-                outfile = output_dir + 'badpixstep.pdf'
+            outfile = output_dir + 'badpixstep.pdf'
         else:
             outfile = None
         hotpix = np.where(hotpix != 0)

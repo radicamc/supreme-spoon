@@ -342,10 +342,6 @@ class LinearityStep:
         self.output_dir = output_dir
         self.datafiles = utils.sort_datamodels(input_data)
         self.fileroots = utils.get_filename_root(self.datafiles)
-        if self.fileroots[0][-3] == 'o':
-            self.order = self.fileroots[0][-2]
-        else:
-            self.order = None
 
     def run(self, save_results=True, force_redo=False, do_plot=False,
             show_plot=False, **kwargs):
@@ -378,12 +374,7 @@ class LinearityStep:
         # Do step plot if requested.
         if do_plot is True:
             if save_results is True:
-                if self.order is not None:
-                    plot_file = self.output_dir + self.tag.replace(
-                        '.fits', '_o{}.pdf'.format(self.order))
-                else:
-                    plot_file = self.output_dir + self.tag.replace(
-                        '.fits', '.pdf')
+                plot_file = self.output_dir + self.tag.replace('.fits', '.pdf')
             else:
                 plot_file = None
             plotting.make_linearity_plot(results, self.datafiles,
@@ -406,10 +397,6 @@ class JumpStep:
         self.output_dir = output_dir
         self.datafiles = utils.sort_datamodels(input_data)
         self.fileroots = utils.get_filename_root(self.datafiles)
-        if self.fileroots[0][-3] == 'o':
-            self.order = self.fileroots[0][-2]
-        else:
-            self.order = None
 
     def run(self, save_results=True, force_redo=False, rejection_threshold=15,
             flag_in_time=False, time_rejection_threshold=10, time_window=5,
@@ -465,12 +452,7 @@ class JumpStep:
         # Do step plot if requested.
         if do_plot is True:
             if save_results is True:
-                if self.order is not None:
-                    plot_file = self.output_dir + self.tag.replace(
-                        '.fits', '_o{}.pdf'.format(self.order))
-                else:
-                    plot_file = self.output_dir + self.tag.replace(
-                        '.fits', '.pdf')
+                plot_file = self.output_dir + self.tag.replace('.fits', '.pdf')
             else:
                 plot_file = None
             plotting.make_jump_location_plot(results, outfile=plot_file,

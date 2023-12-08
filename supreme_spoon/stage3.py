@@ -71,8 +71,7 @@ class Extract1DStep:
     """
 
     def __init__(self, input_data, extract_method, st_teff=None, st_logg=None,
-                 st_met=None, planet_letter='b', output_dir='./',
-                 input_data2=None):
+                 st_met=None, planet_letter='b', output_dir='./'):
         """Step initializer.
         """
 
@@ -86,10 +85,6 @@ class Extract1DStep:
             self.target_name = datamodel.meta.target.catalog_name
         self.pl_name = self.target_name + ' ' + planet_letter
         self.stellar_params = [st_teff, st_logg, st_met]
-        if input_data2 is not None:
-            self.datafiles2 = utils.sort_datamodels(input_data2)
-        else:
-            self.datafiles2 = None
 
     def run(self, soss_width=40, specprofile=None, centroids=None,
             save_results=True, force_redo=False, do_plot=False,
@@ -151,9 +146,7 @@ class Extract1DStep:
                         raise ValueError('Centroids must be provided for box '
                                          'extraction')
                 results = box_extract_soss(self.datafiles, centroids,
-                                           soss_width,
-                                           datafiles2=self.datafiles2,
-                                           do_plot=do_plot,
+                                           soss_width, do_plot=do_plot,
                                            show_plot=show_plot,
                                            output_dir=self.output_dir,
                                            save_results=save_results)
@@ -273,9 +266,8 @@ def specprofilestep(datafiles, empirical=True, output_dir='./'):
     return filename
 
 
-def box_extract_soss(datafiles, centroids, soss_width, datafiles2=None,
-                     do_plot=False, show_plot=False, save_results=True,
-                     output_dir='./'):
+def box_extract_soss(datafiles, centroids, soss_width, do_plot=False,
+                     show_plot=False, save_results=True, output_dir='./'):
     """Perform a simple box aperture extraction on SOSS orders 1 and 2.
 
     Parameters
@@ -286,9 +278,6 @@ def box_extract_soss(datafiles, centroids, soss_width, datafiles2=None,
         Dictionary of centroid positions for all SOSS orders.
     soss_width : int, str
         Width of extraction box. Or 'optimize'.
-    datafiles2 : array-like[str], array-like[jwst.RampModel], None
-        Input datamodels for order 2 if chromatic 1/f corrections were applied
-        and both orders are to be extracted simultaneously.
     do_plot : bool
         If True, do the step diagnostic plot.
     show_plot : bool
@@ -327,19 +316,6 @@ def box_extract_soss(datafiles, centroids, soss_width, datafiles2=None,
             else:
                 cube = np.concatenate([cube, datamodel.data])
                 ecube = np.concatenate([ecube, datamodel.err])
-    # If order 2 specific datafiles are passed, read them in to include them
-    # in the extraction.
-    if datafiles2 is not None:
-        for i, file in enumerate(datafiles2):
-            with utils.open_filetype(file) as datamodel:
-                if i == 0:
-                    cube2 = datamodel.data
-                    ecube2 = datamodel.err
-                else:
-                    cube2 = np.concatenate([cube2, datamodel.data])
-                    ecube2 = np.concatenate([ecube2, datamodel.err])
-    else:
-        cube2, ecube2 = cube, ecube
 
     # Get centroid positions.
     x1 = centroids['xpos'].values
@@ -380,7 +356,7 @@ def box_extract_soss(datafiles, centroids, soss_width, datafiles2=None,
     fancyprint('Extracting Order 1')
     flux_o1, ferr_o1 = do_box_extraction(cube, ecube, y1, width=soss_width)
     fancyprint('Extracting Order 2')
-    flux_o2, ferr_o2 = do_box_extraction(cube2, ecube2, y2, width=soss_width,
+    flux_o2, ferr_o2 = do_box_extraction(cube, ecube, y2, width=soss_width,
                                          extract_end=len(y2))
 
     # Get default wavelength solution.
@@ -682,7 +658,7 @@ def run_stage3(results, save_results=True, root_dir='./', force_redo=False,
                extract_method='box', specprofile=None, centroids=None,
                soss_width=40, st_teff=None, st_logg=None, st_met=None,
                planet_letter='b', output_tag='', do_plot=False,
-               show_plot=False, datafiles2=None):
+               show_plot=False):
     """Run the supreme-SPOON Stage 3 pipeline: 1D spectral extraction, using
     a combination of the official STScI DMS and custom steps.
 
@@ -720,9 +696,6 @@ def run_stage3(results, save_results=True, root_dir='./', force_redo=False,
     show_plot : bool
         Only necessary if do_plot is True. Show the diagnostic plots in
         addition to/instead of saving to file.
-    datafiles2 : array-like[str], array-like[CubeModel]
-        If chromatic 1/f correction was performed; extraction ready order 2
-        outputs.
 
     Returns
     -------
@@ -754,8 +727,7 @@ def run_stage3(results, save_results=True, root_dir='./', force_redo=False,
     # Custom/default DMS step.
     step = Extract1DStep(results, extract_method=extract_method,
                          st_teff=st_teff, st_logg=st_logg, st_met=st_met,
-                         planet_letter=planet_letter,  output_dir=outdir,
-                         input_data2=datafiles2)
+                         planet_letter=planet_letter,  output_dir=outdir)
     spectra = step.run(soss_width=soss_width, specprofile=specprofile,
                        centroids=centroids, save_results=save_results,
                        force_redo=force_redo, do_plot=do_plot,

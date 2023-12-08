@@ -142,7 +142,6 @@ if 3 in config['run_stages']:
                                 planet_letter=config['planet_letter'],
                                 output_tag=config['output_tag'],
                                 do_plot=config['do_plots'],
-                                datafiles2=config['datafiles_o2'],
                                 **config['stage3_kwargs'])
 
 fancyprint('Done')
