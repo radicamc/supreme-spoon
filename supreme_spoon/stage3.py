@@ -338,6 +338,8 @@ def box_extract_soss(datafiles, centroids, soss_width, datafiles2=None,
                 else:
                     cube2 = np.concatenate([cube2, datamodel.data])
                     ecube2 = np.concatenate([ecube2, datamodel.err])
+    else:
+        cube2, ecube2 = cube, ecube
 
     # Get centroid positions.
     x1 = centroids['xpos'].values
