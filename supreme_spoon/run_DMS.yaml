@@ -11,6 +11,17 @@ input_dir : 'DMS_uncal/'
 input_filetag : 'uncal'
 
 # ===== Stage 1 Input Files & Parameters =====
+# List of stage 1 steps to run or skip.
+DQInitStep : 'run'
+SaturationStep : 'run'
+SuperBiasStep : 'run'
+RefPixStep : 'run'
+DarkCurrentStep : 'skip'
+OneOverFStep_grp : 'run'
+LinearityStep : 'run'
+JumpStep : 'run'
+RampFitStep : 'run'
+GainScaleStep : 'run'
 # Background model. Default model available here:
 # https://jwst-docs.stsci.edu/jwst-near-infrared-imager-and-slitless-spectrograph/niriss-observing-strategies/niriss-soss-recommended-strategies
 background_file : 'model_background256.npy'
@@ -28,21 +39,27 @@ jump_threshold : 15
 flag_in_time : False
 # For time domain jump detection; sigma threshold for a pixel to be flagged as an outlier.
 time_jump_threshold : 10
-# List of Stage 1 steps to skip, if any.
-stage1_skip : None
 # DMS Stage 1 kwargs. Format should be: {'step_name': {'kwd': value}}.
 stage1_kwargs : {}
 
 # ===== Stage 2 Input Files & Parameters =====
+# List of stage 2 steps to run or skip.
+AssignWCSStep : 'run'
+SourceTypeStep: 'run'
+FlatFieldStep : 'run'
+BackgroundStep : 'run'
+OneOverFStep_int : 'skip'
+BadPixStep : 'run'
+TracingStep : 'run'
 # For outlier detection; sigma threshold for a pixel to be flagged as an outlier, spatially.
 space_outlier_threshold : 15
 # For outlier detection; sigma threshold for a pixel to be flagged as an outlier, temporally.
 time_outlier_threshold : 10
 # If True, create a mask of the target trace orders.
 generate_tracemask : True
-# Width, in pixels, of inner trace mask. Only necessary if generate_tracemask is true.
+# Width, in pixels, of inner trace mask. Only necessary if generate_tracemask is True.
 inner_mask_width : 40
-# Width, in pixels, of outer trace mask. Only necessary if generate_tracemask is true.
+# Width, in pixels, of outer trace mask. Only necessary if generate_tracemask is True.
 outer_mask_width : 70
 # If True, calculate the stability of the SOSS trace over the course of the TSO using principle component analysis.
 calculate_stability : True
@@ -57,8 +74,6 @@ generate_order0_mask : False
 # Path to a processed (superbias and background subtracted) F277W exposure data frame (optional). Only necessary if
 # generate_order0_mask is True.
 f277w : None
-# List of Stage 2 steps to skip, if any.
-stage2_skip : None
 # DMS Stage 2 kwargs. Format should be: {'step_name': {'kwd': value}}.
 stage2_kwargs : {}
 
@@ -97,5 +112,5 @@ force_redo : False
 # Integrations of ingress and/or egress.
 baseline_ints : [50, -50]
 # If True, make diagnostic plots.
-do_plots : False
+do_plots : True
 # ========================= END DMS CONFIG FILE =============================

@@ -80,6 +80,18 @@ if config['f277w'] is not None:
 
 # ===== Run Stage 1 =====
 if 1 in config['run_stages']:
+    # Determine which steps to run and which to skip.
+    steps = ['DQInitStep', 'SaturationStep', 'SuperBiasStep', 'RefPixStep',
+             'DarkCurrentStep', 'OneOverFStep_grp', 'LinearityStep',
+             'JumpStep', 'RampFitStep', 'GainScaleStep']
+    stage1_skip = []
+    for step in steps:
+        if config[step] == 'skip':
+            if step == 'OneOverFStep_grp':
+                stage1_skip.append('OneOverFStep')
+            else:
+                stage1_skip.append(step)
+    # Run stage 1.
     stage1_results = run_stage1(input_files, background_model=background_model,
                                 baseline_ints=config['baseline_ints'],
                                 oof_method=config['oof_method'],
@@ -100,6 +112,18 @@ else:
 
 # ===== Run Stage 2 =====
 if 2 in config['run_stages']:
+    # Determine which steps to run and which to skip.
+    steps = ['AssignWCSStep', 'SourceTypeStep', 'FlatFieldStep',
+             'OneOverFStep_int', 'BackgroundStep', 'TracingStep',
+             'BadPixStep']
+    stage2_skip = []
+    for step in steps:
+        if config[step] == 'skip':
+            if step == 'OneOverFStep_int':
+                stage2_skip.append('OneOverFStep')
+            else:
+                stage2_skip.append(step)
+    # Run stage 2.
     stage2_results = run_stage2(stage1_results,
                                 background_model=background_model,
                                 baseline_ints=config['baseline_ints'],
