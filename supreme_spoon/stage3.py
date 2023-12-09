@@ -622,9 +622,9 @@ def format_extracted_spectra(datafiles, times, extract_params, target_name,
     flux_o2 = flux_o2[:, ii]
     ferr_o2 = ferr_o2[:, ii]
 
-    # Clip remaining 3-sigma outliers.
-    flux_o1_clip = utils.sigma_clip_lightcurves(flux_o1, ferr_o1)
-    flux_o2_clip = utils.sigma_clip_lightcurves(flux_o2, ferr_o2)
+    # Clip remaining 5-sigma outliers.
+    flux_o1_clip = utils.sigma_clip_lightcurves(flux_o1)
+    flux_o2_clip = utils.sigma_clip_lightcurves(flux_o2)
 
     # Pack the lightcurves into the output format.
     # Put 1D extraction parameters in the output file header.

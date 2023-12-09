@@ -16,7 +16,7 @@ import numpy as np
 import os
 import pandas as pd
 from scipy.interpolate import RegularGridInterpolator
-from scipy.ndimage import median_filter
+from scipy.signal import medfilt
 import warnings
 import yaml
 
@@ -890,19 +890,17 @@ def save_ld_priors(wave, c1, c2, order, target, m_h, teff, logg, outdir):
     f.close()
 
 
-def sigma_clip_lightcurves(flux, ferr, thresh=3, window=10):
+def sigma_clip_lightcurves(flux, thresh=5, window=5):
     """Sigma clip outliers in time from final lightcurves.
 
     Parameters
     ----------
     flux : array-like[float]
         Flux array.
-    ferr : array-like[float]
-        Flux error array.
     thresh : int
         Sigma level to be clipped.
     window : int
-        Window function to calculate median.
+        Window function to calculate median. Must be odd.
 
     Returns
     -------
@@ -912,16 +910,17 @@ def sigma_clip_lightcurves(flux, ferr, thresh=3, window=10):
 
     flux_clipped = np.copy(flux)
     nints, nwaves = np.shape(flux)
-    clipsum = 0
-    # Loop over all integrations, and set pixels which deviate by more than
-    # the given threshold from the median lightcurve by the median value.
-    for wave in range(nwaves):
-        med = median_filter(flux[:, wave], window)
-        ii = np.where(np.abs(flux[:, wave] - med) > thresh*ferr[:, wave])[0]
-        flux_clipped[:, wave][ii] = med[ii]
-        clipsum += len(ii)
+    flux_filt = medfilt(flux, (window, 1))
 
-    fancyprint('{0} pixels clipped ({1:.3f}%)'.format(clipsum, clipsum/nints/nwaves*100))
+    # Check along the time axis for outlier pixels.
+    std_dev = np.median(np.abs(0.5 * (flux[0:-2] + flux[2:]) - flux[1:-1]), axis=0)
+    std_dev = np.where(std_dev == 0, np.inf, std_dev)
+    scale = np.abs(flux - flux_filt) / std_dev
+    ii = np.where((scale > thresh))
+    # Replace outliers.
+    flux_clipped[ii] = flux_filt[ii]
+
+    fancyprint('{0} pixels clipped ({1:.3f}%)'.format(len(ii[0]), len(ii[0])/nints/nwaves*100))
 
     return flux_clipped
 
