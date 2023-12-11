@@ -541,12 +541,23 @@ class RampFitStep:
                     # Store flags for use in 1/f correction.
                     flags = res.dq
                     flags[flags != 0] = 1  # Convert to binary mask.
-                    # Save in two extensions for chromatic vs achromatic 1/f
-                    # correction.
-                    hdu1 = fits.PrimaryHDU(flags)
-                    hdu2 = fits.ImageHDU(flags)
-                    hdu3 = fits.ImageHDU(flags)
-                    hdul = fits.HDUList([hdu1, hdu2, hdu3])
+                    # Mask detector reset artifact.
+                    int_start = res.meta.exposure.integration_start
+                    int_end = np.min([res.meta.exposure.integration_end, 256])
+                    # Artifact only affects first 256 integrations.
+                    if int_start < 255:
+                        for j, jj in enumerate(range(int_start, int_end)):
+                            # j counts ints from start of this segment, jj is
+                            # integrations from start of exposure (1-indexed).
+                            # Mask rows from jj to jj+3 for detector reset
+                            # artifact.
+                            min_row = np.max([256-(jj+3), 0])
+                            max_row = np.min([(258 - jj), 256])
+                            flags[j, min_row:max_row, :] = 1
+                    # Save flags to file.
+                    hdu = fits.PrimaryHDU()
+                    hdu1 = fits.ImageHDU(flags)
+                    hdul = fits.HDUList([hdu, hdu1])
                     outfile = self.output_dir + self.fileroots[i] + 'pixelflags.fits'
                     hdul.writeto(outfile, overwrite=True)
                     # Remove rate file because we don't need it and I don't
@@ -1251,6 +1262,16 @@ def oneoverfstep_solve(datafiles, baseline_ints, background=None,
         for g in range(ngroup):
             err1[:, g][ii] = np.inf
             err2[:, g][ii2] = np.inf
+
+    # If no outlier masks were provided and correction is at group level, mask
+    # detector reset artifact.
+    if pixel_masks is None and np.ndim(cube) == 4:
+        for j in range(256):
+            # Mask rows from j to j+3 for detector reset artifact.
+            max_row = np.min([(258 - j), 256])
+            min_row = np.max([258 - (j + 4), 0])
+            err1[j, min_row:max_row, :] = np.inf
+            err2[j, min_row:max_row, :] = np.inf
 
     # Calculate 1/f noise using a wavelength-dependent scaling.
     for order, err in zip([1, 2], [err1, err2]):
