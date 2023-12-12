@@ -17,6 +17,7 @@ from matplotlib.gridspec import GridSpec
 from matplotlib.patches import Ellipse
 import matplotlib.pyplot as plt
 import numpy as np
+from scipy.ndimage import median_filter
 from tqdm import tqdm
 import warnings
 
@@ -92,6 +93,130 @@ def make_badpix_plot(deep, hotpix, nanpix, otherpix, outfile=None,
         plt.close()
     else:
         plt.show()
+
+
+def make_compare_spectra_plot(spec1, spec2, title=None):
+    """Make plot comparing two spectra.
+    """
+
+    # Get maximum error of the two spectra.
+    emax = np.sqrt(np.sum([spec1['dppm_err'].values**2,
+                           spec2['dppm_err'].values**2], axis=0))
+    # Find where spectra deviate by multiples of emax.
+    i1 = np.where(np.abs(spec1['dppm'].values - spec2['dppm'].values) / emax > 1)[0]
+    i2 = np.where(np.abs(spec1['dppm'].values - spec2['dppm'].values) / emax > 2)[0]
+    i3 = np.where(np.abs(spec1['dppm'].values - spec2['dppm'].values) / emax > 3)[0]
+
+    f = plt.figure(figsize=(10, 7))
+    gs = GridSpec(4, 1, height_ratios=[1, 1, 1, 1])
+
+    # Spectrum #1.
+    ax1 = f.add_subplot(gs[0])
+    ax1.errorbar(spec1['wave'].values, spec1['dppm'].values,
+                 yerr=spec1['dppm_err'].values, fmt='o', mec='black',
+                 mfc='white', ecolor='black', label=r'1$\sigma$')
+    ax1.errorbar(spec1['wave'].values[i1], spec1['dppm'].values[i1],
+                 yerr=spec1['dppm_err'].values[i1], fmt='o', mec='blue',
+                 mfc='white', ecolor='blue', label=r'2$\sigma$')
+    ax1.errorbar(spec1['wave'].values[i2], spec1['dppm'].values[i2],
+                 yerr=spec1['dppm_err'].values[i2], fmt='o', mec='orange',
+                 mfc='white', ecolor='orange', label=r'3$\sigma$')
+    ax1.errorbar(spec1['wave'].values[i3], spec1['dppm'].values[i3],
+                 yerr=spec1['dppm_err'].values[i3], fmt='o', mec='green',
+                 mfc='white', ecolor='green', label=r'>3$\sigma$')
+    # Show spectrum #2 in faded points.
+    ax1.errorbar(spec1['wave'].values, spec2['dppm'], yerr=spec2['dppm_err'],
+                 fmt='o', mec='black', mfc='white', ecolor='black', alpha=0.1)
+    plt.legend(ncol=2)
+    ax1.set_xscale('log')
+    ax1.set_xlim(0.58, 2.9)
+    plt.xticks([0.6, 0.8, 1.0, 1.5, 2.0, 2.5], ['', '', '', '', '', ''])
+    ax1.set_ylabel(r'(R$_p$/R$_*)^2$ [ppm]', fontsize=12)
+
+    # Spectrum #2.
+    ax2 = f.add_subplot(gs[1])
+    ax2.errorbar(spec2['wave'].values, spec2['dppm'],
+                 yerr=spec2['dppm_err'], fmt='o', mec='black',
+                 mfc='white', ecolor='black', label=r'1$\sigma$')
+    ax2.errorbar(spec2['wave'].values[i1], spec2['dppm'].values[i1],
+                 yerr=spec2['dppm_err'].values[i1], fmt='o', mec='blue',
+                 mfc='white', ecolor='blue', label=r'2$\sigma$')
+    ax2.errorbar(spec2['wave'].values[i2], spec2['dppm'].values[i2],
+                 yerr=spec2['dppm_err'].values[i2], fmt='o', mec='orange',
+                 mfc='white', ecolor='orange', label=r'3$\sigma$')
+    ax2.errorbar(spec2['wave'].values[i3], spec2['dppm'].values[i3],
+                 yerr=spec2['dppm_err'].values[i3], fmt='o', mec='green',
+                 mfc='white', ecolor='green', label=r'>3$\sigma$')
+    # Show spectrum #1 in faded points.
+    ax2.errorbar(spec2['wave'].values, spec1['dppm'].values,
+                 yerr=spec1['dppm_err'].values, fmt='o', mec='black',
+                 mfc='white', ecolor='black', alpha=0.1)
+    ax2.set_xscale('log')
+    ax2.set_xlim(0.58, 2.9)
+    plt.xticks([0.6, 0.8, 1.0, 1.5, 2.0, 2.5], ['', '', '', '', '', ''])
+    ax2.set_ylabel(r'(R$_p$/R$_*)^2$ [ppm]', fontsize=12)
+
+    # Differences in multiples of emax.
+    ax3 = f.add_subplot(gs[2])
+    dev = (spec1['dppm'].values - spec2['dppm'].values) / emax
+    ax3.errorbar(spec2['wave'].values, dev,
+                 fmt='o', mec='black', mfc='white', ecolor='black')
+    ax3.errorbar(spec2['wave'].values[i1], dev[i1],
+                 fmt='o', mec='blue', mfc='white', ecolor='blue')
+    ax3.errorbar(spec2['wave'].values[i2], dev[i2],
+                 fmt='o', mec='orange', mfc='white', ecolor='orange')
+    ax3.errorbar(spec2['wave'].values[i3], dev[i3],
+                 fmt='o', mec='green', mfc='white', ecolor='green')
+    ax3.plot(spec2['wave'].values, median_filter(dev, int(0.1 * len(dev))),
+             c='red', zorder=100, ls='--')
+    plt.axhline(0, ls='--', c='grey', zorder=99)
+
+    maxy = np.ceil(np.max(dev)).astype(int)
+    miny = np.floor(np.min(dev)).astype(int)
+    ypoints = np.linspace(miny, maxy, (maxy - miny) + 1).astype(int)
+    ax3.set_xscale('log')
+    ax3.set_xlim(0.58, 2.9)
+    plt.xticks([0.6, 0.8, 1.0, 1.5, 2.0, 2.5], ['', '', '', '', '', ''])
+    ax3.text(0.6, maxy - 0.25 * maxy,
+             r'$\bar\sigma$={:.2f}'.format(np.sum(np.abs(dev)) / len(dev)))
+    ax3.axhspan(-1, 1, color='grey', alpha=0.2)
+    ax3.axhspan(-0.5, 0.5, color='grey', alpha=0.2)
+    plt.yticks(ypoints, ypoints.astype(str))
+    ax3.set_ylabel(r'$\Delta$ [$\sigma$]', fontsize=14)
+
+    # Differences in ppm.
+    ax4 = f.add_subplot(gs[3])
+    dev = (spec1['dppm'].values - spec2['dppm'].values)
+    ax4.errorbar(spec2['wave'].values, dev,
+                 fmt='o', mec='black', mfc='white', ecolor='black')
+    ax4.errorbar(spec2['wave'].values[i1], dev[i1],
+                 fmt='o', mec='blue', mfc='white', ecolor='blue')
+    ax4.errorbar(spec2['wave'].values[i2], dev[i2],
+                 fmt='o', mec='orange', mfc='white', ecolor='orange')
+    ax4.errorbar(spec2['wave'].values[i3], dev[i3],
+                 fmt='o', mec='green', mfc='white', ecolor='green')
+    ax4.plot(spec2['wave'].values, median_filter(dev, int(0.1 * len(dev))),
+             c='red', zorder=100, ls='--')
+    ax4.axhline(0, ls='--', c='grey', zorder=99)
+
+    maxy = np.ceil(np.max(dev)).astype(int)
+    ax4.set_xscale('log')
+    ax4.set_xlim(0.58, 2.9)
+    plt.xticks([0.6, 0.8, 1.0, 1.5, 2.0, 2.5],
+               ['0.6', '0.8', '1.0', '1.5', '2.0', '2.5'])
+    ax4.text(0.6, maxy - 0.25 * maxy,
+             r'$\bar\sigma$={:.2f}'.format(np.sum(np.abs(dev)) / len(dev)))
+    ax4.axhspan(-1, 1, color='grey', alpha=0.2)
+    ax4.axhspan(-0.5, 0.5, color='grey', alpha=0.2)
+    ax4.set_ylabel(r'$\Delta$ [ppm]', fontsize=14)
+    ax4.set_xlabel('Wavelength [µm]', fontsize=14)
+
+    gs.update(hspace=0.1)
+    if title is not None:
+        ax1.set_title(title, fontsize=18)
+    plt.show()
+
+    return dev
 
 
 def make_corner_plot(fit_params, results, posterior_names=None, outpdf=None,
@@ -735,6 +860,56 @@ def make_pca_plot(pcs, var, projections, show_plot=False, outfile=None):
         plt.close()
     else:
         plt.show()
+
+
+def make_photon_noise_plot(spectrum_files, ngroup, baseline_ints, order=1,
+                           labels=None, tframe=5.494, gain=1.6):
+    """Make plot comparing lightcurve precision to photon noise.
+    """
+
+    spectrum_files = np.atleast_1d(spectrum_files)
+    base = utils.format_out_frames(baseline_ints)
+
+    plt.figure(figsize=(7, 2))
+    for j, spectrum in enumerate(spectrum_files):
+        with fits.open(spectrum) as spectrum:
+            if order == 1:
+                spec = spectrum[3].data
+            else:
+                spec = spectrum[7].data
+            spec *= tframe * gain * ngroup
+            if order == 1:
+                wave = np.mean([spectrum[1].data[0], spectrum[2].data[0]],
+                               axis=0)
+                ii = np.ones(2040)
+            else:
+                wave = np.mean([spectrum[5].data[0], spectrum[6].data[0]],
+                               axis=0)
+                ii = np.where((wave >= 0.6) & (wave < 0.85))[0]
+
+        scatter = []
+        for i in range(len(ii)):
+            wlc = spec[:, i]
+            noise = 0.5 * (wlc[0:-2] + wlc[2:]) - wlc[1:-1]
+            noise = np.median(np.abs(noise))
+            scatter.append(noise / np.median(wlc[base]))
+        scatter = np.array(scatter)
+        if labels is not None:
+            label = labels[j]
+        else:
+            label = None
+        plt.plot(wave, median_filter(scatter, 10) * 1e6, label=label)
+
+    phot = np.sqrt(np.median(spec[base], axis=0)) / np.median(spec[base],
+                                                              axis=0)
+    plt.plot(wave, median_filter(phot, 10) * 1e6, c='black')
+    plt.plot(wave, 2 * median_filter(phot, 10) * 1e6, c='black')
+
+    plt.ylabel('Precision [ppm]', fontsize=14)
+
+    if labels is not None:
+        plt.legend(ncol=2)
+    plt.show()
 
 
 def make_soss_width_plot(scatter, min_width, outfile=None, show_plot=True):
