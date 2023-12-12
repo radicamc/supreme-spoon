@@ -735,6 +735,21 @@ def jumpstep_in_time(datafile, window=5, thresh=10, fileroot=None,
     dqcube = datafile.groupdq
 
     nints, ngroups, dimy, dimx = np.shape(cube)
+    # Mask the detector reset artifact which is picked up by this flagging.
+    int_start = datafile.meta.exposure.integration_start
+    int_end = np.min([datafile.meta.exposure.integration_end, 256])
+    # Artifact only affects first 256 integrations.
+    artifact = np.zeros((nints, dimy, dimx)).astype(int)
+    if int_start < 255:
+        for j, jj in enumerate(range(int_start, int_end)):
+            # j counts ints from start of this segment, jj is
+            # integrations from start of exposure (1-indexed).
+            # Mask rows from jj to jj+3 for detector reset
+            # artifact.
+            min_row = np.max([256 - (jj + 3), 0])
+            max_row = np.min([(258 - jj), 256])
+            artifact[j, min_row:max_row, :] = 1
+
     # Jump detection algorithm based on Nikolov+ (2014). For each integration,
     # create a difference image using the median of surrounding integrations.
     # Flag all pixels with deviations more than X-sigma as comsic rays hits.
@@ -747,7 +762,7 @@ def jumpstep_in_time(datafile, window=5, thresh=10, fileroot=None,
         scatter = np.where(scatter == 0, np.inf, scatter)
         # Find pixels which deviate more than the specified threshold.
         scale = np.abs(cube[:, g] - cube_filt) / scatter
-        ii = (scale >= thresh) & (cube[:, g] > np.nanpercentile(cube, 10))
+        ii = (scale >= thresh) & (cube[:, g] > np.nanpercentile(cube, 10)) & (artifact == 0)
 
         # If ngroup<=2, replace the pixel with the stack median so that a
         # ramp can still be fit.
