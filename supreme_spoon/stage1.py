@@ -950,16 +950,16 @@ def oneoverfstep_scale(datafiles, baseline_ints, even_odd_rows=True,
         outliers1[ii] = 1
         outliers2[ii] = 1
 
-        # The outlier map is 0 where good and >0 otherwise. As this
-        # will be applied multiplicatively, replace 0s with 1s and
-        # others with NaNs.
-        if method in ['chromatic', 'achromatic-window']:
-            outliers1 = np.where(outliers1 == 0, 1, np.nan)
-            outliers2 = np.where(outliers2 == 0, 1, np.nan)
-            # Also cut everything redder than ~0.9µm in order 2.
-            outliers2[:, :, :1100] = np.nan
-        else:
-            outliers1 = np.where(outliers1 == 0, 1, np.nan)
+    # The outlier map is 0 where good and >0 otherwise. As this
+    # will be applied multiplicatively, replace 0s with 1s and
+    # others with NaNs.
+    if method in ['chromatic', 'achromatic-window']:
+        outliers1 = np.where(outliers1 == 0, 1, np.nan)
+        outliers2 = np.where(outliers2 == 0, 1, np.nan)
+        # Also cut everything redder than ~0.9µm in order 2.
+        outliers2[:, :, :1100] = np.nan
+    else:
+        outliers1 = np.where(outliers1 == 0, 1, np.nan)
 
     # In order to subtract off the trace as completely as possible, the median
     # stack must be scaled, via the transit curve, to the flux level of each
