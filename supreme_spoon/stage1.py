@@ -1536,10 +1536,15 @@ def run_stage1(results, background_model, baseline_ints=None,
     if 'OneOverFStep' not in skip_steps:
         # ===== Background Subtraction Step =====
         # Custom DMS step - imported from Stage2.
+        if 'BackgroundStep' in kwargs.keys():
+            step_kwargs = kwargs['BackgroundStep']
+        else:
+            step_kwargs = {}
         step = stage2.BackgroundStep(results,
                                      background_model=background_model,
                                      output_dir=outdir)
-        results = step.run(save_results=save_results, force_redo=force_redo)
+        results = step.run(save_results=save_results, force_redo=force_redo,
+                           **step_kwargs)
         results, background_model = results
 
         # ===== 1/f Noise Correction Step =====

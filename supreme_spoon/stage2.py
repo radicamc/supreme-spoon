@@ -445,8 +445,8 @@ def backgroundstep(datafiles, background_model, output_dir='./',
                     yl, yu = 5, 401
                 else:
                     # Use area in the top left corner for SUBSTRIP256
-                    xl, xu = 210, 250
-                    yl, yu = 250, 500
+                    xl, xu = 230, 250
+                    yl, yu = 350, 550
             else:
                 # Use user-defined background scaling region.
                 assert len(background_coords) == 4

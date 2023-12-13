@@ -177,7 +177,8 @@ def make_smoothed_2d_lightcurve(spec, baseline_ints, nint, dimx, filename,
     if order == 1:
         ref_file = spec_smoothed
     else:
-        ref_file[:, 1206:1771] = spec_smoothed
+        end = 1206 + spec.shape[1]
+        ref_file[:, 1206:end] = spec_smoothed
 
     # Save file.
     suffix = 'lcestimate_2d_o{}.npy'.format(order)

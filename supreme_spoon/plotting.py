@@ -36,7 +36,7 @@ def make_background_row_plot(before, after, background_model, row_start=230,
                              row_end=251, f=1, outfile=None, show_plot=True):
     """Plot rows after background subtraction.
     """
-    
+
     # Open files.
     with utils.open_filetype(before) as file:
         bf = file.data
