@@ -32,6 +32,58 @@ def make_background_plot(results, outfile=None, show_plot=True):
                           **kwargs)
 
 
+def make_background_row_plot(before, after, background_model, row_start=230,
+                             row_end=251, f=1, outfile=None, show_plot=True):
+    """Plot rows after background subtraction.
+    """
+    
+    # Open files.
+    with utils.open_filetype(before) as file:
+        bf = file.data
+    with utils.open_filetype(after) as file:
+        af = file.data
+    if isinstance(background_model, str):
+        bkg = np.load(background_model)
+    else:
+        bkg = background_model
+
+    # Create medians.
+    if np.ndim(af) == 4:
+        before = bn.nanmedian(bf[:, -1], axis=0)
+        after = bn.nanmedian(af[:, -1], axis=0)
+        bbkg = np.nanmedian(bkg[-1, row_start:row_end], axis=0)
+    else:
+        before = bn.nanmedian(bf, axis=0)
+        after = bn.nanmedian(af, axis=0)
+        bbkg = np.nanmedian(bkg[0, row_start:row_end], axis=0)
+    bbefore = np.nanmedian(before[row_start:row_end], axis=0)
+    aafter = np.nanmedian(after[row_start:row_end], axis=0)
+
+    plt.figure(figsize=(5, 3))
+    plt.plot(bbefore)
+    plt.plot(np.arange(2048)[:700], bbkg[:700], c='black', ls='--')
+    plt.plot(aafter)
+
+    bkg_scale = f * (bbkg[700:] - bbkg[700]) + bbkg[700]
+    plt.plot(np.arange(2048)[700:], bkg_scale, c='black', ls='--')
+    plt.plot(np.arange(2048)[700:], bbefore[700:] - bkg_scale)
+
+    plt.axvline(700, ls=':', c='grey')
+    plt.axhline(0, ls=':', c='grey')
+    plt.ylim(np.min([np.min(aafter), np.min(bbefore[700:] - bkg_scale)]),
+             np.nanpercentile(bbefore, 90))
+    plt.xlabel('Spectral Pixel', fontsize=12)
+    plt.ylabel('Counts', fontsize=12)
+
+    if outfile is not None:
+        plt.savefig(outfile, bbox_inches='tight')
+        fancyprint('Plot saved to {}'.format(outfile))
+    if show_plot is False:
+        plt.close()
+    else:
+        plt.show()
+
+
 def make_badpix_plot(deep, hotpix, nanpix, otherpix, outfile=None,
                      show_plot=True):
     """Show locations of interpolated pixels.

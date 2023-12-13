@@ -173,11 +173,19 @@ class BackgroundStep:
             # Do step plot if requested.
             if do_plot is True:
                 if save_results is True:
-                    plot_file = self.output_dir + self.tag.replace('.fits', '.pdf')
+                    plot_file1 = self.output_dir + self.tag.replace('.fits', '_1.pdf')
+                    plot_file2 = self.output_dir + self.tag.replace('.fits', '_2.pdf')
                 else:
-                    plot_file = None
-                plotting.make_background_plot(results, outfile=plot_file,
+
+                    plot_file1 = None
+                    plot_file2 = None
+                plotting.make_background_plot(results, outfile=plot_file1,
                                               show_plot=show_plot)
+                plotting.make_background_row_plot(self.datafiles[0],
+                                                  results[0],
+                                                  background_models,
+                                                  outfile=plot_file2,
+                                                  show_plot=show_plot)
 
         return results, background_models
 
