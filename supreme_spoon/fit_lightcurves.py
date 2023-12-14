@@ -191,6 +191,7 @@ for order in config['orders']:
         calculate = True
         # First check if LD coefficient files have been provided.
         if config['ldcoef_file_o{}'.format(order)] is not None:
+            calculate = False
             fancyprint('Reading limb-darkening coefficient file.')
             try:
                 q1, q2 = stage4.read_ld_coefs(config['ldcoef_file_o{}'.format(order)],
@@ -198,9 +199,8 @@ for order in config['orders']:
             except ValueError:
                 msg = 'LD coefficient file could not be correctly parsed. ' \
                       'Falling back onto LD calculation.'
-                warnings.warn(msg)
+                fancyprint(msg, msg_type='WARNING')
                 calculate = True
-            calculate = False
         if calculate is True:
             # Calculate LD coefficients on specified wavelength grid.
             fancyprint('Calculating limb-darkening coefficients.')

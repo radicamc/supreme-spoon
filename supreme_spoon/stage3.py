@@ -418,17 +418,17 @@ def do_box_extraction(cube, err, ypos, width, extract_start=0,
     for i in tqdm(range(nint), disable=not progress):
         for x in range(extract_start, extract_end):
             # First sum the whole pixel components within the aperture.
-            up_whole = np.floor(edge_up[x - extract_start]).astype(int)
-            low_whole = np.ceil(edge_low[x - extract_start]).astype(int)
+            up_whole = np.floor(edge_up[x]).astype(int)
+            low_whole = np.ceil(edge_low[x]).astype(int)
             this_flux = np.sum(cube[i, low_whole:up_whole, x])
             this_err = np.sum(err[i, low_whole:up_whole, x]**2)
 
             # Now incorporate the partial pixels at the upper and lower edges.
-            if edge_up[x - extract_start] >= (dimy-1) or edge_low[x - extract_start] == 0:
+            if edge_up[x] >= (dimy-1) or edge_low[x] == 0:
                 continue
             else:
-                up_part = edge_up[x - extract_start] % 1
-                low_part = 1 - edge_low[x - extract_start] % 1
+                up_part = edge_up[x] % 1
+                low_part = 1 - edge_low[x] % 1
                 this_flux += (up_part * cube[i, up_whole, x] +
                               low_part * cube[i, low_whole, x])
                 this_err += (up_part * err[i, up_whole, x]**2 +
