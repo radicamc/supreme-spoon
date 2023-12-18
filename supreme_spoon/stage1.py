@@ -1305,6 +1305,7 @@ def oneoverfstep_solve(datafiles, baseline_ints, background=None,
         if ngroup == 0:
             # Integration-level correction.
             oof = np.zeros_like(cube)
+            scaling_o, scaling_e = np.zeros((nint, dimx)), np.zeros((nint, dimx))
             # Mask any potential jumps.
             cube_filt = medfilt(cube, (5, 1, 1))
             # Calculate the point-to-point scatter along the temporal axis.
@@ -1320,6 +1321,8 @@ def oneoverfstep_solve(datafiles, baseline_ints, background=None,
             m_e, b_e, m_o, b_o = utils.line_mle(deepstack, cube, err)
             oof[:, ::2, :] = b_e[:, None, :]
             oof[:, 1::2, :] = b_o[:, None, :]
+            scaling_e = m_e
+            scaling_o = m_o
             slopes_e.append(m_e)
             slopes_o.append(m_o)
             oofs_e.append(b_e)
@@ -1328,6 +1331,8 @@ def oneoverfstep_solve(datafiles, baseline_ints, background=None,
         else:
             # Group-level correction.
             oof = np.zeros_like(cube)
+            scaling_o = np.zeros((nint, ngroup, dimx))
+            scaling_e = np.zeros((nint, ngroup, dimx))
             # Treat each group individually.
             for g in tqdm(range(ngroup)):
                 # Mask any potential jumps.
@@ -1346,6 +1351,8 @@ def oneoverfstep_solve(datafiles, baseline_ints, background=None,
                                                     cube[:, g], err[:, g])
                 oof[:, g, ::2] = b_e[:, None, :]
                 oof[:, g, 1::2] = b_o[:, None, :]
+                scaling_e[:, g] = m_e
+                scaling_o[:, g] = m_o
                 slopes_e.append(m_e)
                 slopes_o.append(m_o)
                 oofs_e.append(b_e)
@@ -1355,6 +1362,7 @@ def oneoverfstep_solve(datafiles, baseline_ints, background=None,
         # Replace any NaNs (that could happen if an entire column is masked)
         # with zeros.
         oof[np.isnan(oof)] = 0
+        oof[np.isinf(oof)] = 0
         # Subtract the 1/f contribution.
         if order == 1:
             # For order 1, subtract the 1/f value from the whole column.
@@ -1375,6 +1383,14 @@ def oneoverfstep_solve(datafiles, baseline_ints, background=None,
                                                   oofs_o, plot_group,
                                                   outfile=outfile,
                                                   show_plot=show_plot)
+        # Also save 2D scaling.
+        if save_results is True:
+            outfile = output_dir + fileroots[0][:-12] + \
+                      '_nis_oofscaling_even_order{}.npy'.format(order)
+            np.save(outfile, scaling_e)
+            outfile = output_dir + fileroots[0][:-12] + \
+                      '_nis_oofscaling_odd_order{}.npy'.format(order)
+            np.save(outfile, scaling_o)
 
     # Add back the zodi background.
     if background is not None:

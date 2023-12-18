@@ -621,8 +621,8 @@ def make_linearity_plot(results, old_results, outfile=None, show_plot=True):
         labels.append('{0}-{1}'.format(i+2, i+1))
     plt.xticks(locs, labels, rotation=45)
     plt.ylabel('Differences [DN]', fontsize=12)
-    plt.ylim(1.1*np.min(old_med - np.mean(old_med)),
-             1.1*np.max(old_med - np.mean(old_med)))
+    plt.ylim(1.1*np.nanmin(old_med - np.nanmean(old_med)),
+             1.1*np.nanmax(old_med - np.nanmean(old_med)))
     plt.legend()
 
     if outfile is not None:
@@ -642,6 +642,9 @@ def make_oneoverf_chromatic_plot(m_e, m_o, b_e, b_o, ngroup, outfile=None,
     fancyprint('Doing diagnostic plot 3.')
 
     to_plot = [m_e, m_o, b_e, b_o]
+    for obj in to_plot:
+        obj = np.array(obj)
+        obj[np.isnan(obj)] = 0
     texts = ['m even', 'm odd', 'b even', 'b odd']
 
     fig = plt.figure(figsize=(8, 2*ngroup), facecolor='white')
