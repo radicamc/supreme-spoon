@@ -997,7 +997,10 @@ def oneoverfstep_scale(datafiles, baseline_ints, even_odd_rows=True,
                 raise ValueError(msg)
     # If no lightcurve is provided, estimate it from the current data.
     if timeseries is None:
-        postage = cube[:, -1, 20:60, 1500:1550]
+        if np.ndim(cube) == 4:
+            postage = cube[:, -1, 20:60, 1500:1550]
+        else:
+            postage = cube[:, 20:60, 1500:1550]
         timeseries = np.nansum(postage, axis=(1, 2))
         timeseries = timeseries / np.nanmedian(timeseries[baseline_ints])
         # Smooth the time series on a timescale of roughly 2%.
