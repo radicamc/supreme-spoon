@@ -442,9 +442,10 @@ class JumpStep:
         self.datafiles = utils.sort_datamodels(input_data)
         self.fileroots = utils.get_filename_root(self.datafiles)
 
-    def run(self, save_results=True, force_redo=False, rejection_threshold=15,
-            flag_in_time=False, time_rejection_threshold=10, time_window=5,
-            do_plot=False, show_plot=False, **kwargs):
+    def run(self, save_results=True, force_redo=False, flag_up_ramp=True,
+            rejection_threshold=15, flag_in_time=False,
+            time_rejection_threshold=10, time_window=5, do_plot=False,
+            show_plot=False, **kwargs):
         """Method to run the step.
         """
 
@@ -467,7 +468,7 @@ class JumpStep:
                 ngroups = testfile.meta.exposure.ngroups
                 testfile.close()
                 # For ngroup > 2, default JumpStep can be used.
-                if ngroups > 2:
+                if ngroups > 2 and flag_up_ramp is True:
                     step = calwebb_detector1.jump_step.JumpStep()
                     res = step.call(segment, output_dir=self.output_dir,
                                     save_results=save_results,
