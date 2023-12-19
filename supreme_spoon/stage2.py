@@ -686,6 +686,8 @@ def badpixstep(datafiles, baseline_ints, space_thresh=15, time_thresh=10,
     fancyprint('Starting temporal outlier flagging...')
     # Median filter the data.
     cube_filt = medfilt(newdata, (5, 1, 1))
+    cube_filt[0] = cube_filt[1]
+    cube_filt[-1] = cube_filt[-2]
 
     # Check along the time axis for outlier pixels.
     std_dev = np.median(np.abs(0.5*(newdata[0:-2] + newdata[2:]) - newdata[1:-1]), axis=0)
