@@ -14,6 +14,7 @@ import copy
 import glob
 import numpy as np
 import os
+from scipy.interpolate import griddata
 from scipy.ndimage import median_filter
 from scipy.signal import medfilt
 from tqdm import tqdm
@@ -442,8 +443,8 @@ class JumpStep:
         self.datafiles = utils.sort_datamodels(input_data)
         self.fileroots = utils.get_filename_root(self.datafiles)
 
-    def run(self, save_results=True, force_redo=False, flag_up_ramp=True,
-            rejection_threshold=15, flag_in_time=False,
+    def run(self, save_results=True, force_redo=False, flag_up_ramp=False,
+            rejection_threshold=15, flag_in_time=True,
             time_rejection_threshold=10, time_window=5, do_plot=False,
             show_plot=False, **kwargs):
         """Method to run the step.
@@ -538,6 +539,24 @@ class RampFitStep:
                 res = step.call(segment, output_dir=self.output_dir,
                                 save_results=save_results,
                                 maximum_cores='quarter', **kwargs)[1]
+                # From jwst v1.9.0-1.11.0 ramp fitting algorithm was changed to
+                # make all pixels with DO_NOT_USE DQ flags be NaN after ramp
+                # fitting. These pixels are marked, ignored and interpolated
+                # anyways, so this does not change any actual functionality,
+                # but cosmetcically this annoys me, as now plots look terrible.
+                # Just griddata interpolate all NaNs so things look better.
+                # Note this does not supercede any interpolation done later in
+                # Stage 2.
+                nint, dimy, dimx = res.data.shape
+                px, py = np.meshgrid(np.arange(dimx), np.arange(dimy))
+                fancyprint('Doing cosmetic NaN interpolation.')
+                for j in range(nint):
+                    ii = np.where(np.isfinite(res.data[j]))
+                    res.data[j] = griddata(ii, res.data[j][ii], (py, px),
+                                           method='nearest')
+                if save_results is True:
+                    res.save(self.output_dir + res.meta.filename)
+
                 if save_results is True:
                     # Store flags for use in 1/f correction.
                     flags = res.dq
@@ -1423,10 +1442,10 @@ def oneoverfstep_solve(datafiles, baseline_ints, background=None,
 def run_stage1(results, background_model, baseline_ints=None,
                oof_method='scale-achromatic', timeseries=None,
                timeseries_o2=None, save_results=True, pixel_masks=None,
-               force_redo=False, deepframe=None, rejection_threshold=15,
-               flag_in_time=False, time_rejection_threshold=10, root_dir='./',
-               output_tag='', skip_steps=None, do_plot=False, show_plot=False,
-               **kwargs):
+               force_redo=False, deepframe=None, flag_up_ramp=False,
+               rejection_threshold=15, flag_in_time=True,
+               time_rejection_threshold=10, root_dir='./', output_tag='',
+               skip_steps=None, do_plot=False, show_plot=False, **kwargs):
     """Run the supreme-SPOON Stage 1 pipeline: detector level processing,
     using a combination of official STScI DMS and custom steps. Documentation
     for the official DMS steps can be found here:
@@ -1457,6 +1476,9 @@ def run_stage1(results, background_model, baseline_ints=None,
         If True, redo steps even if outputs files are already present.
     deepframe : str, None
         Path to deep stack, such as one produced by BadPixStep.
+    flag_up_ramp : bool
+        Whether to flag jumps up the ramp. This is the default flagging in the
+        STScI pipeline. Note that this is broken as of jwst v1.12.5.
     rejection_threshold : int
         For jump detection; sigma threshold for a pixel to be considered an
         outlier.
@@ -1603,6 +1625,7 @@ def run_stage1(results, background_model, baseline_ints=None,
         results = step.run(save_results=save_results, force_redo=force_redo,
                            rejection_threshold=rejection_threshold,
                            flag_in_time=flag_in_time,
+                           flag_up_ramp=flag_up_ramp,
                            time_rejection_threshold=time_rejection_threshold,
                            do_plot=do_plot, show_plot=show_plot, **step_kwargs)
 
