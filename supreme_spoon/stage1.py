@@ -14,6 +14,7 @@ import copy
 import glob
 import numpy as np
 import os
+from scipy.interpolate import griddata
 from scipy.ndimage import median_filter
 from scipy.signal import medfilt
 from tqdm import tqdm
@@ -538,6 +539,24 @@ class RampFitStep:
                 res = step.call(segment, output_dir=self.output_dir,
                                 save_results=save_results,
                                 maximum_cores='quarter', **kwargs)[1]
+                # From jwst v1.9.0-1.11.0 ramp fitting algorithm was changed to
+                # make all pixels with DO_NOT_USE DQ flags be NaN after ramp
+                # fitting. These pixels are marked, ignored and interpolated
+                # anyways, so this does not change any actual functionality,
+                # but cosmetcically this annoys me, as now plots look terrible.
+                # Just griddata interpolate all NaNs so things look better.
+                # Note this does not supercede any interpolation done later in
+                # Stage 2.
+                nint, dimy, dimx = res.data.shape
+                px, py = np.meshgrid(np.arange(dimx), np.arange(dimy))
+                fancyprint('Doing cosmetic NaN interpolation.')
+                for j in range(nint):
+                    ii = np.where(np.isfinite(res.data[j]))
+                    res.data[j] = griddata(ii, res.data[j][ii], (py, px),
+                                           method='nearest')
+                if save_results is True:
+                    res.save(self.output_dir + res.meta.filename)
+
                 if save_results is True:
                     # Store flags for use in 1/f correction.
                     flags = res.dq
