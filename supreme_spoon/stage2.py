@@ -626,8 +626,8 @@ def badpixstep(datafiles, baseline_ints, space_thresh=15, time_thresh=10,
     deepframe_itl = utils.make_deepstack(newdata[baseline_ints])
 
     # Get locations of all hot pixels.
-    hot_pix = utils.get_dq_flag_metrics(dq_cube[0], ['DO_NOT_USE', 'HOT',
-                                                     'WARM'])
+    hot_pix = utils.get_dq_flag_metrics(dq_cube[0], ['HOT', 'WARM',
+                                                     'DO_NOT_USE'])
 
     hotpix = np.zeros_like(deepframe_itl)
     nanpix = np.zeros_like(deepframe_itl)
@@ -689,10 +689,9 @@ def badpixstep(datafiles, baseline_ints, space_thresh=15, time_thresh=10,
     cube_filt = medfilt(newdata, (5, 1, 1))
     cube_filt[0] = cube_filt[1]
     cube_filt[-1] = cube_filt[-2]
-
     # Check along the time axis for outlier pixels.
-    std_dev = np.median(np.abs(0.5*(newdata[0:-2] + newdata[2:]) - newdata[1:-1]), axis=0)
-    std_dev = np.where(std_dev == 0, np.inf, std_dev)
+    std_dev = bn.nanmedian(np.abs(0.5*(newdata[0:-2] + newdata[2:]) - newdata[1:-1]), axis=0)
+    std_dev = np.where(std_dev == 0, np.nanmedian(std_dev), std_dev)
     scale = np.abs(newdata - cube_filt) / std_dev
     ii = np.where((scale > time_thresh))
     fancyprint('{} outliers detected.'.format(len(ii[0])))
@@ -710,6 +709,11 @@ def badpixstep(datafiles, baseline_ints, space_thresh=15, time_thresh=10,
     newdata[newdata < 0] = 0
     newdata[np.isnan(newdata)] = 0
     deepframe_itl[np.isnan(deepframe_itl)] = 0
+
+    # Replace reference pixels with 0s.
+    newdata[:, -5:] = 0
+    newdata[:, :, :5] = 0
+    newdata[:, :, -5:] = 0
 
     # Make a final, corrected deepframe for the baseline intergations.
     deepframe_fnl = utils.make_deepstack(newdata[baseline_ints])
