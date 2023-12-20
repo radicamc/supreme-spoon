@@ -88,7 +88,7 @@ class Extract1DStep:
 
     def run(self, soss_width=40, specprofile=None, centroids=None,
             save_results=True, force_redo=False, do_plot=False,
-            show_plot=False):
+            show_plot=False, use_pastasoss=False):
         """Method to run the step.
         """
 
@@ -195,7 +195,8 @@ class Extract1DStep:
                                                st_met, throughput=thpt,
                                                pwcpos=pwcpos,
                                                output_dir=self.output_dir,
-                                               save_results=save_results)
+                                               save_results=save_results,
+                                               use_pastasoss=use_pastasoss)
 
         return spectra
 
@@ -500,7 +501,7 @@ def do_ccf(wave, flux, err, mod_flux, nsteps=1000):
 def format_extracted_spectra(datafiles, times, extract_params, target_name,
                              st_teff=None, st_logg=None, st_met=None,
                              throughput=None, pwcpos=None, output_dir='./',
-                             save_results=True):
+                             save_results=True, use_pastasoss=False):
     """Unpack the outputs of the 1D extraction and format them into
     lightcurves at the native detector resolution.
 
@@ -527,7 +528,11 @@ def format_extracted_spectra(datafiles, times, extract_params, target_name,
     throughput : str
         Path to JWST spectrace reference file.
     pwcpos : float
-        Filter wheel position.
+        Filter wheel position. Only necessary is use_pastasoss is True.
+    use_pastasoss : bool
+        If True, use pastasoss package to predict wavelength solution based on
+        pupil wheel position. Note that this will only allow the extraction of
+        order 2 from 0.6 - 0.85µm.
 
     Returns
     -------
@@ -538,10 +543,13 @@ def format_extracted_spectra(datafiles, times, extract_params, target_name,
     fancyprint('Formatting extracted 1d spectra.')
     # Box extract outputs will just be a tuple of arrays.
     if isinstance(datafiles, tuple):
+        wave1d_o1 = datafiles[0]
         flux_o1 = datafiles[1]
         ferr_o1 = datafiles[2]
+        wave1d_o2 = datafiles[3]
         flux_o2 = datafiles[4]
         ferr_o2 = datafiles[5]
+
     # Whereas ATOCA extract outputs are in the atoca extract1dstep format.
     else:
         # Open the datafiles, and pack the wavelength, flux, and flux error
@@ -550,33 +558,47 @@ def format_extracted_spectra(datafiles, times, extract_params, target_name,
         for i, file in enumerate(datafiles):
             segment = utils.unpack_atoca_spectra(file)
             if i == 0:
+                wave2d_o1 = segment[1]['WAVELENGTH']
                 flux_o1 = segment[1]['FLUX']
                 ferr_o1 = segment[1]['FLUX_ERROR']
+                wave2d_o2 = segment[2]['WAVELENGTH']
                 flux_o2 = segment[2]['FLUX']
                 ferr_o2 = segment[2]['FLUX_ERROR']
             else:
+                wave2d_o1 = np.concatenate([wave2d_o1, segment[1]['WAVELENGTH']])
                 flux_o1 = np.concatenate([flux_o1, segment[1]['FLUX']])
                 ferr_o1 = np.concatenate([ferr_o1, segment[1]['FLUX_ERROR']])
+                wave2d_o2 = np.concatenate([wave2d_o2, segment[2]['WAVELENGTH']])
                 flux_o2 = np.concatenate([flux_o2, segment[2]['FLUX']])
                 ferr_o2 = np.concatenate([ferr_o2, segment[2]['FLUX_ERROR']])
+        # Create 1D wavelength axes from the 2D wavelength solution.
+        wave1d_o1, wave1d_o2 = wave2d_o1[0], wave2d_o2[0]
 
-    # Get wavelength solution.
-    # First, use PASTASOSS to predict wavelength solution from pupil wheel
-    # position.
-    wave1d_o1 = pastasoss.get_soss_traces(pwcpos=pwcpos, order='1',
-                                          interp=True).wavelength
-    soln_o2 = pastasoss.get_soss_traces(pwcpos=pwcpos, order='2',
-                                        interp=True)
-    xpos_o2, wave1d_o2 = soln_o2.x.astype(int), soln_o2.wavelength
-    # Trim extracted quantities to match shapes of pastasoss quantities.
-    flux_o1 = flux_o1[:, 4:-4]
-    ferr_o1 = ferr_o1[:, 4:-4]
-    flux_o2 = flux_o2[:, xpos_o2]
-    ferr_o2 = ferr_o2[:, xpos_o2]
+    # Refine wavelength solution.
+    if use_pastasoss is True:
+        # Use PASTASOSS to predict wavelength solution from pupil wheel
+        # position.
+        # Note that PASTASOSS only predicts positions and thus wavelengths for
+        # order 2 bluewards of ~0.9µm. Therefore, the whole frame cannot be
+        # extracted for order 2. PASTASOSS also does not take into account any
+        # TA inaccuracies resulting in the position of the target trace not
+        # being in the center of the frame - which will effect the resulting
+        # wavelength solution.
+        fancyprint('Using PASTASOSS to predict wavelength solution.')
+        wave1d_o1 = pastasoss.get_soss_traces(pwcpos=pwcpos, order='1',
+                                              interp=True).wavelength
+        soln_o2 = pastasoss.get_soss_traces(pwcpos=pwcpos, order='2',
+                                            interp=True)
+        xpos_o2, wave1d_o2 = soln_o2.x.astype(int), soln_o2.wavelength
+        # Trim extracted quantities to match shapes of pastasoss quantities.
+        flux_o1 = flux_o1[:, 4:-4]
+        ferr_o1 = ferr_o1[:, 4:-4]
+        flux_o2 = flux_o2[:, xpos_o2]
+        ferr_o2 = ferr_o2[:, xpos_o2]
 
-    # Now cross-correlate with stellar model.
+    # Cross-correlate with stellar model.
     # If one or more of the stellar parameters are not provided, use the
-    # wavelength solution from pastasoss.
+    # existing wavelength solution.
     if None in [st_teff, st_logg, st_met]:
         fancyprint('Stellar parameters not provided. '
                    'Using default wavelength solution.', msg_type='WARNING')
@@ -615,12 +637,6 @@ def format_extracted_spectra(datafiles, times, extract_params, target_name,
         fancyprint('Found a wavelength shift of {}um'.format(wave_shift))
         wave1d_o1 += wave_shift
         wave1d_o2 += wave_shift
-
-    # Restrict order 2 to only the useful bit (0.6 - 0.85µm).
-    ii = np.where((wave1d_o2 >= 0.6) & (wave1d_o2 < 0.85))[0]
-    wave1d_o2 = wave1d_o2[ii]
-    flux_o2 = flux_o2[:, ii]
-    ferr_o2 = ferr_o2[:, ii]
 
     # Clip remaining 5-sigma outliers.
     flux_o1_clip = utils.sigma_clip_lightcurves(flux_o1)

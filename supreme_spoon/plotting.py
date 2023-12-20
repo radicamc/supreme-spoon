@@ -70,8 +70,8 @@ def make_background_row_plot(before, after, background_model, row_start=230,
 
     plt.axvline(700, ls=':', c='grey')
     plt.axhline(0, ls=':', c='grey')
-    plt.ylim(np.min([np.min(aafter), np.min(bbefore[700:] - bkg_scale)]),
-             np.nanpercentile(bbefore, 90))
+    plt.ylim(np.min([np.nanmin(aafter), np.nanmin(bbefore[700:] - bkg_scale)]),
+             np.nanpercentile(bbefore, 95))
     plt.xlabel('Spectral Pixel', fontsize=12)
     plt.ylabel('Counts', fontsize=12)
 

@@ -626,7 +626,8 @@ def badpixstep(datafiles, baseline_ints, space_thresh=15, time_thresh=10,
     deepframe_itl = utils.make_deepstack(newdata[baseline_ints])
 
     # Get locations of all hot pixels.
-    hot_pix = utils.get_dq_flag_metrics(dq_cube[0], ['HOT', 'WARM'])
+    hot_pix = utils.get_dq_flag_metrics(dq_cube[0], ['DO_NOT_USE', 'HOT',
+                                                     'WARM'])
 
     hotpix = np.zeros_like(deepframe_itl)
     nanpix = np.zeros_like(deepframe_itl)
