@@ -639,8 +639,8 @@ def badpixstep(datafiles, baseline_ints, space_thresh=15, time_thresh=10,
     newdata[newdata < 0] = 0
 
     # Loop over whole deepstack and flag deviant pixels.
-    for i in tqdm(range(4, dimx - 4)):
-        for j in range(dimy - 4):
+    for i in tqdm(range(5, dimx - 5)):
+        for j in range(dimy - 5):
             # If the pixel is known to be hot, add it to list to interpolate.
             if hot_pix[j, i]:
                 hotpix[j, i] = 1
