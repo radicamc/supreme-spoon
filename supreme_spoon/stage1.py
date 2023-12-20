@@ -442,8 +442,8 @@ class JumpStep:
         self.datafiles = utils.sort_datamodels(input_data)
         self.fileroots = utils.get_filename_root(self.datafiles)
 
-    def run(self, save_results=True, force_redo=False, flag_up_ramp=True,
-            rejection_threshold=15, flag_in_time=False,
+    def run(self, save_results=True, force_redo=False, flag_up_ramp=False,
+            rejection_threshold=15, flag_in_time=True,
             time_rejection_threshold=10, time_window=5, do_plot=False,
             show_plot=False, **kwargs):
         """Method to run the step.
@@ -1420,10 +1420,10 @@ def oneoverfstep_solve(datafiles, baseline_ints, background=None,
 def run_stage1(results, background_model, baseline_ints=None,
                oof_method='scale-achromatic', timeseries=None,
                timeseries_o2=None, save_results=True, pixel_masks=None,
-               force_redo=False, deepframe=None, rejection_threshold=15,
-               flag_in_time=False, time_rejection_threshold=10, root_dir='./',
-               output_tag='', skip_steps=None, do_plot=False, show_plot=False,
-               **kwargs):
+               force_redo=False, deepframe=None, flag_up_ramp=False,
+               rejection_threshold=15, flag_in_time=True,
+               time_rejection_threshold=10, root_dir='./', output_tag='',
+               skip_steps=None, do_plot=False, show_plot=False, **kwargs):
     """Run the supreme-SPOON Stage 1 pipeline: detector level processing,
     using a combination of official STScI DMS and custom steps. Documentation
     for the official DMS steps can be found here:
@@ -1454,6 +1454,9 @@ def run_stage1(results, background_model, baseline_ints=None,
         If True, redo steps even if outputs files are already present.
     deepframe : str, None
         Path to deep stack, such as one produced by BadPixStep.
+    flag_up_ramp : bool
+        Whether to flag jumps up the ramp. This is the default flagging in the
+        STScI pipeline. Note that this is broken as of jwst v1.12.5.
     rejection_threshold : int
         For jump detection; sigma threshold for a pixel to be considered an
         outlier.
@@ -1600,6 +1603,7 @@ def run_stage1(results, background_model, baseline_ints=None,
         results = step.run(save_results=save_results, force_redo=force_redo,
                            rejection_threshold=rejection_threshold,
                            flag_in_time=flag_in_time,
+                           flag_up_ramp=flag_up_ramp,
                            time_rejection_threshold=time_rejection_threshold,
                            do_plot=do_plot, show_plot=show_plot, **step_kwargs)
 

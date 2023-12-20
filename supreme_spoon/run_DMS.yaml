@@ -33,10 +33,12 @@ timeseries : None
 timeseries_o2 : None
 # For 1/f correction; outlier pixel maps (optional).
 outlier_maps : None
+# For jump detection; whether to flag outliers up-the-ramp (jwst default).
+flag_up_ramp : False
 # For jump detection; sigma threshold for a pixel to be flagged as an outlier.
 jump_threshold : 15
 # For jump detection; whether to also flag outliers in the time domain.
-flag_in_time : False
+flag_in_time : True
 # For time domain jump detection; sigma threshold for a pixel to be flagged as an outlier.
 time_jump_threshold : 10
 # DMS Stage 1 kwargs. Format should be: {'step_name': {'kwd': value}}.

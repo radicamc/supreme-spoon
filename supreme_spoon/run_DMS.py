@@ -60,7 +60,7 @@ f.close()
 input_files = unpack_input_dir(config['input_dir'],
                                filetag=config['input_filetag'],
                                exposure_type=config['exposure_type'])
-fancyprint('\nIdentified {0} {1} exposure '
+fancyprint('Identified {0} {1} exposure '
            'segments'.format(len(input_files), config['exposure_type']))
 for file in input_files:
     fancyprint(' ' + file)
@@ -98,6 +98,7 @@ if 1 in config['run_stages']:
                                 save_results=config['save_results'],
                                 pixel_masks=config['outlier_maps'],
                                 force_redo=config['force_redo'],
+                                flag_up_ramp=config['flag_up_ramp'],
                                 rejection_threshold=config['jump_threshold'],
                                 flag_in_time=config['flag_in_time'],
                                 time_rejection_threshold=config['time_jump_threshold'],
