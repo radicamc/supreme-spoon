@@ -21,6 +21,7 @@ from supreme_spoon.stage3 import run_stage3
 from supreme_spoon.utils import fancyprint, parse_config, unpack_input_dir, \
     verify_path
 
+# ===== Setup =====
 # Read config file.
 try:
     config_file = sys.argv[1]
@@ -59,7 +60,7 @@ f.close()
 input_files = unpack_input_dir(config['input_dir'],
                                filetag=config['input_filetag'],
                                exposure_type=config['exposure_type'])
-fancyprint('\nIdentified {0} {1} exposure '
+fancyprint('Identified {0} {1} exposure '
            'segments'.format(len(input_files), config['exposure_type']))
 for file in input_files:
     fancyprint(' ' + file)
@@ -68,8 +69,10 @@ for file in input_files:
 background_model = np.load(config['background_file'])
 if np.ndim(background_model) == 3:
     background_model = background_model[0]
-if config['smoothed_wlc'] is not None:
-    config['smoothed_wlc'] = np.load(config['smoothed_wlc'])
+if config['timeseries'] is not None:
+    config['timeseries'] = np.load(config['timeseries'])
+if config['timeseries_o2'] is not None:
+    config['timeseries_o2'] = np.load(config['timeseries_o2'])
 if config['centroids'] is not None:
     config['centroids'] = pd.read_csv(config['centroids'], comment='#')
 if config['f277w'] is not None:
@@ -77,43 +80,71 @@ if config['f277w'] is not None:
 
 # ===== Run Stage 1 =====
 if 1 in config['run_stages']:
+    # Determine which steps to run and which to skip.
+    steps = ['DQInitStep', 'SaturationStep', 'SuperBiasStep', 'RefPixStep',
+             'DarkCurrentStep', 'OneOverFStep_grp', 'LinearityStep',
+             'JumpStep', 'RampFitStep', 'GainScaleStep']
+    stage1_skip = []
+    for step in steps:
+        if config[step] == 'skip':
+            if step == 'OneOverFStep_grp':
+                stage1_skip.append('OneOverFStep')
+            else:
+                stage1_skip.append(step)
+    # Run stage 1.
     stage1_results = run_stage1(input_files, background_model=background_model,
                                 baseline_ints=config['baseline_ints'],
-                                smoothed_wlc=config['smoothed_wlc'],
+                                oof_method=config['oof_method'],
                                 save_results=config['save_results'],
                                 pixel_masks=config['outlier_maps'],
                                 force_redo=config['force_redo'],
-                                rejection_threshold=config['rejection_threshold'],
+                                flag_up_ramp=config['flag_up_ramp'],
+                                rejection_threshold=config['jump_threshold'],
                                 flag_in_time=config['flag_in_time'],
-                                time_rejection_threshold=config['time_rejection_threshold'],
+                                time_rejection_threshold=config['time_jump_threshold'],
                                 output_tag=config['output_tag'],
-                                skip_steps=config['stage1_skip'],
+                                skip_steps=stage1_skip,
                                 do_plot=config['do_plots'],
+                                timeseries=config['timeseries'],
+                                timeseries_o2=config['timeseries_o2'],
                                 **config['stage1_kwargs'])
 else:
     stage1_results = input_files
 
 # ===== Run Stage 2 =====
 if 2 in config['run_stages']:
-    if config['soss_width'] <= 40:
-        mask_width = 45
-    else:
-        mask_width = config['soss_width'] + 5
+    # Determine which steps to run and which to skip.
+    steps = ['AssignWCSStep', 'SourceTypeStep', 'FlatFieldStep',
+             'OneOverFStep_int', 'BackgroundStep', 'TracingStep',
+             'BadPixStep']
+    stage2_skip = []
+    for step in steps:
+        if config[step] == 'skip':
+            if step == 'OneOverFStep_int':
+                stage2_skip.append('OneOverFStep')
+            else:
+                stage2_skip.append(step)
+    # Run stage 2.
     stage2_results = run_stage2(stage1_results,
                                 background_model=background_model,
                                 baseline_ints=config['baseline_ints'],
-                                smoothed_wlc=config['smoothed_wlc'],
                                 save_results=config['save_results'],
                                 force_redo=config['force_redo'],
+                                space_thresh=config['space_outlier_threshold'],
+                                time_thresh=config['time_outlier_threshold'],
                                 calculate_stability=config['calculate_stability'],
                                 pca_components=config['pca_components'],
+                                timeseries=config['timeseries'],
+                                timeseries_o2=config['timeseries_o2'],
+                                oof_method=config['oof_method'],
                                 output_tag=config['output_tag'],
                                 smoothing_scale=config['smoothing_scale'],
-                                skip_steps=config['stage2_skip'],
+                                skip_steps=stage2_skip,
                                 generate_lc=config['generate_lc'],
                                 generate_tracemask=config['generate_tracemask'],
-                                mask_width=mask_width,
-                                pixel_flags=config['outlier_maps'],
+                                inner_mask_width=config['inner_mask_width'],
+                                outer_mask_width=config['outer_mask_width'],
+                                pixel_masks=config['outlier_maps'],
                                 generate_order0_mask=config['generate_order0_mask'],
                                 f277w=config['f277w'],
                                 do_plot=config['do_plots'],
@@ -135,6 +166,7 @@ if 3 in config['run_stages']:
                                 st_met=config['st_met'],
                                 planet_letter=config['planet_letter'],
                                 output_tag=config['output_tag'],
-                                do_plot=config['do_plots'])
+                                do_plot=config['do_plots'],
+                                **config['stage3_kwargs'])
 
 fancyprint('Done')

@@ -22,7 +22,6 @@ from tqdm import tqdm
 import warnings
 
 from supreme_spoon import utils
-from supreme_spoon.utils import fancyprint
 
 
 def make_background_plot(results, outfile=None, show_plot=True):
@@ -31,6 +30,58 @@ def make_background_plot(results, outfile=None, show_plot=True):
     kwargs = {'max_percentile': 70}
     basic_nine_panel_plot(results, outfile=outfile, show_plot=show_plot,
                           **kwargs)
+
+
+def make_background_row_plot(before, after, background_model, row_start=230,
+                             row_end=251, f=1, outfile=None, show_plot=True):
+    """Plot rows after background subtraction.
+    """
+
+    # Open files.
+    with utils.open_filetype(before) as file:
+        bf = file.data
+    with utils.open_filetype(after) as file:
+        af = file.data
+    if isinstance(background_model, str):
+        bkg = np.load(background_model)
+    else:
+        bkg = background_model
+
+    # Create medians.
+    if np.ndim(af) == 4:
+        before = bn.nanmedian(bf[:, -1], axis=0)
+        after = bn.nanmedian(af[:, -1], axis=0)
+        bbkg = np.nanmedian(bkg[-1, row_start:row_end], axis=0)
+    else:
+        before = bn.nanmedian(bf, axis=0)
+        after = bn.nanmedian(af, axis=0)
+        bbkg = np.nanmedian(bkg[0, row_start:row_end], axis=0)
+    bbefore = np.nanmedian(before[row_start:row_end], axis=0)
+    aafter = np.nanmedian(after[row_start:row_end], axis=0)
+
+    plt.figure(figsize=(5, 3))
+    plt.plot(bbefore)
+    plt.plot(np.arange(2048)[:700], bbkg[:700], c='black', ls='--')
+    plt.plot(aafter)
+
+    bkg_scale = f * (bbkg[700:] - bbkg[700]) + bbkg[700]
+    plt.plot(np.arange(2048)[700:], bkg_scale, c='black', ls='--')
+    plt.plot(np.arange(2048)[700:], bbefore[700:] - bkg_scale)
+
+    plt.axvline(700, ls=':', c='grey')
+    plt.axhline(0, ls=':', c='grey')
+    plt.ylim(np.min([np.nanmin(aafter), np.nanmin(bbefore[700:] - bkg_scale)]),
+             np.nanpercentile(bbefore, 95))
+    plt.xlabel('Spectral Pixel', fontsize=12)
+    plt.ylabel('Counts', fontsize=12)
+
+    if outfile is not None:
+        plt.savefig(outfile, bbox_inches='tight')
+        fancyprint('Plot saved to {}'.format(outfile))
+    if show_plot is False:
+        plt.close()
+    else:
+        plt.show()
 
 
 def make_badpix_plot(deep, hotpix, nanpix, otherpix, outfile=None,
@@ -94,6 +145,130 @@ def make_badpix_plot(deep, hotpix, nanpix, otherpix, outfile=None,
         plt.close()
     else:
         plt.show()
+
+
+def make_compare_spectra_plot(spec1, spec2, title=None):
+    """Make plot comparing two spectra.
+    """
+
+    # Get maximum error of the two spectra.
+    emax = np.sqrt(np.sum([spec1['dppm_err'].values**2,
+                           spec2['dppm_err'].values**2], axis=0))
+    # Find where spectra deviate by multiples of emax.
+    i1 = np.where(np.abs(spec1['dppm'].values - spec2['dppm'].values) / emax > 1)[0]
+    i2 = np.where(np.abs(spec1['dppm'].values - spec2['dppm'].values) / emax > 2)[0]
+    i3 = np.where(np.abs(spec1['dppm'].values - spec2['dppm'].values) / emax > 3)[0]
+
+    f = plt.figure(figsize=(10, 7))
+    gs = GridSpec(4, 1, height_ratios=[1, 1, 1, 1])
+
+    # Spectrum #1.
+    ax1 = f.add_subplot(gs[0])
+    ax1.errorbar(spec1['wave'].values, spec1['dppm'].values,
+                 yerr=spec1['dppm_err'].values, fmt='o', mec='black',
+                 mfc='white', ecolor='black', label=r'1$\sigma$')
+    ax1.errorbar(spec1['wave'].values[i1], spec1['dppm'].values[i1],
+                 yerr=spec1['dppm_err'].values[i1], fmt='o', mec='blue',
+                 mfc='white', ecolor='blue', label=r'2$\sigma$')
+    ax1.errorbar(spec1['wave'].values[i2], spec1['dppm'].values[i2],
+                 yerr=spec1['dppm_err'].values[i2], fmt='o', mec='orange',
+                 mfc='white', ecolor='orange', label=r'3$\sigma$')
+    ax1.errorbar(spec1['wave'].values[i3], spec1['dppm'].values[i3],
+                 yerr=spec1['dppm_err'].values[i3], fmt='o', mec='green',
+                 mfc='white', ecolor='green', label=r'>3$\sigma$')
+    # Show spectrum #2 in faded points.
+    ax1.errorbar(spec1['wave'].values, spec2['dppm'], yerr=spec2['dppm_err'],
+                 fmt='o', mec='black', mfc='white', ecolor='black', alpha=0.1)
+    plt.legend(ncol=2)
+    ax1.set_xscale('log')
+    ax1.set_xlim(0.58, 2.9)
+    plt.xticks([0.6, 0.8, 1.0, 1.5, 2.0, 2.5], ['', '', '', '', '', ''])
+    ax1.set_ylabel(r'(R$_p$/R$_*)^2$ [ppm]', fontsize=12)
+
+    # Spectrum #2.
+    ax2 = f.add_subplot(gs[1])
+    ax2.errorbar(spec2['wave'].values, spec2['dppm'],
+                 yerr=spec2['dppm_err'], fmt='o', mec='black',
+                 mfc='white', ecolor='black', label=r'1$\sigma$')
+    ax2.errorbar(spec2['wave'].values[i1], spec2['dppm'].values[i1],
+                 yerr=spec2['dppm_err'].values[i1], fmt='o', mec='blue',
+                 mfc='white', ecolor='blue', label=r'2$\sigma$')
+    ax2.errorbar(spec2['wave'].values[i2], spec2['dppm'].values[i2],
+                 yerr=spec2['dppm_err'].values[i2], fmt='o', mec='orange',
+                 mfc='white', ecolor='orange', label=r'3$\sigma$')
+    ax2.errorbar(spec2['wave'].values[i3], spec2['dppm'].values[i3],
+                 yerr=spec2['dppm_err'].values[i3], fmt='o', mec='green',
+                 mfc='white', ecolor='green', label=r'>3$\sigma$')
+    # Show spectrum #1 in faded points.
+    ax2.errorbar(spec2['wave'].values, spec1['dppm'].values,
+                 yerr=spec1['dppm_err'].values, fmt='o', mec='black',
+                 mfc='white', ecolor='black', alpha=0.1)
+    ax2.set_xscale('log')
+    ax2.set_xlim(0.58, 2.9)
+    plt.xticks([0.6, 0.8, 1.0, 1.5, 2.0, 2.5], ['', '', '', '', '', ''])
+    ax2.set_ylabel(r'(R$_p$/R$_*)^2$ [ppm]', fontsize=12)
+
+    # Differences in multiples of emax.
+    ax3 = f.add_subplot(gs[2])
+    dev = (spec1['dppm'].values - spec2['dppm'].values) / emax
+    ax3.errorbar(spec2['wave'].values, dev,
+                 fmt='o', mec='black', mfc='white', ecolor='black')
+    ax3.errorbar(spec2['wave'].values[i1], dev[i1],
+                 fmt='o', mec='blue', mfc='white', ecolor='blue')
+    ax3.errorbar(spec2['wave'].values[i2], dev[i2],
+                 fmt='o', mec='orange', mfc='white', ecolor='orange')
+    ax3.errorbar(spec2['wave'].values[i3], dev[i3],
+                 fmt='o', mec='green', mfc='white', ecolor='green')
+    ax3.plot(spec2['wave'].values, median_filter(dev, int(0.1 * len(dev))),
+             c='red', zorder=100, ls='--')
+    plt.axhline(0, ls='--', c='grey', zorder=99)
+
+    maxy = np.ceil(np.max(dev)).astype(int)
+    miny = np.floor(np.min(dev)).astype(int)
+    ypoints = np.linspace(miny, maxy, (maxy - miny) + 1).astype(int)
+    ax3.set_xscale('log')
+    ax3.set_xlim(0.58, 2.9)
+    plt.xticks([0.6, 0.8, 1.0, 1.5, 2.0, 2.5], ['', '', '', '', '', ''])
+    ax3.text(0.6, maxy - 0.25 * maxy,
+             r'$\bar\sigma$={:.2f}'.format(np.sum(np.abs(dev)) / len(dev)))
+    ax3.axhspan(-1, 1, color='grey', alpha=0.2)
+    ax3.axhspan(-0.5, 0.5, color='grey', alpha=0.2)
+    plt.yticks(ypoints, ypoints.astype(str))
+    ax3.set_ylabel(r'$\Delta$ [$\sigma$]', fontsize=14)
+
+    # Differences in ppm.
+    ax4 = f.add_subplot(gs[3])
+    dev = (spec1['dppm'].values - spec2['dppm'].values)
+    ax4.errorbar(spec2['wave'].values, dev,
+                 fmt='o', mec='black', mfc='white', ecolor='black')
+    ax4.errorbar(spec2['wave'].values[i1], dev[i1],
+                 fmt='o', mec='blue', mfc='white', ecolor='blue')
+    ax4.errorbar(spec2['wave'].values[i2], dev[i2],
+                 fmt='o', mec='orange', mfc='white', ecolor='orange')
+    ax4.errorbar(spec2['wave'].values[i3], dev[i3],
+                 fmt='o', mec='green', mfc='white', ecolor='green')
+    ax4.plot(spec2['wave'].values, median_filter(dev, int(0.1 * len(dev))),
+             c='red', zorder=100, ls='--')
+    ax4.axhline(0, ls='--', c='grey', zorder=99)
+
+    maxy = np.ceil(np.max(dev)).astype(int)
+    ax4.set_xscale('log')
+    ax4.set_xlim(0.58, 2.9)
+    plt.xticks([0.6, 0.8, 1.0, 1.5, 2.0, 2.5],
+               ['0.6', '0.8', '1.0', '1.5', '2.0', '2.5'])
+    ax4.text(0.6, maxy - 0.25 * maxy,
+             r'$\bar\sigma$={:.2f}'.format(np.sum(np.abs(dev)) / len(dev)))
+    ax4.axhspan(-1, 1, color='grey', alpha=0.2)
+    ax4.axhspan(-0.5, 0.5, color='grey', alpha=0.2)
+    ax4.set_ylabel(r'$\Delta$ [ppm]', fontsize=14)
+    ax4.set_xlabel('Wavelength [µm]', fontsize=14)
+
+    gs.update(hspace=0.1)
+    if title is not None:
+        ax1.set_title(title, fontsize=18)
+    plt.show()
+
+    return dev
 
 
 def make_corner_plot(fit_params, results, posterior_names=None, outpdf=None,
@@ -272,7 +447,7 @@ def make_lightcurve_plot(t, data, model, scatter, errors, nfit, outpdf=None,
     nint = len(data)  # Total number of data points
     # Full dataset
     ax1.errorbar(t, data, yerr=scatter*1e-6, fmt='o', capsize=0,
-                 color='royalblue', ms=5, alpha=0.75)
+                 color='royalblue', ms=5, alpha=0.25)
     # Binned points
     rem = nint % nbin
     if rem != 0:
@@ -297,8 +472,7 @@ def make_lightcurve_plot(t, data, model, scatter, errors, nfit, outpdf=None,
     mean_err = np.nanmean(errors)
     err_mult = scatter / (mean_err*1e6)
     ax1.text(t[2], np.min(model),
-             r'$\chi_\nu^2 = {:.2f}$''\n'r'$\sigma={:.2f}$ppm''\n'r'$e={:.2f}$'.format(
-                 chi2_v, mean_err*1e6, err_mult),
+             r'$\chi_\nu^2 = {:.2f}$''\n'r'$\sigma={:.2f}$ppm''\n'r'$e={:.2f}$'.format(chi2_v, mean_err*1e6, err_mult),
              fontsize=14)
     ax1.tick_params(axis='x', labelsize=12)
     ax1.tick_params(axis='y', labelsize=12)
@@ -314,10 +488,11 @@ def make_lightcurve_plot(t, data, model, scatter, errors, nfit, outpdf=None,
         data_detrended = data - systematics
         # Full dataset.
         ax2.errorbar(t, data_detrended, yerr=scatter*1e-6, fmt='o',
-                     capsize=0, color='salmon', ms=5, alpha=1)
+                     capsize=0, color='salmon', ms=5, alpha=0.25)
         # Binned points.
         if rem != 0:
-            d_bin = data_detrended[trim_i:trim_e].reshape((nint-rem)//nbin, nbin)
+            d_bin = data_detrended[trim_i:trim_e].reshape((nint-rem)//nbin,
+                                                          nbin)
         else:
             d_bin = data_detrended.reshape((nint-rem)//nbin, nbin)
         d_bin = np.nanmean(d_bin, axis=1)
@@ -339,7 +514,7 @@ def make_lightcurve_plot(t, data, model, scatter, errors, nfit, outpdf=None,
         ax3 = plt.subplot(gs[1])
     # Full dataset.
     res = (data - model)*1e6
-    ax3.errorbar(t, res, yerr=scatter, alpha=0.8, ms=5,
+    ax3.errorbar(t, res, yerr=scatter, alpha=0.25, ms=5,
                  c='royalblue', fmt='o', zorder=10)
     # Binned points.
     if rem != 0:
@@ -368,7 +543,8 @@ def make_lightcurve_plot(t, data, model, scatter, errors, nfit, outpdf=None,
     else:
         ax4 = plt.subplot(gs[3])
     bins = np.linspace(-10, 10, 41) + 0.25
-    hist = ax4.hist(res/scatter, edgecolor='grey', color='lightgrey', bins=bins)
+    hist = ax4.hist(res/scatter, edgecolor='grey', color='lightgrey',
+                    bins=bins)
     area = np.sum(hist[0] * np.diff(bins))
     ax4.plot(np.linspace(-15, 15, 500),
              gaus(np.linspace(-15, 15, 500), 0, 1) * area, c='black')
@@ -446,8 +622,8 @@ def make_linearity_plot(results, old_results, outfile=None, show_plot=True):
         labels.append('{0}-{1}'.format(i+2, i+1))
     plt.xticks(locs, labels, rotation=45)
     plt.ylabel('Differences [DN]', fontsize=12)
-    plt.ylim(1.1*np.min(old_med - np.mean(old_med)),
-             1.1*np.max(old_med - np.mean(old_med)))
+    plt.ylim(1.1*np.nanmin(old_med - np.nanmean(old_med)),
+             1.1*np.nanmax(old_med - np.nanmean(old_med)))
     plt.legend()
 
     if outfile is not None:
@@ -457,6 +633,57 @@ def make_linearity_plot(results, old_results, outfile=None, show_plot=True):
         plt.close()
     else:
         plt.show()
+
+
+def make_oneoverf_chromatic_plot(m_e, m_o, b_e, b_o, ngroup, outfile=None,
+                                 show_plot=True):
+    """Make plot of chromatic 1/f slope and intercept values.
+    """
+
+    fancyprint('Doing diagnostic plot 3.')
+
+    to_plot = [m_e, m_o, b_e, b_o]
+    for obj in to_plot:
+        obj = np.array(obj)
+        obj[np.isnan(obj)] = 0
+    texts = ['m even', 'm odd', 'b even', 'b odd']
+
+    fig = plt.figure(figsize=(8, 2*ngroup), facecolor='white')
+    gs = GridSpec(ngroup+1, 4, width_ratios=[1, 1, 1, 1])
+
+    for i in range(ngroup):
+        for j, obj in enumerate(to_plot):
+            ax = fig.add_subplot(gs[i, j])
+            if j < 2:
+                plt.imshow(obj[i], aspect='auto', origin='lower',
+                           vmin=np.nanpercentile(obj[i], 5),
+                           vmax=np.nanpercentile(obj[i], 95))
+            else:
+                plt.imshow(obj[i], aspect='auto', origin='lower',
+                           vmin=np.nanpercentile(obj[i], 25),
+                           vmax=np.nanpercentile(obj[i], 75))
+            if j != 0:
+                ax.yaxis.set_major_formatter(plt.NullFormatter())
+            if i != ngroup-1:
+                ax.xaxis.set_major_formatter(plt.NullFormatter())
+            if i == ngroup-1:
+                plt.xlabel('Spectral Pixel', fontsize=10)
+            if i == 0:
+                plt.title(texts[j], fontsize=12)
+            if j == 0:
+                plt.ylabel('Integration', fontsize=10)
+
+    gs.update(hspace=0.1, wspace=0.1)
+    if outfile is not None:
+        plt.savefig(outfile, bbox_inches='tight')
+        fancyprint('Plot saved to {}'.format(outfile))
+    if show_plot is False:
+        plt.close()
+    else:
+        plt.show()
+
+
+from supreme_spoon.utils import fancyprint
 
 
 def make_oneoverf_plot(results, baseline_ints, timeseries=None,
@@ -484,23 +711,29 @@ def make_oneoverf_plot(results, baseline_ints, timeseries=None,
             timeseries = np.load(timeseries)
         except (ValueError, FileNotFoundError):
             timeseries = None
-    # If no lightcurve is provided, estimate it from the current data.
+    # If no lightcurve is provided, use array of ones.
     if timeseries is None:
-        postage = cube[:, -1, 20:60, 1500:1550]
-        timeseries = np.nansum(postage, axis=(1, 2))
-        timeseries = timeseries / np.nanmedian(timeseries[baseline_ints])
-        # Smooth the time series on a timescale of roughly 2%.
-        timeseries = median_filter(timeseries,
-                                   int(0.02 * np.shape(cube)[0]))
+        timeseries = np.ones(np.shape(cube)[0])
 
-    nint, ngroup, dimy, dimx = np.shape(cube)
-    ints = np.random.randint(0, nint, 9)
-    grps = np.random.randint(0, ngroup, 9)
-    to_plot, to_write = [], []
-    kwargs = {'vmin': -50, 'vmax': 50}
-    for i, g in zip(ints, grps):
-        to_plot.append(cube[i, g] - deep[g] * timeseries[i])
-        to_write.append('({0}, {1})'.format(i, g))
+    if np.ndim(cube) == 4:
+        nint, ngroup, dimy, dimx = np.shape(cube)
+        ints = np.random.randint(0, nint, 9)
+        grps = np.random.randint(0, ngroup, 9)
+        to_plot, to_write = [], []
+        for i, g in zip(ints, grps):
+            diff = cube[i, g] - deep[g] * timeseries[i]
+            to_plot.append(diff)
+            to_write.append('({0}, {1})'.format(i, g))
+    else:
+        nint, dimy, dimx = np.shape(cube)
+        ints = np.random.randint(0, nint, 9)
+        to_plot, to_write = [], []
+        for i in ints:
+            diff = cube[i] - deep * timeseries[i]
+            to_plot.append(diff)
+            to_write.append('({0})'.format(i))
+    kwargs = {'vmin': np.nanpercentile(diff, 5),
+              'vmax': np.nanpercentile(diff, 95)}
     nine_panel_plot(to_plot, to_write, outfile=outfile, show_plot=show_plot,
                     **kwargs)
     if outfile is not None:
@@ -509,7 +742,7 @@ def make_oneoverf_plot(results, baseline_ints, timeseries=None,
 
 def make_oneoverf_psd(results, old_results, timeseries, baseline_ints,
                       nsample=25,  pixel_masks=None, tframe=5.494, tpix=1e-5,
-                      tgap=1.2e-4, outfile=None, show_plot=True):
+                      tgap=1.2e-4, outfile=None, show_plot=True, window=False):
     """Make a PSD plot to see PSD of background before and after 1/f removal.
     """
 
@@ -523,22 +756,39 @@ def make_oneoverf_psd(results, old_results, timeseries, baseline_ints,
                 cube = datamodel.data
             else:
                 cube = np.concatenate([cube, datamodel.data])
+    cube = np.where(np.isnan(cube), np.nanmedian(cube), cube)
     for i, file in enumerate(old_results):
         with utils.open_filetype(file) as datamodel:
             if i == 0:
                 old_cube = datamodel.data
             else:
                 old_cube = np.concatenate([old_cube, datamodel.data])
+    old_cube = np.where(np.isnan(old_cube), np.nanmedian(old_cube), old_cube)
     if pixel_masks is not None:
-        for i, file in enumerate(pixel_masks):
-            if i == 0:
-                mask_cube = fits.getdata(file)
-            else:
-                mask_cube = np.concatenate([mask_cube, fits.getdata(file)])
+        if window is True:
+            for i, file in enumerate(pixel_masks):
+                mask_in = fits.getdata(file, 3)
+                mask_out = fits.getdata(file, 5)
+                window = ~(mask_out - mask_in).astype(bool)
+                if i == 0:
+                    mask_cube = window
+                else:
+                    mask_cube = np.concatenate([mask_cube, window])
+        else:
+            for i, file in enumerate(pixel_masks):
+                data = fits.getdata(file, 1)
+                if i == 0:
+                    mask_cube = data
+                else:
+                    mask_cube = np.concatenate([mask_cube, data])
+
     else:
         mask_cube = None
 
-    nints, ngroups, dimy, dimx = np.shape(cube)
+    if np.ndim(cube) == 4:
+        nints, ngroups, dimy, dimx = np.shape(cube)
+    else:
+        nints, dimy, dimx = np.shape(cube)
     baseline_ints = utils.format_out_frames(baseline_ints)
     old_deep = bn.nanmedian(old_cube[baseline_ints], axis=0)
     deep = bn.nanmedian(cube[baseline_ints], axis=0)
@@ -549,14 +799,9 @@ def make_oneoverf_psd(results, old_results, timeseries, baseline_ints,
             timeseries = np.load(timeseries)
         except (ValueError, FileNotFoundError):
             timeseries = None
-    # If no lightcurve is provided, estimate it from the current data.
+    # If no lightcurve is provided, use array of ones.
     if timeseries is None:
-        postage = cube[:, -1, 20:60, 1500:1550]
-        timeseries = np.nansum(postage, axis=(1, 2))
-        timeseries = timeseries / np.nanmedian(timeseries[baseline_ints])
-        # Smooth the time series on a timescale of roughly 2%.
-        timeseries = median_filter(timeseries,
-                                   int(0.02 * np.shape(cube)[0]))
+        timeseries = np.ones(np.shape(cube)[0])
 
     # Generate array of timestamps for each pixel
     pixel_ts = []
@@ -564,7 +809,7 @@ def make_oneoverf_psd(results, old_results, timeseries, baseline_ints,
     for p in range(dimy * dimx):
         ti = time1 + tpix
         # If column is done, add gap time.
-        if p % 256 == 0 and p != 0:
+        if p % dimy == 0 and p != 0:
             ti += tgap
         pixel_ts.append(ti)
         time1 = ti
@@ -576,18 +821,25 @@ def make_oneoverf_psd(results, old_results, timeseries, baseline_ints,
     # Select nsample random frames and compare PSDs before and after 1/f
     # removal.
     for s in tqdm(range(nsample)):
-        # Get random groups and ints
-        i, g = np.random.randint(nints), np.random.randint(ngroups)
-        # Get difference images before and after 1/f removal.
-        diff_old = (old_cube[i, g] - old_deep[g] * timeseries[i]).flatten('F')[::-1]
-        diff = (cube[i, g] - deep[g] * timeseries[i]).flatten('F')[::-1]
+        if np.ndim(cube) == 4:
+            # Get random groups and ints.
+            i, g = np.random.randint(nints), np.random.randint(ngroups)
+            # Get difference images before and after 1/f removal.
+            diff_old = (old_cube[i, g] - old_deep[g] * timeseries[i]).flatten('F')[::-1]
+            diff = (cube[i, g] - deep[g] * timeseries[i]).flatten('F')[::-1]
+        else:
+            # Get random ints.
+            i = np.random.randint(nints)
+            # Get difference images before and after 1/f removal.
+            diff_old = (old_cube[i] - old_deep * timeseries[i]).flatten('F')[::-1]
+            diff = (cube[i] - deep * timeseries[i]).flatten('F')[::-1]
         # Mask pixels which are not part of the background
         if mask_cube is None:
             # If no pixel/trace mask, discount pixels above a threshold.
             bad = np.where(np.abs(diff) > 100)
         else:
             # Mask flagged pixels.
-            bad = np.where(mask_cube[i, g] != 0)
+            bad = np.where(mask_cube[i] != 0)
         diff, diff_old = np.delete(diff, bad), np.delete(diff_old, bad)
         this_t = np.delete(pixel_ts, bad)
         # Calculate PSDs
@@ -602,15 +854,15 @@ def make_oneoverf_psd(results, old_results, timeseries, baseline_ints,
         plt.plot(freqs[:-1], pwr[i, :-1], c='royalblue', alpha=0.1)
     # Median trends.
     # Aprox white noise level
-    plt.plot(freqs[:-1], np.median(pwr_old, axis=0)[:-1], c='red', lw=2,
+    plt.plot(freqs[:-1], np.nanmedian(pwr_old, axis=0)[:-1], c='red', lw=2,
              label='Before Correction')
-    plt.plot(freqs[:-1], np.median(pwr, axis=0)[:-1], c='blue', lw=2,
+    plt.plot(freqs[:-1], np.nanmedian(pwr, axis=0)[:-1], c='blue', lw=2,
              label='After Correction')
 
     plt.xscale('log')
     plt.xlabel('Frequency [Hz]', fontsize=12)
     plt.yscale('log')
-    plt.ylim(np.percentile(pwr, 0.1), np.max(pwr_old))
+    plt.ylim(np.nanpercentile(pwr, 0.1), np.nanmax(pwr_old))
     plt.ylabel('PSD', fontsize=12)
     plt.legend(loc=1)
 
@@ -666,6 +918,79 @@ def make_pca_plot(pcs, var, projections, show_plot=False, outfile=None):
         plt.show()
 
 
+def make_photon_noise_plot(spectrum_files, ngroup, baseline_ints, order=1,
+                           labels=None, tframe=5.494, gain=1.6):
+    """Make plot comparing lightcurve precision to photon noise.
+    """
+
+    spectrum_files = np.atleast_1d(spectrum_files)
+    base = utils.format_out_frames(baseline_ints)
+
+    plt.figure(figsize=(7, 2))
+    for j, spectrum_file in enumerate(spectrum_files):
+        with fits.open(spectrum_file) as spectrum:
+            if order == 1:
+                spec = spectrum[3].data
+            else:
+                spec = spectrum[7].data
+            spec *= tframe * gain * ngroup
+            if order == 1:
+                wave = np.mean([spectrum[1].data[0], spectrum[2].data[0]],
+                               axis=0)
+                ii = np.ones(2040)
+            else:
+                wave = np.mean([spectrum[5].data[0], spectrum[6].data[0]],
+                               axis=0)
+                ii = np.where((wave >= 0.6) & (wave < 0.85))[0]
+
+        scatter = []
+        for i in range(len(ii)):
+            wlc = spec[:, i]
+            noise = 0.5 * (wlc[0:-2] + wlc[2:]) - wlc[1:-1]
+            noise = np.median(np.abs(noise))
+            scatter.append(noise / np.median(wlc[base]))
+        scatter = np.array(scatter)
+        if labels is not None:
+            label = labels[j]
+        else:
+            label = None
+        plt.plot(wave, median_filter(scatter, 10) * 1e6, label=label)
+
+    phot = np.sqrt(np.median(spec[base], axis=0)) / np.median(spec[base],
+                                                              axis=0)
+    plt.plot(wave, median_filter(phot, 10) * 1e6, c='black')
+    plt.plot(wave, 2 * median_filter(phot, 10) * 1e6, c='black')
+
+    plt.ylabel('Precision [ppm]', fontsize=14)
+
+    if labels is not None:
+        plt.legend(ncol=2)
+    plt.show()
+
+
+def make_soss_width_plot(scatter, min_width, outfile=None, show_plot=True):
+    """Make plot showing optimization of extraction box.
+    """
+
+    plt.figure(figsize=(8, 5))
+    plt.plot(np.linspace(10, 60, 51), scatter, c='royalblue')
+    plt.scatter(np.linspace(10, 60, 51)[min_width], scatter[min_width],
+                marker='*', c='red', s=100, zorder=2)
+
+    plt.xlabel('Aperture Width', fontsize=14)
+    plt.ylabel('Scatter', fontsize=14)
+    plt.yticks(fontsize=10)
+    plt.xticks(fontsize=10)
+
+    if outfile is not None:
+        plt.savefig(outfile, bbox_inches='tight')
+        fancyprint('Plot saved to {}'.format(outfile))
+    if show_plot is False:
+        plt.close()
+    else:
+        plt.show()
+
+
 def make_superbias_plot(results, outfile=None, show_plot=True):
     """Nine-panel plot for superbias subtraction results.
     """
@@ -696,7 +1021,7 @@ def make_2d_lightcurve_plot(wave1, flux1, wave2=None, flux2=None, outpdf=None,
                         extent=(0, flux1.shape[0]-1, wave1[0], wave1[-1]),
                         **kwargs)
         if wave2 is None:
-            cax = ax1.inset_axes([1.05, 0.005, 0.03, 0.99],
+            cax = ax1.inset_axes((1.05, 0.005, 0.03, 0.99),
                                  transform=ax1.transAxes)
             cb = fig.colorbar(pp, ax=ax1, cax=cax)
             cb.set_label('Normalized Flux', labelpad=15, rotation=270,
@@ -712,7 +1037,7 @@ def make_2d_lightcurve_plot(wave1, flux1, wave2=None, flux2=None, outpdf=None,
             pp = ax2.imshow(flux2.T, aspect='auto', origin='lower',
                             extent=(0, flux2.shape[0]-1, wave2[0], wave2[-1]),
                             **kwargs)
-            cax = ax2.inset_axes([1.05, 0.005, 0.03, 0.99],
+            cax = ax2.inset_axes((1.05, 0.005, 0.03, 0.99),
                                  transform=ax2.transAxes)
             cb = fig.colorbar(pp, ax=ax2, cax=cax)
             cb.set_label('Normalized Flux', labelpad=15, rotation=270,
@@ -800,7 +1125,8 @@ def nine_panel_plot(data, text=None, outfile=None, show_plot=True, **kwargs):
             ax.imshow(data[frame], aspect='auto', origin='lower', vmin=vmin,
                       vmax=vmax)
             if text is not None:
-                ax.text(30, 230, text[frame], c='white', fontsize=12)
+                ax.text(30, 0.9*np.shape(data[frame])[0], text[frame],
+                        c='white', fontsize=12)
             if j != 0:
                 ax.yaxis.set_major_formatter(plt.NullFormatter())
             else:

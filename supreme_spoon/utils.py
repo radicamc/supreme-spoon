@@ -16,7 +16,7 @@ import numpy as np
 import os
 import pandas as pd
 from scipy.interpolate import RegularGridInterpolator
-from scipy.ndimage import median_filter
+from scipy.signal import medfilt
 import warnings
 import yaml
 
@@ -148,7 +148,7 @@ def fancyprint(message, msg_type='INFO'):
         Type of message. Mirrors the jwst pipeline logging.
     """
 
-    time = datetime.utcnow().isoformat(sep=' ', timespec='milliseconds')
+    time = datetime.now().isoformat(sep=' ', timespec='milliseconds')
     print('{} - supreme-SPOON - {} - {}'.format(time, msg_type, message))
 
 
@@ -157,21 +157,32 @@ def format_out_frames(out_frames):
 
     Parameters
     ----------
-    out_frames : array-like[int]
-        Integration numbers of ingress and egress.
+    out_frames : int, array-like[int]
+        Integration numbers of ingress and/or egress.
 
     Returns
     -------
     baseline_ints : array-like[int]
-        Array of out-of-transit frames.
+        Array of baseline frames.
     """
 
-    # Format the out-of-transit integration numbers.
-    out_frames = np.abs(out_frames)
-    out_frames = np.concatenate([np.arange(out_frames[0]),
-                                 np.arange(out_frames[1]) - out_frames[1]])
+    out_frames = np.atleast_1d(out_frames)
+    # For baseline just before ingress or after ingress.
+    if len(out_frames) == 1:
+        if out_frames[0] > 0:
+            baseline_ints = np.arange(out_frames[0])
+        else:
+            out_frames = np.abs(out_frames)
+            baseline_ints = np.arange(out_frames[0]) - out_frames[0]
+    # If baseline at both ingress and egress to be used.
+    elif len(out_frames) == 2:
+        out_frames = np.abs(out_frames)
+        baseline_ints = np.concatenate([np.arange(out_frames[0]),
+                                        np.arange(out_frames[1]) - out_frames[1]])
+    else:
+        raise ValueError('out_frames must have length 1 or 2.')
 
-    return out_frames
+    return baseline_ints
 
 
 def get_default_header():
@@ -226,7 +237,8 @@ def get_dq_flag_metrics(dq_map, flags):
     """
 
     flags = np.atleast_1d(flags)
-    dimy, dimx = np.shape(dq_map)
+    dq_map = np.atleast_3d(dq_map)
+    dimy, dimx, nint = np.shape(dq_map)
 
     # From here: https://jwst-reffiles.stsci.edu/source/data_quality.html
     flags_dict = {'DO_NOT_USE': 0, 'SATURATED': 1, 'JUMP_DET': 2,
@@ -249,12 +261,15 @@ def get_dq_flag_metrics(dq_map, flags):
         flag_bits.append(flags_dict[flag])
 
     # Find pixels flagged for the selected reasons.
-    for x in range(dimx):
-        for y in range(dimy):
-            val = np.binary_repr(dq_map[y, x], width=32)[::-1]
-            for bit in flag_bits:
-                if val[bit] == '1':
-                    flagged[y, x] = True
+    for i in range(nint):
+        for x in range(dimx):
+            for y in range(dimy):
+                val = np.binary_repr(dq_map[y, x, i], width=32)[::-1]
+                for bit in flag_bits:
+                    if val[bit] == '1':
+                        flagged[y, x, i] = True
+    if nint == 1:
+        flagged = flagged[:, :, 0]
 
     return flagged
 
@@ -585,6 +600,56 @@ def interpolate_stellar_model_grid(model_files, st_teff, st_logg, st_met):
     return model_interp
 
 
+def line_mle(x, y, e):
+    """Analytical solution for Chi^2 of fitting a straight line to data.
+    All inputs are assumed to be 3D (ints, dimy, dimx).
+
+    Parameters
+    ----------
+    x : array-like[float]
+        X-data. Median stack for 1/f correction.
+    y : array-like[float]
+        Y-data. Data frames for 1/f correction.
+    e : array-like[float]
+        Errors.
+
+    Returns
+    -------
+    m_e : np.array(float)
+        "Slope" values for even numbered columns.
+    b_e : np.array(float)
+        "Intercept" values for even numbered columns.
+    m_o : np.array(float)
+        "Slope" values for odd numbered columns.
+    b_o : np.array(float)
+        "Intercept" values for odd numbered columns.
+    """
+
+    assert np.shape(x) == np.shape(y) == np.shape(e)
+    # Following "Numerical recipes in C. The art of scientific computing"
+    # Press, William H. (1989)
+    # pdf: https://www.grad.hr/nastava/gs/prg/NumericalRecipesinC.pdf S15.2
+    sx_e = np.nansum(x[:, ::2] / e[:, ::2]**2, axis=1)
+    sxx_e = np.nansum((x[:, ::2] / e[:, ::2])**2, axis=1)
+    sy_e = np.nansum(y[:, ::2] / e[:, ::2]**2, axis=1)
+    sxy_e = np.nansum(x[:, ::2] * y[:, ::2] / e[:, ::2]**2, axis=1)
+    s_e = np.nansum(1 / e[:, ::2]**2, axis=1)
+
+    m_e = (s_e * sxy_e - sx_e * sy_e) / (s_e * sxx_e - sx_e**2)
+    b_e = (sy_e - m_e * sx_e) / s_e
+
+    sx_o = np.nansum(x[:, 1::2] / e[:, 1::2]**2, axis=1)
+    sxx_o = np.nansum((x[:, 1::2] / e[:, 1::2])**2, axis=1)
+    sy_o = np.nansum(y[:, 1::2] / e[:, 1::2]**2, axis=1)
+    sxy_o = np.nansum(x[:, 1::2] * y[:, 1::2] / e[:, 1::2]**2, axis=1)
+    s_o = np.nansum(1 / e[:, 1::2]**2, axis=1)
+
+    m_o = (s_o * sxy_o - sx_o * sy_o) / (s_o * sxx_o - sx_o**2)
+    b_o = (sy_o - m_o * sx_o) / s_o
+
+    return m_e, b_e, m_o, b_o
+
+
 def make_deepstack(cube):
     """Make deep stack of a TSO.
 
@@ -825,19 +890,17 @@ def save_ld_priors(wave, c1, c2, order, target, m_h, teff, logg, outdir):
     f.close()
 
 
-def sigma_clip_lightcurves(flux, ferr, thresh=3, window=10):
+def sigma_clip_lightcurves(flux, thresh=5, window=5):
     """Sigma clip outliers in time from final lightcurves.
 
     Parameters
     ----------
     flux : array-like[float]
         Flux array.
-    ferr : array-like[float]
-        Flux error array.
     thresh : int
         Sigma level to be clipped.
     window : int
-        Window function to calculate median.
+        Window function to calculate median. Must be odd.
 
     Returns
     -------
@@ -847,16 +910,17 @@ def sigma_clip_lightcurves(flux, ferr, thresh=3, window=10):
 
     flux_clipped = np.copy(flux)
     nints, nwaves = np.shape(flux)
-    clipsum = 0
-    # Loop over all integrations, and set pixels which deviate by more than
-    # the given threshold from the median lightcurve by the median value.
-    for wave in range(nwaves):
-        med = median_filter(flux[:, wave], window)
-        ii = np.where(np.abs(flux[:, wave] - med) > thresh*ferr[:, wave])[0]
-        flux_clipped[:, wave][ii] = med[ii]
-        clipsum += len(ii)
+    flux_filt = medfilt(flux, (window, 1))
 
-    fancyprint('{0} pixels clipped ({1:.3f}%)'.format(clipsum, clipsum/nints/nwaves*100))
+    # Check along the time axis for outlier pixels.
+    std_dev = np.median(np.abs(0.5 * (flux[0:-2] + flux[2:]) - flux[1:-1]), axis=0)
+    std_dev = np.where(std_dev == 0, np.inf, std_dev)
+    scale = np.abs(flux - flux_filt) / std_dev
+    ii = np.where((scale > thresh))
+    # Replace outliers.
+    flux_clipped[ii] = flux_filt[ii]
+
+    fancyprint('{0} pixels clipped ({1:.3f}%)'.format(len(ii[0]), len(ii[0])/nints/nwaves*100))
 
     return flux_clipped
 

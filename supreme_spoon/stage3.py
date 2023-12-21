@@ -16,12 +16,12 @@ import pandas as pd
 import pastasoss
 from scipy.interpolate import interp1d
 from scipy.signal import butter, filtfilt
+from tqdm import tqdm
 import os
 
 from applesoss import applesoss
 
 from jwst import datamodels
-from jwst.extract_1d.soss_extract import soss_boxextract
 from jwst.pipeline import calwebb_spec2
 
 from supreme_spoon import utils, plotting
@@ -86,9 +86,9 @@ class Extract1DStep:
         self.pl_name = self.target_name + ' ' + planet_letter
         self.stellar_params = [st_teff, st_logg, st_met]
 
-    def run(self, soss_width=25, specprofile=None, centroids=None,
+    def run(self, soss_width=40, specprofile=None, centroids=None,
             save_results=True, force_redo=False, do_plot=False,
-            show_plot=False):
+            show_plot=False, use_pastasoss=False):
         """Method to run the step.
         """
 
@@ -145,15 +145,23 @@ class Extract1DStep:
                     except FileNotFoundError:
                         raise ValueError('Centroids must be provided for box '
                                          'extraction')
-                results = box_extract(self.datafiles, centroids, soss_width)
+                results = box_extract_soss(self.datafiles, centroids,
+                                           soss_width, do_plot=do_plot,
+                                           show_plot=show_plot,
+                                           output_dir=self.output_dir,
+                                           save_results=save_results)
+                if soss_width == 'optimize':
+                    # Get optimized width.
+                    soss_width = int(results[-1])
+                results = results[:-1]
             else:
                 raise ValueError('Invalid extraction method')
 
             # Do step plot if requested - only for atoca.
             if do_plot is True and self.extract_method == 'atoca':
                 if save_results is True:
-                    plot_file = self.output_dir + self.tag.replace('fits',
-                                                                   'pdf')
+                    plot_file = self.output_dir + self.tag.replace('.fits',
+                                                                   '.pdf')
                 else:
                     plot_file = None
                 models = []
@@ -187,7 +195,8 @@ class Extract1DStep:
                                                st_met, throughput=thpt,
                                                pwcpos=pwcpos,
                                                output_dir=self.output_dir,
-                                               save_results=save_results)
+                                               save_results=save_results,
+                                               use_pastasoss=use_pastasoss)
 
         return spectra
 
@@ -258,7 +267,8 @@ def specprofilestep(datafiles, empirical=True, output_dir='./'):
     return filename
 
 
-def box_extract(datafiles, centroids, soss_width):
+def box_extract_soss(datafiles, centroids, soss_width, do_plot=False,
+                     show_plot=False, save_results=True, output_dir='./'):
     """Perform a simple box aperture extraction on SOSS orders 1 and 2.
 
     Parameters
@@ -267,8 +277,17 @@ def box_extract(datafiles, centroids, soss_width):
         Input datamodels or paths to datamodels for each segment.
     centroids : dict
         Dictionary of centroid positions for all SOSS orders.
-    soss_width : int
-        Width of extraction box.
+    soss_width : int, str
+        Width of extraction box. Or 'optimize'.
+    do_plot : bool
+        If True, do the step diagnostic plot.
+    show_plot : bool
+        If True, show the step diagnostic plot instead of/in addition to
+        saving it to file.
+    output_dir : str
+        Directory to which to output results.
+    save_results : bool
+        If True, save results to file.
 
     Returns
     -------
@@ -284,6 +303,8 @@ def box_extract(datafiles, centroids, soss_width):
         2D extracted flux for order 2.
     ferr_o2 : array_like[float]
         2D flux errors for order 2.
+    soss_width : int
+        Optimized aperture width.
     """
 
     datafiles = np.atleast_1d(datafiles)
@@ -296,34 +317,48 @@ def box_extract(datafiles, centroids, soss_width):
             else:
                 cube = np.concatenate([cube, datamodel.data])
                 ecube = np.concatenate([ecube, datamodel.err])
-    nints, dimy, dimx = np.shape(cube)
 
-    # Get centroid positions
+    # Get centroid positions.
     x1 = centroids['xpos'].values
     y1, y2 = centroids['ypos o1'].values, centroids['ypos o2'].values
     ii = np.where(np.isfinite(y2))
     x2, y2 = x1[ii], y2[ii]
 
-    # Define the widths of the extraction boxes for orders 1 and 2.
-    weights = soss_boxextract.get_box_weights(y1, soss_width, (dimy, dimx),
-                                              cols=x1.astype(int))
-    weights2 = soss_boxextract.get_box_weights(y2, soss_width, (dimy, dimx),
-                                               cols=x2.astype(int))
+    # ===== Optimize Aperture Width =====
+    if soss_width == 'optimize':
+        fancyprint('Optimizing extraction width...')
+        # Extract order 1 with a variety of widths and find the one that
+        # minimizes the white light curve scatter.
+        scatter = []
+        for w in tqdm(range(10, 61)):
+            flux = do_box_extraction(cube, ecube, y1, width=w,
+                                     progress=False)[0]
+            wlc = np.nansum(flux, axis=1)
+            s = np.median(np.abs(0.5*(wlc[0:-2] + wlc[2:]) - wlc[1:-1]))
+            scatter.append(s)
+        scatter = np.array(scatter)
+        # Find the width that minimizes the scatter.
+        ii = np.argmin(scatter)
+        soss_width = np.linspace(10, 60, 51)[ii]
+        fancyprint('Using width of {} pxiels.'.format(int(soss_width)))
 
-    flux_o1, ferr_o1 = np.zeros((nints, dimx)), np.zeros((nints, dimx))
-    flux_o2, ferr_o2 = np.zeros((nints, dimx)), np.zeros((nints, dimx))
-    # Loop over each integration and perform the box extraction.
+        # Do diagnostic plot if requested.
+        if do_plot is True:
+            if save_results is True:
+                outfile = output_dir + 'aperture_optimization.pdf'
+            else:
+                outfile = None
+            plotting.make_soss_width_plot(scatter, ii, outfile=outfile,
+                                          show_plot=show_plot)
+
+    # ===== Extraction ======
+    # Do the extraction.
     fancyprint('Performing simple aperture extraction.')
-    for i in range(nints):
-        scimask = np.isnan(cube[i])
-        c, f, fe, npx = soss_boxextract.box_extract(cube[i], ecube[i], scimask,
-                                                    weights)
-        flux_o1[i] = f
-        ferr_o1[i] = fe
-        c, f, fe, npx = soss_boxextract.box_extract(cube[i], ecube[i], scimask,
-                                                    weights2)
-        flux_o2[i] = f
-        ferr_o2[i] = fe
+    fancyprint('Extracting Order 1')
+    flux_o1, ferr_o1 = do_box_extraction(cube, ecube, y1, width=soss_width)
+    fancyprint('Extracting Order 2')
+    flux_o2, ferr_o2 = do_box_extraction(cube, ecube, y2, width=soss_width,
+                                         extract_end=len(y2))
 
     # Get default wavelength solution.
     step = calwebb_spec2.extract_1d_step.Extract1dStep()
@@ -332,7 +367,77 @@ def box_extract(datafiles, centroids, soss_width):
     wave_o1 = np.mean(fits.getdata(wavemap, 1)[20:-20, 20:-20], axis=0)
     wave_o2 = np.mean(fits.getdata(wavemap, 2)[20:-20, 20:-20], axis=0)
 
-    return wave_o1, flux_o1, ferr_o1, wave_o2, flux_o2, ferr_o2
+    return wave_o1, flux_o1, ferr_o1, wave_o2, flux_o2, ferr_o2, soss_width
+
+
+def do_box_extraction(cube, err, ypos, width, extract_start=0,
+                      extract_end=None, progress=True):
+    """Do intrapixel aperture extraction.
+
+    Parameters
+    ----------
+    cube : array-like(float)
+        Data cube.
+    err : array-like(float)
+        Error cube.
+    ypos : array-like(float)
+        Detector Y-positions to extract.
+    width : int
+        Full-width of the extraction aperture to use.
+    extract_start : int
+        Detector X-position at which to start extraction.
+    extract_end : int, None
+        Detector X-position at which to end extraction.
+    progress : bool
+        if True, show extraction progress bar.
+
+    Returns
+    -------
+    f : np.array(float)
+        Extracted flux values.
+    ferr : np.array(float)
+         Extracted error values.
+    """
+
+    # Ensure data and errors are the same shape.
+    assert np.shape(cube) == np.shape(err)
+    nint, dimy, dimx = np.shape(cube)
+
+    # If extraction end is not specified, extract the whole frame.
+    if extract_end is None:
+        extract_end = dimx
+
+    # Initialize output arrays.
+    f, ferr = np.zeros((nint, dimx)), np.zeros((nint, dimx))
+
+    # Determine the upper and lower edges of the extraction region. Cut at
+    # detector edges if necessary.
+    edge_up = np.min([ypos + width / 2, np.ones_like(ypos) * dimy], axis=0)
+    edge_low = np.max([ypos - width / 2, np.zeros_like(ypos)], axis=0)
+
+    # Loop over all integrations and sum flux within the extraction aperture.
+    for i in tqdm(range(nint), disable=not progress):
+        for x in range(extract_start, extract_end):
+            # First sum the whole pixel components within the aperture.
+            up_whole = np.floor(edge_up[x]).astype(int)
+            low_whole = np.ceil(edge_low[x]).astype(int)
+            this_flux = np.sum(cube[i, low_whole:up_whole, x])
+            this_err = np.sum(err[i, low_whole:up_whole, x]**2)
+
+            # Now incorporate the partial pixels at the upper and lower edges.
+            if edge_up[x] >= (dimy-1) or edge_low[x] == 0:
+                continue
+            else:
+                up_part = edge_up[x] % 1
+                low_part = 1 - edge_low[x] % 1
+                this_flux += (up_part * cube[i, up_whole, x] +
+                              low_part * cube[i, low_whole, x])
+                this_err += (up_part * err[i, up_whole, x]**2 +
+                             low_part * err[i, low_whole, x]**2)
+                f[i, x] = this_flux
+                ferr[i, x] = np.sqrt(this_err)
+
+    return f, ferr
 
 
 def do_ccf(wave, flux, err, mod_flux, nsteps=1000):
@@ -396,7 +501,7 @@ def do_ccf(wave, flux, err, mod_flux, nsteps=1000):
 def format_extracted_spectra(datafiles, times, extract_params, target_name,
                              st_teff=None, st_logg=None, st_met=None,
                              throughput=None, pwcpos=None, output_dir='./',
-                             save_results=True):
+                             save_results=True, use_pastasoss=False):
     """Unpack the outputs of the 1D extraction and format them into
     lightcurves at the native detector resolution.
 
@@ -423,7 +528,11 @@ def format_extracted_spectra(datafiles, times, extract_params, target_name,
     throughput : str
         Path to JWST spectrace reference file.
     pwcpos : float
-        Filter wheel position.
+        Filter wheel position. Only necessary is use_pastasoss is True.
+    use_pastasoss : bool
+        If True, use pastasoss package to predict wavelength solution based on
+        pupil wheel position. Note that this will only allow the extraction of
+        order 2 from 0.6 - 0.85µm.
 
     Returns
     -------
@@ -434,10 +543,13 @@ def format_extracted_spectra(datafiles, times, extract_params, target_name,
     fancyprint('Formatting extracted 1d spectra.')
     # Box extract outputs will just be a tuple of arrays.
     if isinstance(datafiles, tuple):
+        wave1d_o1 = datafiles[0]
         flux_o1 = datafiles[1]
         ferr_o1 = datafiles[2]
+        wave1d_o2 = datafiles[3]
         flux_o2 = datafiles[4]
         ferr_o2 = datafiles[5]
+
     # Whereas ATOCA extract outputs are in the atoca extract1dstep format.
     else:
         # Open the datafiles, and pack the wavelength, flux, and flux error
@@ -446,33 +558,47 @@ def format_extracted_spectra(datafiles, times, extract_params, target_name,
         for i, file in enumerate(datafiles):
             segment = utils.unpack_atoca_spectra(file)
             if i == 0:
+                wave2d_o1 = segment[1]['WAVELENGTH']
                 flux_o1 = segment[1]['FLUX']
                 ferr_o1 = segment[1]['FLUX_ERROR']
+                wave2d_o2 = segment[2]['WAVELENGTH']
                 flux_o2 = segment[2]['FLUX']
                 ferr_o2 = segment[2]['FLUX_ERROR']
             else:
+                wave2d_o1 = np.concatenate([wave2d_o1, segment[1]['WAVELENGTH']])
                 flux_o1 = np.concatenate([flux_o1, segment[1]['FLUX']])
                 ferr_o1 = np.concatenate([ferr_o1, segment[1]['FLUX_ERROR']])
+                wave2d_o2 = np.concatenate([wave2d_o2, segment[2]['WAVELENGTH']])
                 flux_o2 = np.concatenate([flux_o2, segment[2]['FLUX']])
                 ferr_o2 = np.concatenate([ferr_o2, segment[2]['FLUX_ERROR']])
+        # Create 1D wavelength axes from the 2D wavelength solution.
+        wave1d_o1, wave1d_o2 = wave2d_o1[0], wave2d_o2[0]
 
-    # Get wavelength solution.
-    # First, use PASTASOSS to predict wavelength solution from pupil wheel
-    # position.
-    wave1d_o1 = pastasoss.get_soss_traces(pwcpos=pwcpos, order='1',
-                                          interp=True).wavelength
-    soln_o2 = pastasoss.get_soss_traces(pwcpos=pwcpos, order='2',
-                                        interp=True)
-    xpos_o2, wave1d_o2 = soln_o2.x.astype(int), soln_o2.wavelength
-    # Trim extracted quantities to match shapes of pastasoss quantities.
-    flux_o1 = flux_o1[:, 4:-4]
-    ferr_o1 = ferr_o1[:, 4:-4]
-    flux_o2 = flux_o2[:, xpos_o2]
-    ferr_o2 = ferr_o2[:, xpos_o2]
+    # Refine wavelength solution.
+    if use_pastasoss is True:
+        # Use PASTASOSS to predict wavelength solution from pupil wheel
+        # position.
+        # Note that PASTASOSS only predicts positions and thus wavelengths for
+        # order 2 bluewards of ~0.9µm. Therefore, the whole frame cannot be
+        # extracted for order 2. PASTASOSS also does not take into account any
+        # TA inaccuracies resulting in the position of the target trace not
+        # being in the center of the frame - which will effect the resulting
+        # wavelength solution.
+        fancyprint('Using PASTASOSS to predict wavelength solution.')
+        wave1d_o1 = pastasoss.get_soss_traces(pwcpos=pwcpos, order='1',
+                                              interp=True).wavelength
+        soln_o2 = pastasoss.get_soss_traces(pwcpos=pwcpos, order='2',
+                                            interp=True)
+        xpos_o2, wave1d_o2 = soln_o2.x.astype(int), soln_o2.wavelength
+        # Trim extracted quantities to match shapes of pastasoss quantities.
+        flux_o1 = flux_o1[:, 4:-4]
+        ferr_o1 = ferr_o1[:, 4:-4]
+        flux_o2 = flux_o2[:, xpos_o2]
+        ferr_o2 = ferr_o2[:, xpos_o2]
 
-    # Now cross-correlate with stellar model.
+    # Cross-correlate with stellar model.
     # If one or more of the stellar parameters are not provided, use the
-    # wavelength solution from pastasoss.
+    # existing wavelength solution.
     if None in [st_teff, st_logg, st_met]:
         fancyprint('Stellar parameters not provided. '
                    'Using default wavelength solution.', msg_type='WARNING')
@@ -512,15 +638,9 @@ def format_extracted_spectra(datafiles, times, extract_params, target_name,
         wave1d_o1 += wave_shift
         wave1d_o2 += wave_shift
 
-    # Restrict order 2 to only the useful bit (0.6 - 0.85µm).
-    ii = np.where((wave1d_o2 >= 0.6) & (wave1d_o2 < 0.85))[0]
-    wave1d_o2 = wave1d_o2[ii]
-    flux_o2 = flux_o2[:, ii]
-    ferr_o2 = ferr_o2[:, ii]
-
-    # Clip remaining 3-sigma outliers.
-    flux_o1_clip = utils.sigma_clip_lightcurves(flux_o1, ferr_o1)
-    flux_o2_clip = utils.sigma_clip_lightcurves(flux_o2, ferr_o2)
+    # Clip remaining 5-sigma outliers.
+    flux_o1_clip = utils.sigma_clip_lightcurves(flux_o1)
+    flux_o2_clip = utils.sigma_clip_lightcurves(flux_o2)
 
     # Pack the lightcurves into the output format.
     # Put 1D extraction parameters in the output file header.

@@ -8,8 +8,6 @@ Created on Wed Jul 27 14:35 2022
 Juliet light curve fitting script.
 """
 
-import warnings
-
 from astropy.io import fits
 import copy
 from datetime import datetime
@@ -89,6 +87,7 @@ formatted_names = {'P_p1': r'$P$', 't0_p1': r'$T_0$', 'p_p1': r'$R_p/R_*$',
                    'a_p1': r'$a/R_*$', 'sigma_w_SOSS': r'$\sigma_w$',
                    'theta0_SOSS': r'$\theta_0$', 'theta1_SOSS': r'$\theta_1$',
                    'theta2_SOSS': r'$\theta_2$', 'theta3_SOSS': r'$\theta_3$',
+                   'theta4_SOSS': r'$\theta_4$', 'theta5_SOSS': r'$\theta_5$',
                    'GP_sigma_SOSS': r'$GP \sigma$',
                    'GP_rho_SOSS': r'$GP \rho$', 'GP_S0_SOSS': r'$GP S0$',
                    'GO_omega0_SOSS': r'$GP \Omega_0$', 'GP_Q_SOSS': r'$GP Q$',
@@ -129,12 +128,10 @@ baseline_ints = utils.format_out_frames(config['baseline_ints'])
 results_dict = {}
 for order in config['orders']:
     first_time = True
-    expected_file = outdir + 'lightcurve_fit_order{0}{1}.pdf'.format(order, fit_suffix)
-    if config['do_plots'] is True and expected_file not in all_files:
+    if config['do_plots'] is True:
+        expected_file = outdir + 'lightcurve_fit_order{0}{1}.pdf'.format(order, fit_suffix)
         outpdf = matplotlib.backends.backend_pdf.PdfPages(expected_file)
-        doplot = True
     else:
-        doplot = False
         outpdf = None
 
     # === Set Up Priors and Fit Parameters ===
@@ -191,6 +188,7 @@ for order in config['orders']:
         calculate = True
         # First check if LD coefficient files have been provided.
         if config['ldcoef_file_o{}'.format(order)] is not None:
+            calculate = False
             fancyprint('Reading limb-darkening coefficient file.')
             try:
                 q1, q2 = stage4.read_ld_coefs(config['ldcoef_file_o{}'.format(order)],
@@ -198,9 +196,8 @@ for order in config['orders']:
             except ValueError:
                 msg = 'LD coefficient file could not be correctly parsed. ' \
                       'Falling back onto LD calculation.'
-                warnings.warn(msg)
+                fancyprint(msg, msg_type='WARNING')
                 calculate = True
-            calculate = False
         if calculate is True:
             # Calculate LD coefficients on specified wavelength grid.
             fancyprint('Calculating limb-darkening coefficients.')
@@ -269,7 +266,7 @@ for order in config['orders']:
     # make summary plots if necessary.
     fancyprint('Summarizing fit results.')
     data = np.ones((nints, nbins)) * np.nan
-    models = np.ones((2, nints, nbins)) * np.nan
+    models = np.ones((3, nints, nbins)) * np.nan
     residuals = np.ones((nints, nbins)) * np.nan
     order_results = {'dppm': [], 'dppm_err': [], 'wave': wave,
                      'wave_err': np.mean([wave - wave_low, wave_up - wave],
@@ -301,77 +298,81 @@ for order in config['orders']:
             order_results['dppm_err'].append(np.max([err_up, err_low]))
 
         # Make summary plots.
-        if skip is False and doplot is True:
-            try:
-                # Plot transit model and residuals.
+        if skip is False and config['do_plots'] is True:
+            # Plot transit model and residuals.
+            if config['gp_file'] is not None:
+                # Hack to get around weird bug where ray fits with GPs end
+                # up being read only.
+                outdir_i = outdir + 'speclightcurve{2}/order{0}_{1}'.format(order, wavebin, fit_suffix)
+                dataset = juliet.load(priors=prior_dict[wavebin],
+                                      t_lc={'SOSS': data_dict[wavebin]['times']},
+                                      y_lc={'SOSS': data_dict[wavebin]['flux']},
+                                      yerr_lc={'SOSS': data_dict[wavebin]['error']},
+                                      GP_regressors_lc={'SOSS': data_dict[wavebin]['GP_parameters']},
+                                      out_folder=outdir_i)
+                results = dataset.fit(sampler='dynesty')
+                transit_model, comp = results.lc.evaluate('SOSS',
+                                                          GPregressors=t,
+                                                          return_components=True)
+            else:
+                transit_model, comp = fit_results[wavebin].lc.evaluate('SOSS', return_components=True)
+            scatter = np.median(fit_results[wavebin].posteriors['posterior_samples']['sigma_w_SOSS'])
+            nfit = len(np.where(config['dists'] != 'fixed')[0])
+            t0_loc = np.where(np.array(config['params']) == 't0_p1')[0][0]
+            if config['dists'][t0_loc] == 'fixed':
+                t0 = config['hyperps'][t0_loc]
+            else:
+                t0 = np.median(fit_results[wavebin].posteriors['posterior_samples']['t0_p1'])
+
+            # Get systematics and transit models.
+            if config['lm_file'] is not None:
                 if config['gp_file'] is not None:
-                    # Hack to get around weird bug where ray fits with GPs end
-                    # up being read only.
-                    outdir_i = outdir + 'speclightcurve{2}/order{0}_{1}'.format(order, wavebin, fit_suffix)
-                    dataset = juliet.load(priors=prior_dict[wavebin],
-                                          t_lc={'SOSS': data_dict[wavebin]['times']},
-                                          y_lc={'SOSS': data_dict[wavebin]['flux']},
-                                          yerr_lc={'SOSS': data_dict[wavebin]['error']},
-                                          GP_regressors_lc={'SOSS': data_dict[wavebin]['GP_parameters']},
-                                          out_folder=outdir_i)
-                    results = dataset.fit(sampler='dynesty')
-                    transit_model, comp = results.lc.evaluate('SOSS',
-                                                              GPregressors=t,
-                                                              return_components=True)
-                else:
-                    transit_model, comp = fit_results[wavebin].lc.evaluate('SOSS', return_components=True)
-                scatter = np.median(fit_results[wavebin].posteriors['posterior_samples']['sigma_w_SOSS'])
-                nfit = len(np.where(config['dists'] != 'fixed')[0])
-                t0_loc = np.where(np.array(config['params']) == 't0_p1')[0][0]
-                if config['dists'][t0_loc] == 'fixed':
-                    t0 = config['hyperps'][t0_loc]
-                else:
-                    t0 = np.median(fit_results[wavebin].posteriors['posterior_samples']['t0_p1'])
-
-                # Get systematics and transit models.
-                systematics = None
-                if np.any([config['gp_file'], config['lm_file']]) is not None:
-                    if config['gp_file'] is not None:
-                        gp_model = transit_model - comp['transit'] - comp['lm']
-                    else:
-                        gp_model = np.zeros_like(t)
+                    gp_model = transit_model - comp['transit'] - comp['lm']
                     systematics = gp_model + comp['lm']
-                plotting.make_lightcurve_plot(t=(t - t0)*24,
-                                              data=norm_flux[:, i],
-                                              model=transit_model,
-                                              scatter=scatter,
-                                              errors=norm_err[:, i],
-                                              outpdf=outpdf, nfit=nfit,
-                                              title='bin {0} | {1:.3f}µm'.format(i, wave[i]),
-                                              systematics=systematics,
-                                              rasterized=True)
-                # Corner plot for fit.
-                if config['include_corner'] is True:
-                    fit_params, posterior_names = [], []
-                    for param, dist in zip(config['params'], config['dists']):
-                        if dist != 'fixed':
-                            fit_params.append(param)
-                            if param in formatted_names.keys():
-                                posterior_names.append(formatted_names[param])
-                            else:
-                                posterior_names.append(param)
-                    plotting.make_corner_plot(fit_params, fit_results[wavebin],
-                                              posterior_names=posterior_names,
-                                              outpdf=outpdf)
+                else:
+                    systematics = comp['lm']
+                    gp_model = None
+            else:
+                systematics = None
+                gp_model = None
 
-                data[:, i] = norm_flux[:, i]
-                models[0, :, i] = transit_model
-                if systematics is not None:
-                    models[1, :, i] = systematics
-                residuals[:, i] = norm_flux[:, i] - transit_model
-            except:
-                pass
+            plotting.make_lightcurve_plot(t=(t - t0)*24,
+                                          data=norm_flux[:, i],
+                                          model=transit_model,
+                                          scatter=scatter,
+                                          errors=norm_err[:, i],
+                                          outpdf=outpdf, nfit=nfit,
+                                          title='bin {0} | {1:.3f}µm'.format(i, wave[i]),
+                                          systematics=systematics,
+                                          rasterized=True)
+            # Corner plot for fit.
+            if config['include_corner'] is True:
+                fit_params, posterior_names = [], []
+                for param, dist in zip(config['params'], config['dists']):
+                    if dist != 'fixed':
+                        fit_params.append(param)
+                        if param in formatted_names.keys():
+                            posterior_names.append(formatted_names[param])
+                        else:
+                            posterior_names.append(param)
+                plotting.make_corner_plot(fit_params, fit_results[wavebin],
+                                          posterior_names=posterior_names,
+                                          outpdf=outpdf)
+
+            data[:, i] = norm_flux[:, i]
+            models[0, :, i] = transit_model
+            if systematics is not None:
+                models[1, :, i] = systematics
+            if gp_model is not None:
+                models[2, :, i] = gp_model
+            residuals[:, i] = norm_flux[:, i] - transit_model
+
     results_dict['order {}'.format(order)] = order_results
     # Save best-fitting light curve models.
     np.save(outdir + 'speclightcurve{0}/'
                      '_models_order{1}.npy'.format(fit_suffix, order), models)
     # Plot 2D lightcurves.
-    if doplot is True:
+    if config['do_plots'] is True:
         plotting.make_2d_lightcurve_plot(wave, data, outpdf=outpdf,
                                          title='Normalized Lightcurves')
         plotting.make_2d_lightcurve_plot(wave, models[0], outpdf=outpdf,

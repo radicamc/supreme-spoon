@@ -11,32 +11,61 @@ input_dir : 'DMS_uncal/'
 input_filetag : 'uncal'
 
 # ===== Stage 1 Input Files & Parameters =====
+# List of stage 1 steps to run or skip.
+DQInitStep : 'run'
+SaturationStep : 'run'
+SuperBiasStep : 'run'
+RefPixStep : 'run'
+DarkCurrentStep : 'skip'
+OneOverFStep_grp : 'run'
+LinearityStep : 'run'
+JumpStep : 'run'
+RampFitStep : 'run'
+GainScaleStep : 'run'
 # Background model. Default model available here:
 # https://jwst-docs.stsci.edu/jwst-near-infrared-imager-and-slitless-spectrograph/niriss-observing-strategies/niriss-soss-recommended-strategies
 background_file : 'model_background256.npy'
+# 1/f correction method; either 'scale-achromatic', 'scale-achromatic-window', 'scale-chromatic', or 'solve'.
+oof_method : 'scale-achromatic'
+# For 1/f correction; estimate of 1D or 2D timeseries for order 1 (optional).
+timeseries : None
+# For 1/f correction; estimate of 2D timeseries for order 2. Only necessary if oof_method is "scale-chromatic".
+timeseries_o2 : None
 # For 1/f correction; outlier pixel maps (optional).
 outlier_maps : None
-# For 1/f correction; estimate of white light curve (optional).
-smoothed_wlc : None
+# For jump detection; whether to flag outliers up-the-ramp (jwst default).
+flag_up_ramp : False
 # For jump detection; sigma threshold for a pixel to be flagged as an outlier.
-rejection_threshold : 15
+jump_threshold : 15
 # For jump detection; whether to also flag outliers in the time domain.
-flag_in_time : False
+flag_in_time : True
 # For time domain jump detection; sigma threshold for a pixel to be flagged as an outlier.
-time_rejection_threshold : 10
-# List of Stage 1 steps to skip, if any.
-stage1_skip : None
+time_jump_threshold : 10
 # DMS Stage 1 kwargs. Format should be: {'step_name': {'kwd': value}}.
 stage1_kwargs : {}
 
 # ===== Stage 2 Input Files & Parameters =====
+# List of stage 2 steps to run or skip.
+AssignWCSStep : 'run'
+SourceTypeStep: 'run'
+FlatFieldStep : 'run'
+BackgroundStep : 'run'
+OneOverFStep_int : 'skip'
+BadPixStep : 'run'
+TracingStep : 'run'
+# For outlier detection; sigma threshold for a pixel to be flagged as an outlier, spatially.
+space_outlier_threshold : 15
+# For outlier detection; sigma threshold for a pixel to be flagged as an outlier, temporally.
+time_outlier_threshold : 10
 # If True, create a mask of the target trace orders.
 generate_tracemask : True
-# If True, calculate the stability of the SOSS trace over the course of the
-# TSO using principle component analysis.
+# Width, in pixels, of inner trace mask. Only necessary if generate_tracemask is True.
+inner_mask_width : 40
+# Width, in pixels, of outer trace mask. Only necessary if generate_tracemask is True.
+outer_mask_width : 70
+# If True, calculate the stability of the SOSS trace over the course of the TSO using principle component analysis.
 calculate_stability : True
-# Number of principle components to extract. Only neceesary if calculate_stability_pca
-# is True.
+# Number of principle components to extract. Only necessary if calculate_stability is True.
 pca_components : 10
 # If True, generate a smoothed estimate of the order 1 white light curve.
 generate_lc : True
@@ -44,18 +73,17 @@ generate_lc : True
 smoothing_scale : None
 # If True, use an F277W filter exposure to create a mask of background order 0s.
 generate_order0_mask : False
-# Path to a processed (superbias and background subtracted) F277W exposure data frame
-# (optional). Only necessary if generate_order0_mask is True.
+# Path to a processed (superbias and background subtracted) F277W exposure data frame (optional). Only necessary if
+# generate_order0_mask is True.
 f277w : None
-# List of Stage 2 steps to skip, if any.
-stage2_skip : None
 # DMS Stage 2 kwargs. Format should be: {'step_name': {'kwd': value}}.
 stage2_kwargs : {}
 
 # ===== Stage 3 Input Files & Parameters =====
 # Extraction method: box or atoca.
 extract_method : 'box'
-# Box width to extract around the trace center.
+# Box width to extract around the trace center. Passing 'optimize' will find and use the aperture width that minimizes
+# the white light curve scatter.
 soss_width : 40
 # Specprofile reference file for ATOCA (optional).
 specprofile : None
@@ -63,12 +91,14 @@ specprofile : None
 centroids : None
 # Stellar effective temperature in K for wavelength calibration (optional).
 st_teff : None
-# Stellar log surface gravity for wavelength calibration (optional)
+# Stellar log surface gravity for wavelength calibration (optional).
 st_logg: None
 # Stellar metallicity as [Fe/H] for wavelength calibration (optional).
 st_met : None
 # Planet letter designation.
 planet_letter : 'b'
+# DMS Stage 3 kwargs. Format should be: {'step_name': {'kwd': value}}.
+stage3_kwargs : {}
 
 # ===== Other General Parameters =====
 # Name tag for output file directory.
@@ -81,8 +111,8 @@ exposure_type : 'CLEAR'
 save_results : True
 # Force redo of steps which have already been completed.
 force_redo : False
-# Integrations of ingress and egress.
+# Integrations of ingress and/or egress.
 baseline_ints : [50, -50]
 # If True, make diagnostic plots.
-do_plots : False
+do_plots : True
 # ========================= END DMS CONFIG FILE =============================

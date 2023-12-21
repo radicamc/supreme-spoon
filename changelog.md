@@ -1,12 +1,30 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+### [1.3.0] -- 2023-12-21
+#### Added
+- Compatibility with v1.12.5 of the STScI jwst package.
+- Variety of utility functions to supplement pipeline functionalities.
+- Further improvements in bad pixel correction.
+- Updated intrapixel box extraction algorithm.
+- Optimization of box extraction width.
+- Multiple new 1/f corrections, including chromatic and windowed methods.
+- Dark current subtraction step in Stage 1.
+- Re-addition of reference pixel correction in Stage 1. 
+- Some improvements to diagnostic plotting.
+- Automated differential background scaling.
+- Misc. bug fixes. 
+
+#### Removed
+- Useless GroupScaleStep.
+- Several unneeded functions.
+
 ### [1.2.0] -- 2023-11-21
 #### Added
 - Best fitting transit models are saved by default.
 - Limb-darkening coefficients are automatically calculated at desired binning during light curve fitting.
 - Streamline process for fitting (free or prior) or fixing LD coefficients during fits. 
-- Incorporate PASTASOSS to calculate SOSS wavelength solution pased on pupil wheel position. 
+- Incorporate PASTASOSS to calculate SOSS wavelength solution based on pupil wheel position. 
 - Option to specify background estimation region.
 - Improvements to bad pixel interpolation.
 - extra_functions.py for potentially helpful functions not directly used by the pipeline.
