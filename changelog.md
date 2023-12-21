@@ -1,7 +1,7 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
-### [1.3.0] -- 2023-12-06
+### [1.3.0] -- 2023-12-21
 #### Added
 - Compatibility with v1.12.5 of the STScI jwst package.
 - Variety of utility functions to supplement pipeline functionalities.

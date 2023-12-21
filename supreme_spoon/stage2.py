@@ -1187,7 +1187,7 @@ def soss_stability_pca(cube, n_components=10, outfile=None, do_plot=False,
 
     # Do PCA.
     pca = PCA(n_components=n_components)
-    thispca = pca.fit(cube2.transpose())
+    pca.fit(cube2.transpose())
 
     # Get PCA results.
     pcs = pca.components_
@@ -1385,18 +1385,14 @@ def run_stage2(results, background_model, baseline_ints, save_results=True,
     # Custom DMS step.
     if 'TracingStep' not in skip_steps:
         step = TracingStep(results, deepframe=deepframe, output_dir=outdir)
-        step_results = step.run(calculate_stability=calculate_stability,
-                                pca_components=pca_components,
-                                generate_tracemask=generate_tracemask,
-                                inner_mask_width=inner_mask_width,
-                                outer_mask_width=outer_mask_width,
-                                pixel_flags=pixel_masks,
-                                generate_order0_mask=generate_order0_mask,
-                                f277w=f277w,
-                                generate_lc=generate_lc,
-                                baseline_ints=baseline_ints,
-                                smoothing_scale=smoothing_scale,
-                                save_results=save_results, do_plot=do_plot,
-                                show_plot=show_plot, force_redo=force_redo)
+        step.run(calculate_stability=calculate_stability,
+                 pca_components=pca_components,
+                 generate_tracemask=generate_tracemask,
+                 inner_mask_width=inner_mask_width,
+                 outer_mask_width=outer_mask_width, pixel_flags=pixel_masks,
+                 generate_order0_mask=generate_order0_mask, f277w=f277w,
+                 generate_lc=generate_lc, baseline_ints=baseline_ints,
+                 smoothing_scale=smoothing_scale, save_results=save_results,
+                 do_plot=do_plot, show_plot=show_plot, force_redo=force_redo)
 
     return results

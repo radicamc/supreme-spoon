@@ -472,8 +472,7 @@ def make_lightcurve_plot(t, data, model, scatter, errors, nfit, outpdf=None,
     mean_err = np.nanmean(errors)
     err_mult = scatter / (mean_err*1e6)
     ax1.text(t[2], np.min(model),
-             r'$\chi_\nu^2 = {:.2f}$''\n'r'$\sigma={:.2f}$ppm''\n'r'$e={:.2f}$'.format(
-                 chi2_v, mean_err*1e6, err_mult),
+             r'$\chi_\nu^2 = {:.2f}$''\n'r'$\sigma={:.2f}$ppm''\n'r'$e={:.2f}$'.format(chi2_v, mean_err*1e6, err_mult),
              fontsize=14)
     ax1.tick_params(axis='x', labelsize=12)
     ax1.tick_params(axis='y', labelsize=12)
@@ -492,7 +491,8 @@ def make_lightcurve_plot(t, data, model, scatter, errors, nfit, outpdf=None,
                      capsize=0, color='salmon', ms=5, alpha=0.25)
         # Binned points.
         if rem != 0:
-            d_bin = data_detrended[trim_i:trim_e].reshape((nint-rem)//nbin, nbin)
+            d_bin = data_detrended[trim_i:trim_e].reshape((nint-rem)//nbin,
+                                                          nbin)
         else:
             d_bin = data_detrended.reshape((nint-rem)//nbin, nbin)
         d_bin = np.nanmean(d_bin, axis=1)
@@ -543,7 +543,8 @@ def make_lightcurve_plot(t, data, model, scatter, errors, nfit, outpdf=None,
     else:
         ax4 = plt.subplot(gs[3])
     bins = np.linspace(-10, 10, 41) + 0.25
-    hist = ax4.hist(res/scatter, edgecolor='grey', color='lightgrey', bins=bins)
+    hist = ax4.hist(res/scatter, edgecolor='grey', color='lightgrey',
+                    bins=bins)
     area = np.sum(hist[0] * np.diff(bins))
     ax4.plot(np.linspace(-15, 15, 500),
              gaus(np.linspace(-15, 15, 500), 0, 1) * area, c='black')
@@ -926,8 +927,8 @@ def make_photon_noise_plot(spectrum_files, ngroup, baseline_ints, order=1,
     base = utils.format_out_frames(baseline_ints)
 
     plt.figure(figsize=(7, 2))
-    for j, spectrum in enumerate(spectrum_files):
-        with fits.open(spectrum) as spectrum:
+    for j, spectrum_file in enumerate(spectrum_files):
+        with fits.open(spectrum_file) as spectrum:
             if order == 1:
                 spec = spectrum[3].data
             else:
@@ -1020,7 +1021,7 @@ def make_2d_lightcurve_plot(wave1, flux1, wave2=None, flux2=None, outpdf=None,
                         extent=(0, flux1.shape[0]-1, wave1[0], wave1[-1]),
                         **kwargs)
         if wave2 is None:
-            cax = ax1.inset_axes([1.05, 0.005, 0.03, 0.99],
+            cax = ax1.inset_axes((1.05, 0.005, 0.03, 0.99),
                                  transform=ax1.transAxes)
             cb = fig.colorbar(pp, ax=ax1, cax=cax)
             cb.set_label('Normalized Flux', labelpad=15, rotation=270,
@@ -1036,7 +1037,7 @@ def make_2d_lightcurve_plot(wave1, flux1, wave2=None, flux2=None, outpdf=None,
             pp = ax2.imshow(flux2.T, aspect='auto', origin='lower',
                             extent=(0, flux2.shape[0]-1, wave2[0], wave2[-1]),
                             **kwargs)
-            cax = ax2.inset_axes([1.05, 0.005, 0.03, 0.99],
+            cax = ax2.inset_axes((1.05, 0.005, 0.03, 0.99),
                                  transform=ax2.transAxes)
             cb = fig.colorbar(pp, ax=ax2, cax=cax)
             cb.set_label('Normalized Flux', labelpad=15, rotation=270,

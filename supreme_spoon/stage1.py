@@ -1328,7 +1328,6 @@ def oneoverfstep_solve(datafiles, baseline_ints, background=None,
         if ngroup == 0:
             # Integration-level correction.
             oof = np.zeros_like(cube)
-            scaling_o, scaling_e = np.zeros((nint, dimx)), np.zeros((nint, dimx))
             # Mask any potential jumps.
             cube_filt = medfilt(cube, (5, 1, 1))
             # Calculate the point-to-point scatter along the temporal axis.
@@ -1409,10 +1408,10 @@ def oneoverfstep_solve(datafiles, baseline_ints, background=None,
         # Also save 2D scaling.
         if save_results is True:
             outfile = output_dir + fileroots[0][:-12] + \
-                      '_nis_oofscaling_even_order{}.npy'.format(order)
+                '_nis_oofscaling_even_order{}.npy'.format(order)
             np.save(outfile, scaling_e)
             outfile = output_dir + fileroots[0][:-12] + \
-                      '_nis_oofscaling_odd_order{}.npy'.format(order)
+                '_nis_oofscaling_odd_order{}.npy'.format(order)
             np.save(outfile, scaling_o)
 
     # Add back the zodi background.

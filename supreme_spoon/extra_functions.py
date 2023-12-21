@@ -80,10 +80,10 @@ def download_observations(proposal_id, instrument_name=None, objectname=None,
             ii = np.where(nums == exps[visit - 1][0])[0]
             this_visit = products[ii]
             # Download the relevant files.
-            manifest = Observations.download_products(this_visit)
+            Observations.download_products(this_visit)
     else:
         # Download the relevant files.
-        manifest = Observations.download_products(products)
+        Observations.download_products(products)
 
     # Unpack auto-generated directories into something better.
     os.mkdir('DMS_uncal')
