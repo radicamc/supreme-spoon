@@ -310,10 +310,10 @@ def get_filename_root(datafiles):
     # Now assuming everything is in chronological order, just increment the
     # segment number.
     split = fileroot.split('seg')
-    for segment in range(seg_start+1, len(datafiles)+1):
+    for segment in range(seg_start+1, seg_start+len(datafiles)):
         if segment < 10:
             seg_no = 'seg00{}'.format(segment)
-        elif 10 <= segment < 99:
+        elif 10 <= segment <= 99:
             seg_no = 'seg0{}'.format(segment)
         else:
             seg_no = 'seg{}'.format(segment)
@@ -709,6 +709,7 @@ def outlier_resistant_variance(data):
     return var
 
 
+# TODO: Include something to check that inputs are correct format/not nonsensical.
 def parse_config(config_file):
     """Parse a yaml config file.
 
