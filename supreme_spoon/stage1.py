@@ -355,8 +355,15 @@ class OneOverFStep:
                         '.fits', '_2.pdf')
                 else:
                     plot_file1, plot_file2 = None, None
+
+                # For scale-chromatic correction, collapse the 2D timeseries to
+                # 1D for plotting purposes.
+                if self.method == 'scale-chromatic':
+                    this_ts = np.nanmedian(self.timeseries, axis=1)
+                else:
+                    this_ts = self.timeseries
                 plotting.make_oneoverf_plot(results,
-                                            timeseries=self.timeseries,
+                                            timeseries=this_ts,
                                             baseline_ints=self.baseline_ints,
                                             outfile=plot_file1,
                                             show_plot=show_plot)
@@ -366,7 +373,7 @@ class OneOverFStep:
                 else:
                     window = False
                 plotting.make_oneoverf_psd(results, self.datafiles,
-                                           timeseries=self.timeseries,
+                                           timeseries=this_ts,
                                            baseline_ints=self.baseline_ints,
                                            pixel_masks=self.pixel_masks,
                                            outfile=plot_file2,

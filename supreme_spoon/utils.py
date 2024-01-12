@@ -794,11 +794,11 @@ def save_extracted_spectra(filename, wl1, wu1, f1, e1, wl2, wu2, f2, e2, t,
     hdu3 = fits.ImageHDU(wu1, header=hdr)
     hdr = fits.Header()
     hdr['EXTNAME'] = "Flux O1"
-    hdr['UNITS'] = "Electrons"
+    hdr['UNITS'] = "DN/s"
     hdu4 = fits.ImageHDU(f1, header=hdr)
     hdr = fits.Header()
     hdr['EXTNAME'] = "Flux Err O1"
-    hdr['UNITS'] = "Electrons"
+    hdr['UNITS'] = "DN/s"
     hdu5 = fits.ImageHDU(e1, header=hdr)
 
     # Pack order 2 values.
@@ -812,17 +812,17 @@ def save_extracted_spectra(filename, wl1, wu1, f1, e1, wl2, wu2, f2, e2, t,
     hdu7 = fits.ImageHDU(wu2, header=hdr)
     hdr = fits.Header()
     hdr['EXTNAME'] = "Flux O2"
-    hdr['UNITS'] = "Electrons"
+    hdr['UNITS'] = "DN/s"
     hdu8 = fits.ImageHDU(f2, header=hdr)
     hdr = fits.Header()
     hdr['EXTNAME'] = "Flux Err O2"
-    hdr['UNITS'] = "Electrons"
+    hdr['UNITS'] = "DN/s"
     hdu9 = fits.ImageHDU(e2, header=hdr)
 
     # Pack time axis.
     hdr = fits.Header()
     hdr['EXTNAME'] = "Time"
-    hdr['UNITS'] = "BJD"
+    hdr['UNITS'] = "MJD"
     hdu10 = fits.ImageHDU(t, header=hdr)
 
     if save_results is True:
