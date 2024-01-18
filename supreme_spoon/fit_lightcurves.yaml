@@ -63,6 +63,9 @@ teff : None
 # Path to ExoTiC-LD Reference Files
 # See ExoTiC-LD documentation for more info: https://exotic-ld.readthedocs.io/en/latest/views/installation.html.
 ld_data_path :
+# Stellar models to use for limb-darkening calculation.
+# See ExoTiC-LD documentation for more info.
+ld_model_type : 'stagger'
 # Path to JWST spectrace Reference File
 # Will be in crds_cache with file name like jwst_niriss_spectrace_XXXX.fits
 spectrace_ref : './crds_cache/references/jwst/niriss/jwst_niriss_spectrace_0023.fits'
