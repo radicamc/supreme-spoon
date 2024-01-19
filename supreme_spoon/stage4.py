@@ -344,8 +344,8 @@ def fit_lightcurves(data_dict, prior_dict, order, output_dir, fit_suffix,
     return results
 
 
-def gen_ld_coefs(spectrace_ref, wavebin_low, wavebin_up, order, m_h, logg, teff,
-                 ld_data_path, model_type='stagger'):
+def gen_ld_coefs(spectrace_ref, wavebin_low, wavebin_up, order, m_h, logg,
+                 teff, ld_data_path, model_type='stagger'):
     """Generate estimates of quadratic limb-darkening coefficients using the
     ExoTiC-LD package.
 

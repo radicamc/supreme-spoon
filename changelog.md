@@ -1,6 +1,11 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+### [1.3.1] -- 2024-01-19
+#### Added
+- Fixed implementation of STScI up-the-ramp JumpStep which would not run consistently.
+- Made it easier to select stellar models to use for limb-darkening calculation in Stage 4. 
+
 ### [1.3.0] -- 2023-12-21
 #### Added
 - Compatibility with v1.12.5 of the STScI jwst package.

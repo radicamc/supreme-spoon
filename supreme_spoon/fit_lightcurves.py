@@ -207,7 +207,8 @@ for order in config['orders']:
             assert np.all(np.array([m_h, logg, teff]) != None), msg
             c1, c2 = stage4.gen_ld_coefs(config['spectrace_ref'], wave_low,
                                          wave_up, order, m_h, logg, teff,
-                                         config['ld_data_path'])
+                                         config['ld_data_path'],
+                                         model_type=config['ld_model_type'])
             q1, q2 = juliet.reverse_q_coeffs('quadratic', c1, c2)
             # Save calculated coefficients.
             target = fits.getheader(config['infile'], 0)['TARGET']

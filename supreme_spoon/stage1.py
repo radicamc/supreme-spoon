@@ -355,8 +355,15 @@ class OneOverFStep:
                         '.fits', '_2.pdf')
                 else:
                     plot_file1, plot_file2 = None, None
+
+                # For scale-chromatic correction, collapse the 2D timeseries to
+                # 1D for plotting purposes.
+                if self.method == 'scale-chromatic':
+                    this_ts = np.nanmedian(self.timeseries, axis=1)
+                else:
+                    this_ts = self.timeseries
                 plotting.make_oneoverf_plot(results,
-                                            timeseries=self.timeseries,
+                                            timeseries=this_ts,
                                             baseline_ints=self.baseline_ints,
                                             outfile=plot_file1,
                                             show_plot=show_plot)
@@ -366,7 +373,7 @@ class OneOverFStep:
                 else:
                     window = False
                 plotting.make_oneoverf_psd(results, self.datafiles,
-                                           timeseries=self.timeseries,
+                                           timeseries=this_ts,
                                            baseline_ints=self.baseline_ints,
                                            pixel_masks=self.pixel_masks,
                                            outfile=plot_file2,
@@ -465,8 +472,14 @@ class JumpStep:
                 # Get number of groups in the observation - ngroup=2 must be
                 # treated in a special way as the default pipeline JumpStep
                 # will fail.
+                # Also need to set minimum_sigclip_groups to something >nints,
+                # else the up-the-ramp jump detection will be replaced by a
+                # time-domain sigma clipping.
                 testfile = datamodels.open(self.datafiles[0])
                 ngroups = testfile.meta.exposure.ngroups
+                i_start = testfile.meta.exposure.integration_start
+                i_end = testfile.meta.exposure.integration_end
+                nints = i_end - i_start
                 testfile.close()
                 # For ngroup > 2, default JumpStep can be used.
                 if ngroups > 2 and flag_up_ramp is True:
@@ -474,7 +487,9 @@ class JumpStep:
                     res = step.call(segment, output_dir=self.output_dir,
                                     save_results=save_results,
                                     rejection_threshold=rejection_threshold,
-                                    maximum_cores='quarter', **kwargs)
+                                    maximum_cores='quarter',
+                                    minimum_sigclip_groups=nints+100,
+                                    **kwargs)
                 # Time domain jump step must be run for ngroup=2.
                 else:
                     res = segment

@@ -310,10 +310,10 @@ def get_filename_root(datafiles):
     # Now assuming everything is in chronological order, just increment the
     # segment number.
     split = fileroot.split('seg')
-    for segment in range(seg_start+1, len(datafiles)+1):
+    for segment in range(seg_start+1, seg_start+len(datafiles)):
         if segment < 10:
             seg_no = 'seg00{}'.format(segment)
-        elif 10 <= segment < 99:
+        elif 10 <= segment <= 99:
             seg_no = 'seg0{}'.format(segment)
         else:
             seg_no = 'seg{}'.format(segment)
@@ -709,6 +709,7 @@ def outlier_resistant_variance(data):
     return var
 
 
+# TODO: Include something to check that inputs are correct format/not nonsensical.
 def parse_config(config_file):
     """Parse a yaml config file.
 
@@ -793,11 +794,11 @@ def save_extracted_spectra(filename, wl1, wu1, f1, e1, wl2, wu2, f2, e2, t,
     hdu3 = fits.ImageHDU(wu1, header=hdr)
     hdr = fits.Header()
     hdr['EXTNAME'] = "Flux O1"
-    hdr['UNITS'] = "Electrons"
+    hdr['UNITS'] = "DN/s"
     hdu4 = fits.ImageHDU(f1, header=hdr)
     hdr = fits.Header()
     hdr['EXTNAME'] = "Flux Err O1"
-    hdr['UNITS'] = "Electrons"
+    hdr['UNITS'] = "DN/s"
     hdu5 = fits.ImageHDU(e1, header=hdr)
 
     # Pack order 2 values.
@@ -811,17 +812,17 @@ def save_extracted_spectra(filename, wl1, wu1, f1, e1, wl2, wu2, f2, e2, t,
     hdu7 = fits.ImageHDU(wu2, header=hdr)
     hdr = fits.Header()
     hdr['EXTNAME'] = "Flux O2"
-    hdr['UNITS'] = "Electrons"
+    hdr['UNITS'] = "DN/s"
     hdu8 = fits.ImageHDU(f2, header=hdr)
     hdr = fits.Header()
     hdr['EXTNAME'] = "Flux Err O2"
-    hdr['UNITS'] = "Electrons"
+    hdr['UNITS'] = "DN/s"
     hdu9 = fits.ImageHDU(e2, header=hdr)
 
     # Pack time axis.
     hdr = fits.Header()
     hdr['EXTNAME'] = "Time"
-    hdr['UNITS'] = "BJD"
+    hdr['UNITS'] = "MJD"
     hdu10 = fits.ImageHDU(t, header=hdr)
 
     if save_results is True:
