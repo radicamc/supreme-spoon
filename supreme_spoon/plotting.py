@@ -569,7 +569,7 @@ def make_linearity_plot(results, old_results, outfile=None, show_plot=True):
     """Plot group differences before and after linearity correction.
     """
 
-    fancyprint('Doing diagnostic plot.')
+    fancyprint('Doing diagnostic plot 1.')
     results = np.atleast_1d(results)
     old_results = np.atleast_1d(old_results)
     for i, file in enumerate(results):
@@ -633,6 +633,69 @@ def make_linearity_plot(results, old_results, outfile=None, show_plot=True):
         plt.close()
     else:
         plt.show()
+
+
+def make_linearity_plot2(results, old_results, outfile=None, show_plot=True):
+    """Plot residuals to flat line before and after linearity correction.
+    """
+
+    fancyprint('Doing diagnostic plot 2.')
+    results = np.atleast_1d(results)
+    old_results = np.atleast_1d(old_results)
+    for i, file in enumerate(results):
+        with utils.open_filetype(file) as datamodel:
+            if i == 0:
+                cube = datamodel.data
+            else:
+                cube = np.concatenate([cube, datamodel.data])
+    for i, file in enumerate(old_results):
+        with utils.open_filetype(file) as datamodel:
+            if i == 0:
+                old_cube = datamodel.data
+            else:
+                old_cube = np.concatenate([old_cube, datamodel.data])
+
+    nint, ngroup, dimy, dimx = np.shape(cube)
+    # Get bright pixels in the trace.
+    stack = bn.nanmedian(cube[:, -1], axis=0)
+    ii = np.where((stack >= np.nanpercentile(stack, 80)) &
+                  (stack < np.nanpercentile(stack, 99)))
+    jj = np.random.randint(0, len(ii[0]), 1000)
+    y = ii[0][jj]
+    x = ii[1][jj]
+    i = np.random.randint(0, nint, 1000)
+
+    oold = np.zeros((1000, ngroup))
+    nnew = np.zeros((1000, ngroup))
+    for j in range(1000):
+        o = old_cube[i[j], :, y[j], x[j]]
+        ol = np.linspace(np.min(o), np.max(o), ngroup)
+        oold[j] = (o - ol) / np.max(o) * 100
+        n = cube[i[j], :, y[j], x[j]]
+        nl = np.linspace(np.min(n), np.max(n), ngroup)
+        nnew[j] = (n - nl) / np.max(n) * 100
+
+    # Plot up mean group differences before and after linearity correction.
+    plt.figure(figsize=(5, 3))
+    plt.plot(np.arange(ngroup)+1, np.nanmedian(oold, axis=0),
+             label='Before Correction', c='blue')
+    plt.plot(np.arange(ngroup)+1, np.nanmedian(nnew, axis=0),
+             label='After Correction', c='red')
+    plt.axhline(0, ls='--', c='black')
+    plt.xticks(np.arange(ngroup)+1, (np.arange(ngroup)+1).astype(str))
+    plt.xlabel('Group Number', fontsize=12)
+    plt.ylabel('Residual [%]', fontsize=12)
+    plt.show()
+    plt.legend()
+
+    if outfile is not None:
+        plt.savefig(outfile, bbox_inches='tight')
+        fancyprint('Plot saved to {}'.format(outfile))
+    if show_plot is False:
+        plt.close()
+    else:
+        plt.show()
+
 
 
 def make_oneoverf_chromatic_plot(m_e, m_o, b_e, b_o, ngroup, outfile=None,

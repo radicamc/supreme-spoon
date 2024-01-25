@@ -426,12 +426,18 @@ class LinearityStep:
         # Do step plot if requested.
         if do_plot is True:
             if save_results is True:
-                plot_file = self.output_dir + self.tag.replace('.fits', '.pdf')
+                plot_file1 = self.output_dir + self.tag.replace('.fits',
+                                                                '_1.pdf')
+                plot_file2 = self.output_dir + self.tag.replace('.fits',
+                                                                '_2.pdf')
             else:
-                plot_file = None
+                plot_file1, plot_file2 = None, None
             plotting.make_linearity_plot(results, self.datafiles,
-                                         outfile=plot_file,
+                                         outfile=plot_file1,
                                          show_plot=show_plot)
+            plotting.make_linearity_plot2(results, self.datafiles,
+                                          outfile=plot_file2,
+                                          show_plot=show_plot)
 
         return results
 
