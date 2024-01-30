@@ -47,6 +47,14 @@ def make_background_row_plot(before, after, background_model, row_start=230,
     else:
         bkg = background_model
 
+    # If SUBSTRIP96, change rows to use.
+    if np.shape(af)[-2] == 96:
+        sub96 = True
+        row_start = 5
+        row_end = 21
+    else:
+        sub96 = False
+
     # Create medians.
     if np.ndim(af) == 4:
         before = bn.nanmedian(bf[:, -1], axis=0)
@@ -70,8 +78,12 @@ def make_background_row_plot(before, after, background_model, row_start=230,
 
     plt.axvline(700, ls=':', c='grey')
     plt.axhline(0, ls=':', c='grey')
-    plt.ylim(np.min([np.nanmin(aafter), np.nanmin(bbefore[700:] - bkg_scale)]),
-             np.nanpercentile(bbefore, 95))
+    if sub96 is True:
+        plt.ylim(np.min([np.nanmin(aafter), np.nanmin(bbefore[700:] - bkg_scale)]),
+                 np.nanpercentile(bbefore, 75))
+    else:
+        plt.ylim(np.min([np.nanmin(aafter), np.nanmin(bbefore[700:] - bkg_scale)]),
+                 np.nanpercentile(bbefore, 95))
     plt.xlabel('Spectral Pixel', fontsize=12)
     plt.ylabel('Counts', fontsize=12)
 
@@ -399,7 +411,12 @@ def make_jump_location_plot(results, outfile=None, show_plot=True):
                                      fill=False)
                     ax.add_patch(marker)
 
-            ax.text(30, 230, '({0}, {1})'.format(i, g), c='white', fontsize=12)
+            if dimy == 96:
+                ax.text(30, 80, '({0}, {1})'.format(i, g), c='white',
+                        fontsize=12)
+            else:
+                ax.text(30, 230, '({0}, {1})'.format(i, g), c='white',
+                        fontsize=12)
             if j != 0:
                 ax.yaxis.set_major_formatter(plt.NullFormatter())
             else:
@@ -685,7 +702,6 @@ def make_linearity_plot2(results, old_results, outfile=None, show_plot=True):
     plt.xticks(np.arange(ngroup)+1, (np.arange(ngroup)+1).astype(str))
     plt.xlabel('Group Number', fontsize=12)
     plt.ylabel('Residual [%]', fontsize=12)
-    plt.show()
     plt.legend()
 
     if outfile is not None:
@@ -695,7 +711,6 @@ def make_linearity_plot2(results, old_results, outfile=None, show_plot=True):
         plt.close()
     else:
         plt.show()
-
 
 
 def make_oneoverf_chromatic_plot(m_e, m_o, b_e, b_o, ngroup, outfile=None,
