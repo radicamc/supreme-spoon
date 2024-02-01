@@ -120,12 +120,14 @@ class BackgroundStep:
     """Wrapper around custom Background Subtraction step.
     """
 
-    def __init__(self, input_data, background_model, output_dir='./'):
+    def __init__(self, input_data, baseline_ints, background_model,
+                 output_dir='./'):
         """Step initializer.
         """
 
         self.tag = 'backgroundstep.fits'
         self.background_model = background_model
+        self.baseline_ints = baseline_ints
         self.output_dir = output_dir
         self.datafiles = utils.sort_datamodels(input_data)
         self.fileroots = utils.get_filename_root(self.datafiles)
@@ -158,6 +160,7 @@ class BackgroundStep:
                 warnings.filterwarnings('ignore')
                 step_results = backgroundstep(self.datafiles,
                                               self.background_model,
+                                              baseline_ints=self.baseline_ints,
                                               output_dir=self.output_dir,
                                               save_results=save_results,
                                               fileroots=self.fileroots,
@@ -352,7 +355,7 @@ class TracingStep:
         return centroids, tracemask, order0mask, smoothed_lc
 
 
-def backgroundstep(datafiles, background_model, output_dir='./',
+def backgroundstep(datafiles, background_model, baseline_ints, output_dir='./',
                    save_results=True, fileroots=None, fileroot_noseg='',
                    scale1=None, background_coords1=None, scale2=None,
                    background_coords2=None, differential=False):
@@ -372,6 +375,8 @@ def backgroundstep(datafiles, background_model, output_dir='./',
         themselves.
     background_model : array-like[float]
         Background model. Should be 2D (dimy, dimx)
+    baseline_ints : array-like[int]
+        Integrations of ingress and egress.
     output_dir : str
         Directory to which to save outputs.
     save_results : bool
@@ -424,9 +429,10 @@ def backgroundstep(datafiles, background_model, output_dir='./',
 
     # Make median stack of all integrations to use for background scaling.
     # This is to limit the influence of cosmic rays, which can greatly effect
-    # the background scaling factor calculated for an individual inegration.
-    fancyprint('Generating a median stack using all integrations.')
-    stack = utils.make_deepstack(cube)
+    # the background scaling factor calculated for an individual integration.
+    fancyprint('Generating a median stack using baseline integrations.')
+    baseline_ints = utils.format_out_frames(baseline_ints)
+    stack = utils.make_deepstack(cube[baseline_ints])
     # If applied at the integration level, reshape median stack to 3D.
     if np.ndim(stack) != 3:
         dimy, dimx = np.shape(stack)
@@ -1341,7 +1347,8 @@ def run_stage2(results, background_model, baseline_ints, save_results=True,
             step_kwargs = kwargs['BackgroundStep']
         else:
             step_kwargs = {}
-        step = BackgroundStep(results, background_model=background_model,
+        step = BackgroundStep(results, baseline_ints=baseline_ints,
+                              background_model=background_model,
                               output_dir=outdir)
         results = step.run(save_results=save_results, force_redo=force_redo,
                            do_plot=do_plot, show_plot=show_plot,

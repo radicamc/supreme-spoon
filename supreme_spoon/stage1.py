@@ -1603,6 +1603,7 @@ def run_stage1(results, background_model, baseline_ints=None,
         else:
             step_kwargs = {}
         step = stage2.BackgroundStep(results,
+                                     baseline_ints=baseline_ints,
                                      background_model=background_model,
                                      output_dir=outdir)
         results = step.run(save_results=save_results, force_redo=force_redo,
