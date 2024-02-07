@@ -1015,7 +1015,7 @@ def make_photon_noise_plot(spectrum_files, ngroup, baseline_ints, order=1,
             if order == 1:
                 wave = np.mean([spectrum[1].data[0], spectrum[2].data[0]],
                                axis=0)
-                ii = np.ones(2040)
+                ii = np.ones_like(wave)
             else:
                 wave = np.mean([spectrum[5].data[0], spectrum[6].data[0]],
                                axis=0)
