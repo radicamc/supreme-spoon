@@ -267,7 +267,7 @@ for order in config['orders']:
     # make summary plots if necessary.
     fancyprint('Summarizing fit results.')
     data = np.ones((nints, nbins)) * np.nan
-    models = np.ones((3, nints, nbins)) * np.nan
+    models = np.ones((4, nints, nbins)) * np.nan
     residuals = np.ones((nints, nbins)) * np.nan
     order_results = {'dppm': [], 'dppm_err': [], 'wave': wave,
                      'wave_err': np.mean([wave - wave_low, wave_up - wave],
@@ -366,6 +366,7 @@ for order in config['orders']:
                 models[1, :, i] = systematics
             if gp_model is not None:
                 models[2, :, i] = gp_model
+            models[3, :, i] = norm_flux[:, i]
             residuals[:, i] = norm_flux[:, i] - transit_model
 
     results_dict['order {}'.format(order)] = order_results
