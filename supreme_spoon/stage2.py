@@ -449,6 +449,7 @@ def backgroundstep(datafiles, background_model, baseline_ints, output_dir='./',
     fancyprint('Calculating background model scaling.')
     model_scaled = np.zeros_like(stack)
     first_time = True
+    shifts = np.zeros(ngroup)
     for i in range(ngroup):
         if scale1 is None:
             if background_coords1 is None:
@@ -468,15 +469,18 @@ def backgroundstep(datafiles, background_model, baseline_ints, output_dir='./',
                 # Convert to int if not already.
                 background_coords1 = np.array(background_coords1).astype(int)
                 xl, xu, yl, yu = background_coords1
-            bkg_ratio = stack[i, xl:xu, yl:yu] / background_model[xl:xu, yl:yu]
-            # Instead of a straight median, use the median of the 2nd quartile
-            # to limit the effect of any remaining illuminated pixels.
-            q1 = np.nanpercentile(bkg_ratio, 25)
-            q2 = np.nanpercentile(bkg_ratio, 50)
-            ii = np.where((bkg_ratio > q1) & (bkg_ratio < q2))
-            scale_factor1 = np.nanmedian(bkg_ratio[ii])
-            if scale_factor1 < 0 and differential is False:
-                scale_factor1 = 0
+            scale_factor1 = -1000
+            while scale_factor1 < 0:
+                bkg_ratio = (stack[i, xl:xu, yl:yu] + shifts[i]) / background_model[xl:xu, yl:yu]
+                # Instead of a straight median, use the median of the 2nd
+                # quartile to limit the effect of any remaining illuminated
+                # pixels.
+                q1 = np.nanpercentile(bkg_ratio, 25)
+                q2 = np.nanpercentile(bkg_ratio, 50)
+                ii = np.where((bkg_ratio > q1) & (bkg_ratio < q2))
+                scale_factor1 = np.nanmedian(bkg_ratio[ii])
+                if scale_factor1 < 0:
+                    shifts[i] -= scale_factor1 * np.median(background_model[xl:xu, yl:yu])
         else:
             scale_factor1 = scale1[i]
 
@@ -496,7 +500,7 @@ def backgroundstep(datafiles, background_model, baseline_ints, output_dir='./',
                 # Convert to int if not already.
                 background_coords2 = np.array(background_coords2).astype(int)
                 xl, xu, yl, yu = background_coords2
-            bkg_ratio = stack[i, xl:xu, yl:yu] / background_model[xl:xu, yl:yu]
+            bkg_ratio = (stack[i, xl:xu, yl:yu] + shifts[i]) / background_model[xl:xu, yl:yu]
             # Instead of a straight median, use the median of the 2nd quartile
             # to limit the effect of any remaining illuminated pixels.
             q1 = np.nanpercentile(bkg_ratio, 25)
@@ -513,18 +517,18 @@ def backgroundstep(datafiles, background_model, baseline_ints, output_dir='./',
         # Apply scaling to background model.
         if differential is True:
             fancyprint('Using differential background scale factors: {0:.5f}, '
-                       '{1:.5f}'.format(scale_factor1, scale_factor2))
+                       '{1:.5f}, and shift: {2:.5f}'.format(scale_factor1, scale_factor2, shifts[i]))
             # Locate background step.
             grad_bkg = np.gradient(background_model, axis=1)
             step_pos = np.argmax(grad_bkg[:, 10:-10], axis=1) + 10 - 4
             # Apply differential scaling to either side of step.
             for j in range(256):
-                model_scaled[i, j, :step_pos[j]] = background_model[j, :step_pos[j]] * scale_factor1
-                model_scaled[i, j, step_pos[j]:] = background_model[j, step_pos[j]:] * scale_factor2
+                model_scaled[i, j, :step_pos[j]] = background_model[j, :step_pos[j]] * scale_factor1 - shifts[i]
+                model_scaled[i, j, step_pos[j]:] = background_model[j, step_pos[j]:] * scale_factor2 - shifts[i]
         else:
-            fancyprint('Using background scale factor: {0:.5f}'
-                       ''.format(scale_factor1))
-            model_scaled[i] = background_model * scale_factor1
+            fancyprint('Using background scale factor: {0:.5f}, and shift: '
+                       '{1:.5f}'.format(scale_factor1, shifts[i]))
+            model_scaled[i] = background_model * scale_factor1 - shifts[i]
 
     # Loop over all segments in the exposure and subtract the background from
     # each of them.
@@ -632,8 +636,8 @@ def badpixstep(datafiles, baseline_ints, space_thresh=15, time_thresh=10,
     deepframe_itl = utils.make_deepstack(newdata[baseline_ints])
 
     # Get locations of all hot pixels.
-    hot_pix = utils.get_dq_flag_metrics(dq_cube[0], ['HOT', 'WARM',
-                                                     'DO_NOT_USE'])
+    hot_pix = utils.get_dq_flag_metrics(dq_cube[10], ['HOT', 'WARM',
+                                                      'DO_NOT_USE'])
 
     hotpix = np.zeros_like(deepframe_itl)
     nanpix = np.zeros_like(deepframe_itl)
