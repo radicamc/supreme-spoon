@@ -1153,7 +1153,10 @@ def make_order0_mask_from_f277w(f277w, thresh_std=1, thresh_size=10):
         for group in mit.consecutive_groups(vals):
             group = list(group)
             if len(group) > thresh_size:
-                mask[group, col] = 1
+                # Extend 3 columns and rows to either size.
+                min_g = np.max([0, np.min(group) - 3])
+                max_g = np.min([dimy - 1, np.max(group) + 3])
+                mask[min_g:max_g, (col - 3):(col + 3)] = 1
 
     return mask
 
