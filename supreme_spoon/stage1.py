@@ -1293,12 +1293,12 @@ def oneoverfstep_solve(datafiles, baseline_ints, background=None,
                 badpix = fits.getdata(file, 2)
                 # For order 1, extension 3 has the proper trace mask. It is,
                 # rather, extension 4 for order 2.
-                trace1 = fits.getdata(file, 3)
-                trace2 = fits.getdata(file, 4)
+                trace1 = fits.getdata(file, 5)
+                trace2 = fits.getdata(file, 6)
             else:
                 badpix = np.concatenate([badpix, fits.getdata(file, 2)])
-                trace1 = np.concatenate([trace1, fits.getdata(file, 3)])
-                trace2 = np.concatenate([trace2, fits.getdata(file, 4)])
+                trace1 = np.concatenate([trace1, fits.getdata(file, 5)])
+                trace2 = np.concatenate([trace2, fits.getdata(file, 6)])
         # Combine trace and bad pixel masks.
         outliers1 = (badpix.astype(bool) | trace1.astype(bool)).astype(int)
         outliers2 = (badpix.astype(bool) | trace2.astype(bool)).astype(int)
