@@ -65,6 +65,7 @@ class SpecProfileStep:
         return specprofile
 
 
+# TODO: readd soss_estimate to fix atoca
 class Extract1DStep:
     """Wrapper around default calwebb_spec2 1D Spectral Extraction step, with
     custom modifications.
@@ -137,14 +138,11 @@ class Extract1DStep:
             # Option 2: Simple aperture extraction.
             elif self.extract_method == 'box':
                 if centroids is None:
-                    # Attempt to locate and open a centroids file.
-                    centroids = self.output_dir[:-2] + '2/' + \
-                                self.fileroot_noseg + 'centroids.csv'
-                    try:
-                        centroids = pd.read_csv(centroids, comment='#')
-                    except FileNotFoundError:
-                        raise ValueError('Centroids must be provided for box '
-                                         'extraction')
+                    raise ValueError('Centroids must be provided for box '
+                                     'extraction.')
+                else:
+                    centroids = pd.read_csv(centroids, comment='#')
+
                 results = box_extract_soss(self.datafiles, centroids,
                                            soss_width, do_plot=do_plot,
                                            show_plot=show_plot,
@@ -692,9 +690,8 @@ def run_stage3(results, save_results=True, root_dir='./', force_redo=False,
         Either 'box' or 'atoca'. Runs the applicable 1D extraction routine.
     specprofile : str, None
         Specprofile reference file; only neceessary for ATOCA extractions.
-    centroids : dict
-        Dictionary of centroid positions for SOSS orders; only necessary for
-        box extractions.
+    centroids : str, None
+        Path to file containing trace positions for each order.
     soss_width : int
         Width around the trace centroids, in pixels, for the 1D extraction.
     st_teff : float, None
