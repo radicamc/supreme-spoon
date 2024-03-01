@@ -14,6 +14,7 @@ import copy
 import glob
 import numpy as np
 import os
+import pandas as pd
 from scipy.interpolate import griddata
 from scipy.ndimage import median_filter
 from scipy.signal import medfilt
@@ -22,6 +23,7 @@ import warnings
 
 from jwst import datamodels
 from jwst.pipeline import calwebb_detector1
+from jwst.pipeline import calwebb_spec2
 
 import supreme_spoon.stage2 as stage2
 from supreme_spoon import utils, plotting
@@ -280,7 +282,8 @@ class OneOverFStep:
 
     def __init__(self, input_data, baseline_ints, output_dir,
                  method='scale-achromatic', timeseries=None,
-                 timeseries_o2=None, pixel_masks=None, background=None):
+                 timeseries_o2=None, pixel_masks=None, background=None,
+                 centroids=None):
         """Step initializer.
         """
 
@@ -294,9 +297,10 @@ class OneOverFStep:
         self.datafiles = utils.sort_datamodels(input_data)
         self.fileroots = utils.get_filename_root(self.datafiles)
         self.method = method
+        self.centroids = centroids
 
-    def run(self, save_results=True, force_redo=False, do_plot=False,
-            show_plot=False, **kwargs):
+    def run(self, inner_mask_width=40, outer_mask_width=70, save_results=True,
+            force_redo=False, do_plot=False, show_plot=False, **kwargs):
         """Method to run the step.
         """
 
@@ -322,6 +326,8 @@ class OneOverFStep:
                 method = self.method.split('scale-')[-1]
                 results = oneoverfstep_scale(self.datafiles,
                                              baseline_ints=self.baseline_ints,
+                                             inner_mask_width=inner_mask_width,
+                                             outer_mask_width=outer_mask_width,
                                              background=self.background,
                                              timeseries=self.timeseries,
                                              timeseries_o2=self.timeseries_o2,
@@ -329,18 +335,22 @@ class OneOverFStep:
                                              save_results=save_results,
                                              pixel_masks=self.pixel_masks,
                                              fileroots=self.fileroots,
-                                             method=method, **kwargs)
+                                             method=method,
+                                             centroids=self.centroids,
+                                             **kwargs)
             elif self.method == 'solve':
                 # To use MLE to solve for the 1/f noise.
                 results = oneoverfstep_solve(self.datafiles,
                                              baseline_ints=self.baseline_ints,
+                                             trace_width=outer_mask_width,
                                              background=self.background,
                                              output_dir=self.output_dir,
                                              save_results=save_results,
                                              pixel_masks=self.pixel_masks,
                                              fileroots=self.fileroots,
                                              do_plot=do_plot,
-                                             show_plot=show_plot)
+                                             show_plot=show_plot,
+                                             centroids=self.centroids)
             else:
                 # Raise error otherwise.
                 msg = 'Unrecognized 1/f correction: {}'.format(self.method)
@@ -367,17 +377,12 @@ class OneOverFStep:
                                             baseline_ints=self.baseline_ints,
                                             outfile=plot_file1,
                                             show_plot=show_plot)
-                if self.method in ['solve', 'scale-chromatic',
-                                   'scale-achromatic-window']:
-                    window = True
-                else:
-                    window = False
                 plotting.make_oneoverf_psd(results, self.datafiles,
                                            timeseries=this_ts,
                                            baseline_ints=self.baseline_ints,
                                            pixel_masks=self.pixel_masks,
                                            outfile=plot_file2,
-                                           show_plot=show_plot, window=window)
+                                           show_plot=show_plot)
 
         return results
 
@@ -847,10 +852,11 @@ def jumpstep_in_time(datafile, window=5, thresh=10, fileroot=None,
     return datafile
 
 
-def oneoverfstep_scale(datafiles, baseline_ints, even_odd_rows=True,
+def oneoverfstep_scale(datafiles, baseline_ints, inner_mask_width=40,
+                       outer_mask_width=70, even_odd_rows=True,
                        background=None, timeseries=None, timeseries_o2=None,
                        output_dir=None, save_results=True, pixel_masks=None,
-                       fileroots=None, method='achromatic'):
+                       fileroots=None, method='achromatic', centroids=None):
     """Custom 1/f correction routine to be applied at the group or
     integration level. A median stack is constructed using all out-of-transit
     integrations and subtracted from each individual integration. The
@@ -866,6 +872,11 @@ def oneoverfstep_scale(datafiles, baseline_ints, even_odd_rows=True,
         of the TSO. Should be 4D ramps, but 3D rate files are also accepted.
     baseline_ints : array-like[int]
         Integration numbers of ingress and egress.
+    inner_mask_width : int
+        Width around the trace to mask. For windowed methods, defines the
+        inner window edge.
+    outer_mask_width : int
+        For windowed methods, the outer edge of the window.
     even_odd_rows : bool
         If True, calculate 1/f noise seperately for even and odd numbered rows.
     background : str, array-like[float], None
@@ -886,6 +897,8 @@ def oneoverfstep_scale(datafiles, baseline_ints, even_odd_rows=True,
         Root names for output files. Only necessary if saving results.
     method : str
         Options are "chromatic", "achromatic", or "achromatic-window".
+    centroids : str, None
+        File containing trace positions for each order.
 
     Returns
     -------
@@ -932,12 +945,40 @@ def oneoverfstep_scale(datafiles, baseline_ints, even_odd_rows=True,
         nint, ngroup, dimy, dimx = np.shape(cube)
     else:
         nint, dimy, dimx = np.shape(cube)
+    if dimy == 256:
+        subarray = 'SUBSTRIP256'
+    else:
+        subarray = 'SUBSTRIP96'
 
     # Generate the 3D deep stack (ngroup, dimy, dimx) using only
     # baseline integrations.
     fancyprint('Generating a deep stack for each group using baseline '
                'integrations...')
     deepstack = utils.make_deepstack(cube[baseline_ints])
+
+    # Get the trace centroids.
+    if centroids is None:
+        # If no centroids file is provided, get the trace positions from the
+        # data now.
+        fancyprint('No centroids provided, locating trace positions.')
+        step = calwebb_spec2.extract_1d_step.Extract1dStep()
+        tracetable = step.get_reference_file(datafiles[0], 'spectrace')
+        if np.ndim(cube) == 4:
+            thisdeep = deepstack[-1]
+        else:
+            thisdeep = deepstack
+        centroids = utils.get_trace_centroids(thisdeep, tracetable, subarray,
+                                              save_results=False)
+        x1, y1 = centroids[0][0], centroids[0][1]
+        x2, y2 = centroids[1][0], centroids[1][1]
+        x3, y3 = centroids[2][0], centroids[2][1]
+    else:
+        # Read in centroids file if one is provided.
+        fancyprint('Reading centroids file {}.'.format(centroids))
+        centroids = pd.read_csv(centroids, comment='#')
+        x1, y1 = centroids['xpos'], centroids['ypos o1']
+        x2, y2 = centroids['xpos'], centroids['ypos o2']
+        x3, y3 = centroids['xpos'], centroids['ypos o3']
 
     # If outlier maps are passed, ensure that there is one for each segment.
     if pixel_masks is not None:
@@ -946,65 +987,95 @@ def oneoverfstep_scale(datafiles, baseline_ints, even_odd_rows=True,
             pixel_masks = [pixel_masks[0] for d in datafiles]
     # Read in the outlier maps - (nints, dimy, dimx) 3D cubes.
     if pixel_masks is None:
-        if method in ['chromatic', 'achromatic-window']:
-            msg = 'Tracemasks are required for {} 1/f ' \
-                  'method.'.format(method)
-            raise ValueError(msg)
-        else:
-            fancyprint('No outlier maps passed, ignoring outliers.')
-            outliers1 = np.zeros((nint, dimy, dimx))
+        fancyprint('No outlier maps passed, ignoring outliers.',
+                   msg_type='WARNING')
+        outliers1 = np.zeros((nint, dimy, dimx))
     else:
         for i, file in enumerate(pixel_masks):
             fancyprint('Reading outlier map {}'.format(file))
-            if method in ['chromatic', 'achromatic-window']:
-                # Extensions 3 and 4 have inner trace masks.
-                thisin1 = fits.getdata(file, 3).astype(int)
-                thisin2 = fits.getdata(file, 4).astype(int)
-                # Extensions 5 and 6 have outer trace masks.
-                thisout1 = fits.getdata(file, 5).astype(int)
-                thisout2 = fits.getdata(file, 6).astype(int)
-                # Create the window as the difference between inner and outer
-                # masks.
-                window1 = ~(thisout1 - thisin1).astype(bool)
-                window2 = ~(thisout2 - thisin2).astype(bool)
-                # Get bad pixel map and combine with window.
-                badpix = fits.getdata(file).astype(bool)
-                thisoutlier1 = (window1 | badpix).astype(int)
-                thisoutlier2 = (window2 | badpix).astype(int)
-                # Create mask cubes.
-                if i == 0:
-                    outliers1 = thisoutlier1
-                    outliers2 = thisoutlier2
-                    out1 = thisout1
-                    out2 = thisout2
-                else:
-                    outliers1 = np.concatenate([outliers1, thisoutlier1])
-                    outliers2 = np.concatenate([outliers2, thisoutlier2])
-                    out1 = np.concatenate([out1, thisout1])
-                    out2 = np.concatenate([out2, thisout2])
+            # Create mask cubes.
+            badpix = fits.getdata(file).astype(bool)
+            if i == 0:
+                outliers1 = badpix
             else:
-                # Just want all flags.
-                if i == 0:
-                    outliers1 = fits.getdata(file)
-                else:
-                    outliers1 = np.concatenate([outliers1, fits.getdata(file)])
-                outliers2 = outliers1
+                outliers1 = np.concatenate([outliers1, badpix])
+    outliers2 = np.copy(outliers1)
 
-        # Identify and mask any potential jumps that are not flagged.
-        if np.ndim(cube) == 4:
-            thiscube = cube[:, -1]
-        else:
-            thiscube = cube
-        cube_filt = medfilt(thiscube, (5, 1, 1))
-        # Calculate the point-to-point scatter along the temporal axis.
-        scatter = np.median(np.abs(0.5 * (thiscube[0:-2] + thiscube[2:]) -
-                                   thiscube[1:-1]), axis=0)
-        scatter = np.where(scatter == 0, np.inf, scatter)
-        # Find pixels which deviate more than 10 sigma.
-        scale = np.abs(thiscube - cube_filt) / scatter
-        ii = np.where(scale > 10)
-        outliers1[ii] = 1
-        outliers2[ii] = 1
+    # Construct trace masks.
+    # Order 1 necessary for all subarrays.
+    low_in1 = np.max([np.zeros_like(y1),
+                      y1 - inner_mask_width / 2], axis=0).astype(int)
+    up_in1 = np.min([dimy * np.ones_like(y1),
+                     y1 + inner_mask_width / 2], axis=0).astype(int)
+    low_out1 = np.max([np.zeros_like(y1),
+                       y1 - outer_mask_width / 2], axis=0).astype(int)
+    up_out1 = np.min([dimy * np.ones_like(y1),
+                      y1 + outer_mask_width / 2], axis=0).astype(int)
+    # Create inner and outer masks.
+    mask1_in, mask1_out = np.zeros((dimy, dimx)), np.zeros((dimy, dimx))
+    for i, x in enumerate(x1):
+        mask1_in[low_in1[i]:up_in1[i], int(x)] = 1
+        mask1_out[low_out1[i]:up_out1[i], int(x)] = 1
+
+    # Include orders 2 and 3 for SUBSTRIP256.
+    if subarray != 'SUBSTRIP96':
+        # Order 2 -- inner and outer masks.
+        low_in2 = np.max([np.zeros_like(y2),
+                          y2 - inner_mask_width / 2], axis=0).astype(int)
+        up_in2 = np.min([dimy * np.ones_like(y2),
+                         y2 + inner_mask_width / 2], axis=0).astype(int)
+        low_out2 = np.max([np.zeros_like(y2),
+                           y2 - outer_mask_width / 2], axis=0).astype(int)
+        up_out2 = np.min([dimy * np.ones_like(y2),
+                          y2 + outer_mask_width / 2], axis=0).astype(int)
+        mask2_in, mask2_out = np.zeros((dimy, dimx)), np.zeros((dimy, dimx))
+        for i, x in enumerate(x2):
+            mask2_in[low_in2[i]:up_in2[i], int(x)] = 1
+            mask2_out[low_out2[i]:up_out2[i], int(x)] = 1
+        # Order 3 -- only need inner mask.
+        low3 = np.max([np.zeros_like(y3),
+                       y3 - inner_mask_width / 2], axis=0).astype(int)
+        up3 = np.min([dimy * np.ones_like(y3),
+                      y3 + inner_mask_width / 2], axis=0).astype(int)
+        mask3 = np.zeros((dimy, dimx))
+        for i, x in enumerate(x3):
+            mask3[low3[i]:up3[i], int(x)] = 1
+    # But not for SUBSTRIP96.
+    else:
+        mask2_in = np.zeros_like(mask1_in)
+        mask2_out = np.zeros_like(mask1_in)
+        mask3 = np.zeros_like(mask1_in)
+
+    # Add the appropriate trace mask to the outliers cube for the selected 1/f
+    # method.
+    tracemask = mask1_in.astype(bool) | mask2_in.astype(bool) | mask3.astype(bool)
+    # For the scale-achromatic, just need to mask the cores of each trace,
+    # defined by inner_mask_width.
+    if method == 'achromatic':
+        outliers1 = (outliers1 | tracemask).astype(int)
+    # For the windowed corrections, construct a window around each order
+    # defined by inner_mask_width and outer_mask_width.
+    else:
+        window1 = ~(mask1_out - mask1_in).astype(bool)
+        window2 = ~(mask2_out - mask2_in).astype(bool)
+        outliers1 = (outliers1 | window1 | tracemask).astype(int)
+        outliers2 = (outliers2 | window2 | tracemask).astype(int)
+
+    # Identify and mask any potential jumps that are not flagged.
+    if np.ndim(cube) == 4:
+        thiscube = cube[:, -1]
+    else:
+        thiscube = cube
+    cube_filt = medfilt(thiscube, (5, 1, 1))
+    # Calculate the point-to-point scatter along the temporal axis.
+    scatter = np.median(np.abs(0.5 * (thiscube[0:-2] + thiscube[2:]) -
+                               thiscube[1:-1]), axis=0)
+    scatter = np.where(scatter == 0, np.inf, scatter)
+    # Find pixels which deviate more than 10 sigma.
+    scale = np.abs(thiscube - cube_filt) / scatter
+    ii = np.where(scale > 10)
+    outliers1[ii] = 1
+    outliers2[ii] = 1
 
     # The outlier map is 0 where good and >0 otherwise. As this
     # will be applied multiplicatively, replace 0s with 1s and
@@ -1138,8 +1209,7 @@ def oneoverfstep_scale(datafiles, baseline_ints, even_odd_rows=True,
                     cube_corr[i] = cube_corr[i] - dc
                 else:
                     # For order 2, subtract in a window around the trace.
-                    mask = (~(out2[i].astype(bool))).astype(int)
-                    cube_corr[i] = cube_corr[i] - dc * mask
+                    cube_corr[i] = cube_corr[i] - dc * mask2_out[None, :, :]
 
         # Rebuild the cube and deepframe.
         if order == 1 and method != 'achromatic':
@@ -1174,9 +1244,10 @@ def oneoverfstep_scale(datafiles, baseline_ints, even_odd_rows=True,
     return results
 
 
-def oneoverfstep_solve(datafiles, baseline_ints, background=None,
-                       output_dir=None, save_results=True, pixel_masks=None,
-                       fileroots=None, do_plot=False, show_plot=False):
+def oneoverfstep_solve(datafiles, baseline_ints, trace_width=70,
+                       background=None, output_dir=None, save_results=True,
+                       pixel_masks=None,  fileroots=None, do_plot=False,
+                       show_plot=False, centroids=None):
     """Custom 1/f correction routine to be applied at the group or
     integration level. 1/f noise level and median frame scaling is calculated
     independently for each pixel column. Outlier pixels and background
@@ -1189,6 +1260,8 @@ def oneoverfstep_solve(datafiles, baseline_ints, background=None,
         of the TSO. Should be 4D ramps, but 3D rate files are also accepted.
     baseline_ints : array-like[int]
         Integration numbers of ingress and egress.
+    trace_width : int
+        Defines the width around the trace to consider for MLE solving.
     background : str, array-like[float], None
         Model of background flux.
     output_dir : str, None
@@ -1205,6 +1278,8 @@ def oneoverfstep_solve(datafiles, baseline_ints, background=None,
     show_plot : bool
         If True, show the step diagnostic plot instead of/in addition to
         saving it to file.
+    centroids : str, None
+        Path to file containing trace positions for each order.
 
     Returns
     -------
@@ -1275,14 +1350,17 @@ def oneoverfstep_solve(datafiles, baseline_ints, background=None,
     else:
         nint, dimy, dimx = np.shape(cube)
         ngroup = 0
+    if dimy == 256:
+        subarray = 'SUBSTRIP256'
+    else:
+        subarray = 'SUBSTRIP96'
 
     # Get outlier masks.
     # Ideally, for this algorithm, we only want to consider pixels quite near
     # to the trace.
     if pixel_masks is None:
-        fancyprint('No outlier maps passed, ignoring outliers.')
-        fancyprint('For optimal performance, an appropriate trace mask should '
-                   'be used.', msg_type='WARNING')
+        fancyprint('No outlier maps passed, ignoring outliers.',
+                   msg_type='WARNING')
         outliers1 = np.zeros((nint, dimy, dimx))
         outliers2 = np.zeros((nint, dimy, dimx))
     else:
@@ -1290,20 +1368,63 @@ def oneoverfstep_solve(datafiles, baseline_ints, background=None,
             fancyprint('Reading outlier map {}'.format(file))
             if i == 0:
                 # Get bad pixel map.
-                badpix = fits.getdata(file, 2)
-                # For order 1, extension 3 has the proper trace mask. It is,
-                # rather, extension 4 for order 2.
-                trace1 = fits.getdata(file, 5)
-                trace2 = fits.getdata(file, 6)
+                outliers1 = fits.getdata(file)
             else:
-                badpix = np.concatenate([badpix, fits.getdata(file, 2)])
-                trace1 = np.concatenate([trace1, fits.getdata(file, 5)])
-                trace2 = np.concatenate([trace2, fits.getdata(file, 6)])
-        # Combine trace and bad pixel masks.
-        outliers1 = (badpix.astype(bool) | trace1.astype(bool)).astype(int)
-        outliers2 = (badpix.astype(bool) | trace2.astype(bool)).astype(int)
-        # Also mask O2 redwards of ~0.9µm (x<~1100).
-        outliers2[:, :, :1100] = 1
+                outliers1 = np.concatenate([outliers1, fits.getdata(file)])
+        outliers2 = np.copy(outliers1)
+
+    # Get the trace centroids.
+    if centroids is None:
+        # If no centroids file is provided, get the trace positions from the
+        # data now.
+        fancyprint('No centroids provided, locating trace positions.')
+        step = calwebb_spec2.extract_1d_step.Extract1dStep()
+        tracetable = step.get_reference_file(datafiles[0], 'spectrace')
+        # Get deepstack
+        if np.ndim(cube) == 4:
+            deepstack = utils.make_deepstack(cube[baseline_ints, -1])
+        else:
+            deepstack = utils.make_deepstack(cube[baseline_ints])
+        centroids = utils.get_trace_centroids(deepstack, tracetable,
+                                              subarray, save_results=False)
+        x1, y1 = centroids[0][0], centroids[0][1]
+        x2, y2 = centroids[1][0], centroids[1][1]
+    else:
+        # Read in centroids file if one is provided.
+        fancyprint('Reading centroids file {}.'.format(centroids))
+        centroids = pd.read_csv(centroids, comment='#')
+        x1, y1 = centroids['xpos'], centroids['ypos o1']
+        x2, y2 = centroids['xpos'], centroids['ypos o2']
+
+    # Construct trace masks.
+    # Order 1 necessary for all subarrays.
+    low1 = np.max([np.zeros_like(y1),
+                   y1 - trace_width / 2], axis=0).astype(int)
+    up1 = np.min([dimy * np.ones_like(y1),
+                  y1 + trace_width / 2], axis=0).astype(int)
+    # Create mask.
+    mask1 = np.ones((dimy, dimx))
+    for i, x in enumerate(x1):
+        mask1[low1[i]:up1[i], int(x)] = 0
+
+    # Include order 2 for SUBSTRIP256.
+    if subarray != 'SUBSTRIP96':
+        # Order 2.
+        low2 = np.max([np.zeros_like(y2),
+                       y2 - trace_width / 2], axis=0).astype(int)
+        up2 = np.min([dimy * np.ones_like(y2),
+                      y2 + trace_width / 2], axis=0).astype(int)
+        mask2 = np.ones((dimy, dimx))
+        for i, x in enumerate(x2):
+            mask2[low2[i]:up2[i], int(x)] = 0
+    # But not for SUBSTRIP96.
+    else:
+        mask2 = np.ones_like(mask1)
+    # Add trace mask to outliers
+    outliers1 = (outliers1.astype(bool) | mask1.astype(bool)).astype(int)
+    outliers2 = (outliers2.astype(bool) | mask2.astype(bool)).astype(int)
+    # Also mask O2 redwards of ~0.9µm (x<~1100).
+    outliers2[:, :, :1100] = 1
 
     # Mask any pixels with non-zero dq flags.
     ii = np.where((dqcube != 0))
@@ -1413,11 +1534,11 @@ def oneoverfstep_solve(datafiles, baseline_ints, background=None,
             cube = copy.deepcopy(cube_corr)
         else:
             # For order 2, only subtract it from around the order 2 trace.
-            trace2 = np.where(trace2 == 1, 0, 1)
+            trace2 = np.where(mask2 == 1, 0, 1)
             if ngroup != 0:
-                cube_corr = cube_corr - oof * trace2[:, None, :, :]
+                cube_corr = cube_corr - oof * trace2[None, None, :, :]
             else:
-                cube_corr = cube_corr - oof * trace2
+                cube_corr = cube_corr - oof * trace2[None, :, :]
 
         # Do step plot if requested.
         if do_plot is True:
@@ -1465,7 +1586,9 @@ def run_stage1(results, background_model, baseline_ints=None,
                force_redo=False, deepframe=None, flag_up_ramp=False,
                rejection_threshold=15, flag_in_time=True,
                time_rejection_threshold=10, root_dir='./', output_tag='',
-               skip_steps=None, do_plot=False, show_plot=False, **kwargs):
+               skip_steps=None, do_plot=False, show_plot=False,
+               inner_mask_width=40, outer_mask_width=70, centroids=None,
+               **kwargs):
     """Run the supreme-SPOON Stage 1 pipeline: detector level processing,
     using a combination of official STScI DMS and custom steps. Documentation
     for the official DMS steps can be found here:
@@ -1518,6 +1641,15 @@ def run_stage1(results, background_model, baseline_ints=None,
     show_plot : bool
         Only necessary if do_plot is True. Show the diagnostic plots in
         addition to/instead of saving to file.
+    inner_mask_width : int
+        For 1/f correction. For scale-achromatic, defines the width around the
+        trace to mask. For windowed methods, defines the inner edge of the
+        window.
+    outer_mask_width : int
+        For 1/f correction. For windowed methods, defines the outer edge of the
+        window. For solve, defines the width around the trace to use.
+    centroids : str, None
+        Path to file containing trace positions for each order.
 
     Returns
     -------
@@ -1619,10 +1751,12 @@ def run_stage1(results, background_model, baseline_ints=None,
         step = OneOverFStep(results, baseline_ints=baseline_ints,
                             output_dir=outdir, method=oof_method,
                             timeseries=timeseries, pixel_masks=pixel_masks,
-                            background=background_model,
+                            background=background_model, centroids=centroids,
                             timeseries_o2=timeseries_o2)
         results = step.run(save_results=save_results, force_redo=force_redo,
-                           do_plot=do_plot, show_plot=show_plot, **step_kwargs)
+                           do_plot=do_plot, show_plot=show_plot,
+                           inner_mask_width=inner_mask_width,
+                           outer_mask_width=outer_mask_width, **step_kwargs)
 
     # ===== Linearity Correction Step =====
     # Default DMS step.

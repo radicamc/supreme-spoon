@@ -709,7 +709,6 @@ def outlier_resistant_variance(data):
     return var
 
 
-# TODO: Include something to check that inputs are correct format/not nonsensical.
 def parse_config(config_file):
     """Parse a yaml config file.
 
