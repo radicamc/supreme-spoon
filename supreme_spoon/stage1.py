@@ -8,7 +8,6 @@ Created on Thurs Jul 21 17:30 2022
 Custom JWST DMS pipeline steps for Stage 1 (detector level processing).
 """
 
-# TODO: Add new metadata to files with reduction info
 from astropy.io import fits
 import bottleneck as bn
 import copy

@@ -65,7 +65,6 @@ class SpecProfileStep:
         return specprofile
 
 
-# TODO: readd soss_estimate to fix atoca
 class Extract1DStep:
     """Wrapper around default calwebb_spec2 1D Spectral Extraction step, with
     custom modifications.
@@ -89,7 +88,7 @@ class Extract1DStep:
 
     def run(self, soss_width=40, specprofile=None, centroids=None,
             save_results=True, force_redo=False, do_plot=False,
-            show_plot=False, use_pastasoss=False):
+            show_plot=False, use_pastasoss=False, soss_estimate=None):
         """Method to run the step.
         """
 
@@ -113,36 +112,91 @@ class Extract1DStep:
                     raise ValueError('specprofile reference file must be '
                                      'provided for ATOCA extraction.')
                 results = []
-                for i, segment in enumerate(self.datafiles):
-                    # Initialize extraction parameters for ATOCA.
-                    soss_modelname = self.fileroots[i][:-1]
-                    # Perform the extraction.
-                    step = calwebb_spec2.extract_1d_step.Extract1dStep()
-                    res = step.call(segment, output_dir=self.output_dir,
-                                    save_results=save_results,
-                                    soss_transform=[0, 0, 0],
-                                    subtract_background=False,
-                                    soss_bad_pix='model',
-                                    soss_width=soss_width,
-                                    soss_modelname=soss_modelname,
-                                    override_specprofile=specprofile)
+                to_extract = {}
+                first_time = True
+                for i, file in enumerate(self.datafiles):
+                    to_extract['{}'.format(i)] = file
+                while len(to_extract) != 0:
+                    extracted = []
+                    for i in to_extract.keys():
+                        segment = to_extract[i]
+                        # Initialize extraction parameters for ATOCA.
+                        soss_modelname = self.fileroots[int(i)][:-1]
+                        # Perform the extraction.
+                        step = calwebb_spec2.extract_1d_step.Extract1dStep()
+                        try:
+                            res = step.call(segment,
+                                            output_dir=self.output_dir,
+                                            save_results=save_results,
+                                            soss_transform=[0, 0, 0],
+                                            subtract_background=False,
+                                            soss_bad_pix='model',
+                                            soss_width=soss_width,
+                                            soss_modelname=soss_modelname,
+                                            override_specprofile=specprofile,
+                                            soss_estimate=soss_estimate)
+                            # Verify that filename is correct.
+                            if save_results is True:
+                                current_name = self.output_dir + res.meta.filename
+                                if expected_file != current_name:
+                                    res.close()
+                                    os.rename(current_name, expected_file)
+                                    res = datamodels.open(expected_file)
+                            results.append(res)
+                            # Note that this segment was extracted correctly.
+                            extracted.append(i)
+                            # The first time that an extraction is successful,
+                            # create a soss_estimate if one does not already
+                            # exist.
+                            if first_time is True and soss_estimate is None:
+                                atoca_spectra = self.output_dir + self.fileroots[int(i)] + 'AtocaSpectra.fits'
+                                soss_estimate = get_soss_estimate(atoca_spectra,
+                                                                  output_dir=self.output_dir)
+                                first_time = False
+                        # When using ATOCA, sometimes a very specific error
+                        # pops up when an initial estimate of the stellar
+                        # spectrum cannot be obtained. This is needed to
+                        # establish the wavelength grid (which has a varying
+                        # resolution to better capture sharp features in
+                        # stellar spectra). In these cases, the SOSS estimate
+                        # provides information to create a wavelength grid.
+                        except Exception as err:
+                            if str(err) == '(m>k) failed for hidden m: fpcurf0:m=0':
+                                # If every segment has been tested and none
+                                # work, just fail.
+                                if int(i) == len(self.datafiles) and len(extracted) == 0:
+                                    msg = 'No segments could be properly ' \
+                                          'extracted.'
+                                    fancyprint(msg, msg_type='Error')
+                                    raise err
+                                # If there's still hope, then just skip this
+                                # segment for now and move onto the next one.
+                                else:
+                                    msg = 'Initial flux estimate failed, ' \
+                                          'and no soss estimate provided. ' \
+                                          'Moving to next segment.'
+                                    fancyprint(msg, msg_type='WARNING')
+                                    continue
+                            # If any other error pops up, raise it.
+                            else:
+                                raise err
+                    # Remove the extracted segments from the list of ones
+                    # to extract.
+                    for seg in extracted:
+                        to_extract.pop(seg)
 
-                    # Verify that filename is correct.
-                    if save_results is True:
-                        current_name = self.output_dir + res.meta.filename
-                        if expected_file != current_name:
-                            res.close()
-                            os.rename(current_name, expected_file)
-                            res = datamodels.open(expected_file)
-                    results.append(res)
+                # Sort the segments in chronological order, in case they were
+                # processed out of order.
+                seg_nums = [seg.meta.exposure.segment_number for seg in
+                            results]
+                ii = np.argsort(seg_nums)
+                results = np.array(results)[ii]
+
             # Option 2: Simple aperture extraction.
             elif self.extract_method == 'box':
                 if centroids is None:
                     raise ValueError('Centroids must be provided for box '
                                      'extraction.')
-                else:
-                    centroids = pd.read_csv(centroids, comment='#')
-
                 results = box_extract_soss(self.datafiles, centroids,
                                            soss_width, do_plot=do_plot,
                                            show_plot=show_plot,
@@ -668,11 +722,41 @@ def format_extracted_spectra(datafiles, times, extract_params, target_name,
     return spectra
 
 
+def get_soss_estimate(atoca_spectra, output_dir):
+    """Convert the AtocaSpectra output of ATOCA into the format expected for a
+    soss_estimate.
+
+    Parameters
+    ----------
+    atoca_spectra : str, MultiSpecModel
+        AtocaSpectra datamodel, or path to the datamodel.
+    output_dir : str
+        Directory to which to save results.
+
+    Returns
+    -------
+    estimate_filename : str
+        Path to soss_estimate file.
+    """
+
+    # Open the AtocaSpectra file.
+    atoca_spec = datamodels.open(atoca_spectra)
+    # Get the spectrum.
+    for spec in atoca_spec.spec:
+        if spec.meta.soss_extract1d.type == 'OBSERVATION':
+            estimate = datamodels.SpecModel(spec_table=spec.spec_table)
+            break
+    # Save the spectrum as a soss_estimate file.
+    estimate_filename = estimate.save(output_dir + 'soss_estimate.fits')
+
+    return estimate_filename
+
+
 def run_stage3(results, save_results=True, root_dir='./', force_redo=False,
                extract_method='box', specprofile=None, centroids=None,
                soss_width=40, st_teff=None, st_logg=None, st_met=None,
                planet_letter='b', output_tag='', do_plot=False,
-               show_plot=False):
+               show_plot=False, **kwargs):
     """Run the supreme-SPOON Stage 3 pipeline: 1D spectral extraction, using
     a combination of the official STScI DMS and custom steps.
 
@@ -733,17 +817,25 @@ def run_stage3(results, save_results=True, root_dir='./', force_redo=False,
     # Custom DMS step
     if extract_method == 'atoca':
         if specprofile is None:
+            if 'SpeProfileStep' in kwargs.keys():
+                step_kwargs = kwargs['SpeProfileStep']
+            else:
+                step_kwargs = {}
             step = SpecProfileStep(results, output_dir=outdir)
-            specprofile = step.run(force_redo=force_redo)
+            specprofile = step.run(force_redo=force_redo, **step_kwargs)
 
     # ===== 1D Extraction Step =====
     # Custom/default DMS step.
+    if 'Extract1dStep' in kwargs.keys():
+        step_kwargs = kwargs['Extract1dStep']
+    else:
+        step_kwargs = {}
     step = Extract1DStep(results, extract_method=extract_method,
                          st_teff=st_teff, st_logg=st_logg, st_met=st_met,
                          planet_letter=planet_letter,  output_dir=outdir)
     spectra = step.run(soss_width=soss_width, specprofile=specprofile,
                        centroids=centroids, save_results=save_results,
                        force_redo=force_redo, do_plot=do_plot,
-                       show_plot=show_plot)
+                       show_plot=show_plot, **step_kwargs)
 
     return spectra
