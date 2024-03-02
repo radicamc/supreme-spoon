@@ -989,7 +989,7 @@ def oneoverfstep_scale(datafiles, baseline_ints, inner_mask_width=40,
     if pixel_masks is None:
         fancyprint('No outlier maps passed, ignoring outliers.',
                    msg_type='WARNING')
-        outliers1 = np.zeros((nint, dimy, dimx))
+        outliers1 = np.zeros((nint, dimy, dimx)).astype(bool)
     else:
         for i, file in enumerate(pixel_masks):
             fancyprint('Reading outlier map {}'.format(file))
