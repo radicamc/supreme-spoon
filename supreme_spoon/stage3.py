@@ -197,6 +197,7 @@ class Extract1DStep:
                 if centroids is None:
                     raise ValueError('Centroids must be provided for box '
                                      'extraction.')
+                centroids = pd.read_csv(centroids, comment='#')
                 results = box_extract_soss(self.datafiles, centroids,
                                            soss_width, do_plot=do_plot,
                                            show_plot=show_plot,
