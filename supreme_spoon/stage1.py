@@ -181,10 +181,10 @@ class SuperBiasStep:
             if save_results is True:
                 if self.order is not None:
                     plot_file = self.output_dir + self.tag.replace(
-                        '.fits', '_o{}.pdf'.format(self.order))
+                        '.fits', '_o{}.png'.format(self.order))
                 else:
                     plot_file = self.output_dir + self.tag.replace(
-                        '.fits', '.pdf')
+                        '.fits', '.png')
             else:
                 plot_file = None
             plotting.make_superbias_plot(results, outfile=plot_file,
@@ -364,9 +364,9 @@ class OneOverFStep:
             if do_plot is True:
                 if save_results is True:
                     plot_file1 = self.output_dir + self.tag.replace(
-                        '.fits', '_1.pdf')
+                        '.fits', '_1.png')
                     plot_file2 = self.output_dir + self.tag.replace(
-                        '.fits', '_2.pdf')
+                        '.fits', '_2.png')
                 else:
                     plot_file1, plot_file2 = None, None
 
@@ -436,9 +436,9 @@ class LinearityStep:
         if do_plot is True:
             if save_results is True:
                 plot_file1 = self.output_dir + self.tag.replace('.fits',
-                                                                '_1.pdf')
+                                                                '_1.png')
                 plot_file2 = self.output_dir + self.tag.replace('.fits',
-                                                                '_2.pdf')
+                                                                '_2.png')
             else:
                 plot_file1, plot_file2 = None, None
             plotting.make_linearity_plot(results, self.datafiles,
@@ -528,7 +528,7 @@ class JumpStep:
         # Do step plot if requested.
         if do_plot is True:
             if save_results is True:
-                plot_file = self.output_dir + self.tag.replace('.fits', '.pdf')
+                plot_file = self.output_dir + self.tag.replace('.fits', '.png')
             else:
                 plot_file = None
             plotting.make_jump_location_plot(results, outfile=plot_file,
@@ -1546,7 +1546,7 @@ def oneoverfstep_solve(datafiles, baseline_ints, trace_width=70,
 
         # Do step plot if requested.
         if do_plot is True:
-            outfile = output_dir + 'oneoverfstep_o{}_3.pdf'.format(order)
+            outfile = output_dir + 'oneoverfstep_o{}_3.png'.format(order)
             plotting.make_oneoverf_chromatic_plot(slopes_e, slopes_o, oofs_e,
                                                   oofs_o, plot_group,
                                                   outfile=outfile,

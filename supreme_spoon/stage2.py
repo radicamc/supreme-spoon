@@ -175,8 +175,8 @@ class BackgroundStep:
             # Do step plot if requested.
             if do_plot is True:
                 if save_results is True:
-                    plot_file1 = self.output_dir + self.tag.replace('.fits', '_1.pdf')
-                    plot_file2 = self.output_dir + self.tag.replace('.fits', '_2.pdf')
+                    plot_file1 = self.output_dir + self.tag.replace('.fits', '_1.png')
+                    plot_file2 = self.output_dir + self.tag.replace('.fits', '_2.png')
                 else:
 
                     plot_file1 = None
@@ -747,7 +747,7 @@ def badpixstep(datafiles, baseline_ints, space_thresh=15, time_thresh=10,
 
     if do_plot is True:
         if save_results is True:
-            outfile = output_dir + 'badpixstep.pdf'
+            outfile = output_dir + 'badpixstep.png'
         else:
             outfile = None
         hotpix = np.where(hotpix != 0)
@@ -916,7 +916,7 @@ def tracingstep(datafiles, deepframe=None, calculate_stability=True,
                                      'soss_stability.'
 
         # Calculate the trace stability using PCA.
-        outfile = output_dir + 'soss_stability_pca.pdf'
+        outfile = output_dir + 'soss_stability_pca.png'
         pcs, var = soss_stability_pca(cube, n_components=pca_components,
                                       outfile=outfile, do_plot=do_plot,
                                       show_plot=show_plot)

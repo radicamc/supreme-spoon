@@ -218,7 +218,7 @@ class Extract1DStep:
             if do_plot is True and self.extract_method == 'atoca':
                 if save_results is True:
                     plot_file = self.output_dir + self.tag.replace('.fits',
-                                                                   '.pdf')
+                                                                   '.png')
                 else:
                     plot_file = None
                 models = []
@@ -402,7 +402,7 @@ def box_extract_soss(datafiles, centroids, soss_width, do_plot=False,
         # Do diagnostic plot if requested.
         if do_plot is True:
             if save_results is True:
-                outfile = output_dir + 'aperture_optimization.pdf'
+                outfile = output_dir + 'aperture_optimization.png'
             else:
                 outfile = None
             plotting.make_soss_width_plot(scatter, ii, outfile=outfile,
