@@ -1,7 +1,8 @@
 # supreme-SPOON
 supreme-**S**teps to **P**rocess S**O**SS **O**bservatio**N**s
 
-⭐⭐ **Please note that supreme-SPOON will be undergoing a rebrand and future versions (>=1.4.0) will use a new name, exoTEDRF.** ⭐⭐
+⭐⭐ **Please note that supreme-SPOON has undergone a rebrand and future versions (>=1.4.0) will use a new name, exoTEDRF.** ⭐⭐  
+This repository will remain in existence (though it will no longer be updated). All updates to this project will now be [in the exoTEDRF repository](https://github.com/radicamc/exoTEDRF/tree/main). 
 
 **supreme-SPOON** is an end-to-end pipeline for NIRISS/SOSS time series observations (TSOs).
 The pipeline is divided into four stages:
