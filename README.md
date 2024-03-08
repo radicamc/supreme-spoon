@@ -1,6 +1,8 @@
 # supreme-SPOON
 supreme-**S**teps to **P**rocess S**O**SS **O**bservatio**N**s
 
+⭐⭐ **Please note that supreme-SPOON will be undergoing a rebrand and future versions (>=1.4.0) will use a new name, exoTEDRF.** ⭐⭐
+
 **supreme-SPOON** is an end-to-end pipeline for NIRISS/SOSS time series observations (TSOs).
 The pipeline is divided into four stages:
  - Stage 1: Detector Level Processing 

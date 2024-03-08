@@ -33,6 +33,10 @@ timeseries : None
 timeseries_o2 : None
 # For 1/f correction; outlier pixel maps (optional).
 outlier_maps : None
+# Width, in pixels, of inner trace mask.
+inner_mask_width : 40
+# Width, in pixels, of outer trace mask.
+outer_mask_width : 70
 # For jump detection; whether to flag outliers up-the-ramp (jwst default).
 flag_up_ramp : False
 # For jump detection; sigma threshold for a pixel to be flagged as an outlier.
@@ -57,12 +61,6 @@ TracingStep : 'run'
 space_outlier_threshold : 15
 # For outlier detection; sigma threshold for a pixel to be flagged as an outlier, temporally.
 time_outlier_threshold : 10
-# If True, create a mask of the target trace orders.
-generate_tracemask : True
-# Width, in pixels, of inner trace mask. Only necessary if generate_tracemask is True.
-inner_mask_width : 40
-# Width, in pixels, of outer trace mask. Only necessary if generate_tracemask is True.
-outer_mask_width : 70
 # If True, calculate the stability of the SOSS trace over the course of the TSO using principle component analysis.
 calculate_stability : True
 # Number of principle components to extract. Only necessary if calculate_stability is True.
@@ -84,11 +82,9 @@ stage2_kwargs : {}
 extract_method : 'box'
 # Box width to extract around the trace center. Passing 'optimize' will find and use the aperture width that minimizes
 # the white light curve scatter.
-soss_width : 40
+soss_width : 35
 # Specprofile reference file for ATOCA (optional).
 specprofile : None
-# File with centroids for all three orders for box extraction (optional).
-centroids : None
 # Stellar effective temperature in K for wavelength calibration (optional).
 st_teff : None
 # Stellar log surface gravity for wavelength calibration (optional).
@@ -113,6 +109,8 @@ save_results : True
 force_redo : False
 # Integrations of ingress and/or egress.
 baseline_ints : [50, -50]
+# File with centroids for all three orders for box extraction and 1/f correction (optional).
+centroids : None
 # If True, make diagnostic plots.
 do_plots : True
 # ========================= END DMS CONFIG FILE =============================

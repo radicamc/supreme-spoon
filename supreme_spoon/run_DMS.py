@@ -11,7 +11,6 @@ Script to run JWST DMS with custom reduction steps.
 from datetime import datetime
 import numpy as np
 import os
-import pandas as pd
 import shutil
 import sys
 
@@ -67,14 +66,10 @@ for file in input_files:
 
 # Open some of the input files.
 background_model = np.load(config['background_file'])
-if np.ndim(background_model) == 3:
-    background_model = background_model[0]
 if config['timeseries'] is not None:
     config['timeseries'] = np.load(config['timeseries'])
 if config['timeseries_o2'] is not None:
     config['timeseries_o2'] = np.load(config['timeseries_o2'])
-if config['centroids'] is not None:
-    config['centroids'] = pd.read_csv(config['centroids'], comment='#')
 if config['f277w'] is not None:
     config['f277w'] = np.load(config['f277w'])
 
@@ -95,6 +90,8 @@ if 1 in config['run_stages']:
     stage1_results = run_stage1(input_files, background_model=background_model,
                                 baseline_ints=config['baseline_ints'],
                                 oof_method=config['oof_method'],
+                                inner_mask_width=config['inner_mask_width'],
+                                outer_mask_width=config['outer_mask_width'],
                                 save_results=config['save_results'],
                                 pixel_masks=config['outlier_maps'],
                                 force_redo=config['force_redo'],
@@ -107,6 +104,7 @@ if 1 in config['run_stages']:
                                 do_plot=config['do_plots'],
                                 timeseries=config['timeseries'],
                                 timeseries_o2=config['timeseries_o2'],
+                                centroids=config['centroids'],
                                 **config['stage1_kwargs'])
 else:
     stage1_results = input_files
@@ -141,9 +139,9 @@ if 2 in config['run_stages']:
                                 smoothing_scale=config['smoothing_scale'],
                                 skip_steps=stage2_skip,
                                 generate_lc=config['generate_lc'],
-                                generate_tracemask=config['generate_tracemask'],
                                 inner_mask_width=config['inner_mask_width'],
                                 outer_mask_width=config['outer_mask_width'],
+                                centroids=config['centroids'],
                                 pixel_masks=config['outlier_maps'],
                                 generate_order0_mask=config['generate_order0_mask'],
                                 f277w=config['f277w'],

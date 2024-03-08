@@ -47,6 +47,14 @@ def make_background_row_plot(before, after, background_model, row_start=230,
     else:
         bkg = background_model
 
+    # If SUBSTRIP96, change rows to use.
+    if np.shape(af)[-2] == 96:
+        sub96 = True
+        row_start = 5
+        row_end = 21
+    else:
+        sub96 = False
+
     # Create medians.
     if np.ndim(af) == 4:
         before = bn.nanmedian(bf[:, -1], axis=0)
@@ -70,8 +78,12 @@ def make_background_row_plot(before, after, background_model, row_start=230,
 
     plt.axvline(700, ls=':', c='grey')
     plt.axhline(0, ls=':', c='grey')
-    plt.ylim(np.min([np.nanmin(aafter), np.nanmin(bbefore[700:] - bkg_scale)]),
-             np.nanpercentile(bbefore, 95))
+    if sub96 is True:
+        plt.ylim(np.min([np.nanmin(aafter), np.nanmin(bbefore[700:] - bkg_scale)]),
+                 np.nanpercentile(bbefore, 75))
+    else:
+        plt.ylim(np.min([np.nanmin(aafter), np.nanmin(bbefore[700:] - bkg_scale)]),
+                 np.nanpercentile(bbefore, 95))
     plt.xlabel('Spectral Pixel', fontsize=12)
     plt.ylabel('Counts', fontsize=12)
 
@@ -399,7 +411,12 @@ def make_jump_location_plot(results, outfile=None, show_plot=True):
                                      fill=False)
                     ax.add_patch(marker)
 
-            ax.text(30, 230, '({0}, {1})'.format(i, g), c='white', fontsize=12)
+            if dimy == 96:
+                ax.text(30, 80, '({0}, {1})'.format(i, g), c='white',
+                        fontsize=12)
+            else:
+                ax.text(30, 230, '({0}, {1})'.format(i, g), c='white',
+                        fontsize=12)
             if j != 0:
                 ax.yaxis.set_major_formatter(plt.NullFormatter())
             else:
@@ -569,7 +586,7 @@ def make_linearity_plot(results, old_results, outfile=None, show_plot=True):
     """Plot group differences before and after linearity correction.
     """
 
-    fancyprint('Doing diagnostic plot.')
+    fancyprint('Doing diagnostic plot 1.')
     results = np.atleast_1d(results)
     old_results = np.atleast_1d(old_results)
     for i, file in enumerate(results):
@@ -624,6 +641,67 @@ def make_linearity_plot(results, old_results, outfile=None, show_plot=True):
     plt.ylabel('Differences [DN]', fontsize=12)
     plt.ylim(1.1*np.nanmin(old_med - np.nanmean(old_med)),
              1.1*np.nanmax(old_med - np.nanmean(old_med)))
+    plt.legend()
+
+    if outfile is not None:
+        plt.savefig(outfile, bbox_inches='tight')
+        fancyprint('Plot saved to {}'.format(outfile))
+    if show_plot is False:
+        plt.close()
+    else:
+        plt.show()
+
+
+def make_linearity_plot2(results, old_results, outfile=None, show_plot=True):
+    """Plot residuals to flat line before and after linearity correction.
+    """
+
+    fancyprint('Doing diagnostic plot 2.')
+    results = np.atleast_1d(results)
+    old_results = np.atleast_1d(old_results)
+    for i, file in enumerate(results):
+        with utils.open_filetype(file) as datamodel:
+            if i == 0:
+                cube = datamodel.data
+            else:
+                cube = np.concatenate([cube, datamodel.data])
+    for i, file in enumerate(old_results):
+        with utils.open_filetype(file) as datamodel:
+            if i == 0:
+                old_cube = datamodel.data
+            else:
+                old_cube = np.concatenate([old_cube, datamodel.data])
+
+    nint, ngroup, dimy, dimx = np.shape(cube)
+    # Get bright pixels in the trace.
+    stack = bn.nanmedian(cube[:, -1], axis=0)
+    ii = np.where((stack >= np.nanpercentile(stack, 80)) &
+                  (stack < np.nanpercentile(stack, 99)))
+    jj = np.random.randint(0, len(ii[0]), 1000)
+    y = ii[0][jj]
+    x = ii[1][jj]
+    i = np.random.randint(0, nint, 1000)
+
+    oold = np.zeros((1000, ngroup))
+    nnew = np.zeros((1000, ngroup))
+    for j in range(1000):
+        o = old_cube[i[j], :, y[j], x[j]]
+        ol = np.linspace(np.min(o), np.max(o), ngroup)
+        oold[j] = (o - ol) / np.max(o) * 100
+        n = cube[i[j], :, y[j], x[j]]
+        nl = np.linspace(np.min(n), np.max(n), ngroup)
+        nnew[j] = (n - nl) / np.max(n) * 100
+
+    # Plot up mean group differences before and after linearity correction.
+    plt.figure(figsize=(5, 3))
+    plt.plot(np.arange(ngroup)+1, np.nanmedian(oold, axis=0),
+             label='Before Correction', c='blue')
+    plt.plot(np.arange(ngroup)+1, np.nanmedian(nnew, axis=0),
+             label='After Correction', c='red')
+    plt.axhline(0, ls='--', c='black')
+    plt.xticks(np.arange(ngroup)+1, (np.arange(ngroup)+1).astype(str))
+    plt.xlabel('Group Number', fontsize=12)
+    plt.ylabel('Residual [%]', fontsize=12)
     plt.legend()
 
     if outfile is not None:
@@ -742,7 +820,7 @@ def make_oneoverf_plot(results, baseline_ints, timeseries=None,
 
 def make_oneoverf_psd(results, old_results, timeseries, baseline_ints,
                       nsample=25,  pixel_masks=None, tframe=5.494, tpix=1e-5,
-                      tgap=1.2e-4, outfile=None, show_plot=True, window=False):
+                      tgap=1.2e-4, outfile=None, show_plot=True):
     """Make a PSD plot to see PSD of background before and after 1/f removal.
     """
 
@@ -765,22 +843,12 @@ def make_oneoverf_psd(results, old_results, timeseries, baseline_ints,
                 old_cube = np.concatenate([old_cube, datamodel.data])
     old_cube = np.where(np.isnan(old_cube), np.nanmedian(old_cube), old_cube)
     if pixel_masks is not None:
-        if window is True:
-            for i, file in enumerate(pixel_masks):
-                mask_in = fits.getdata(file, 3)
-                mask_out = fits.getdata(file, 5)
-                window = ~(mask_out - mask_in).astype(bool)
-                if i == 0:
-                    mask_cube = window
-                else:
-                    mask_cube = np.concatenate([mask_cube, window])
-        else:
-            for i, file in enumerate(pixel_masks):
-                data = fits.getdata(file, 1)
-                if i == 0:
-                    mask_cube = data
-                else:
-                    mask_cube = np.concatenate([mask_cube, data])
+        for i, file in enumerate(pixel_masks):
+            data = fits.getdata(file)
+            if i == 0:
+                mask_cube = data
+            else:
+                mask_cube = np.concatenate([mask_cube, data])
 
     else:
         mask_cube = None
@@ -937,7 +1005,7 @@ def make_photon_noise_plot(spectrum_files, ngroup, baseline_ints, order=1,
             if order == 1:
                 wave = np.mean([spectrum[1].data[0], spectrum[2].data[0]],
                                axis=0)
-                ii = np.ones(2040)
+                ii = np.ones_like(wave)
             else:
                 wave = np.mean([spectrum[5].data[0], spectrum[6].data[0]],
                                axis=0)

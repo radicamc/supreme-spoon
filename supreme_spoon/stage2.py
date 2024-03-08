@@ -8,6 +8,10 @@ Created on Thurs Jul 21 17:33 2022
 Custom JWST DMS pipeline steps for Stage 2 (Spectroscopic processing).
 """
 
+from supreme_spoon.utils import fancyprint
+fancyprint('Future versions of this package will be under the name exoTEDRF. '
+           'Please update your installations accordingly.', msg_type='WARNING')
+
 from astropy.io import fits
 import bottleneck as bn
 import copy
@@ -120,12 +124,14 @@ class BackgroundStep:
     """Wrapper around custom Background Subtraction step.
     """
 
-    def __init__(self, input_data, background_model, output_dir='./'):
+    def __init__(self, input_data, baseline_ints, background_model,
+                 output_dir='./'):
         """Step initializer.
         """
 
         self.tag = 'backgroundstep.fits'
         self.background_model = background_model
+        self.baseline_ints = baseline_ints
         self.output_dir = output_dir
         self.datafiles = utils.sort_datamodels(input_data)
         self.fileroots = utils.get_filename_root(self.datafiles)
@@ -158,6 +164,7 @@ class BackgroundStep:
                 warnings.filterwarnings('ignore')
                 step_results = backgroundstep(self.datafiles,
                                               self.background_model,
+                                              baseline_ints=self.baseline_ints,
                                               output_dir=self.output_dir,
                                               save_results=save_results,
                                               fileroots=self.fileroots,
@@ -168,8 +175,8 @@ class BackgroundStep:
             # Do step plot if requested.
             if do_plot is True:
                 if save_results is True:
-                    plot_file1 = self.output_dir + self.tag.replace('.fits', '_1.pdf')
-                    plot_file2 = self.output_dir + self.tag.replace('.fits', '_2.pdf')
+                    plot_file1 = self.output_dir + self.tag.replace('.fits', '_1.png')
+                    plot_file2 = self.output_dir + self.tag.replace('.fits', '_2.png')
                 else:
 
                     plot_file1 = None
@@ -296,9 +303,7 @@ class TracingStep:
         self.fileroots = utils.get_filename_root(self.datafiles)
         self.fileroot_noseg = utils.get_filename_root_noseg(self.fileroots)
 
-    def run(self, generate_tracemask=True, inner_mask_width=40,
-            outer_mask_width=70, pixel_flags=None,
-            generate_order0_mask=True, f277w=None,
+    def run(self, pixel_flags=None, generate_order0_mask=True, f277w=None,
             calculate_stability=True, pca_components=10,
             save_results=True, force_redo=False, generate_lc=True,
             baseline_ints=None, smoothing_scale=None, do_plot=False,
@@ -319,25 +324,9 @@ class TracingStep:
             tracemask, order0mask, smoothed_lc = None, None, None
         # If no output files are detected, run the step.
         else:
-            # Attempt to find pixel mask files if none were passed.
-            if pixel_flags is None and generate_tracemask is True:
-                new_pixel_flags = []
-                s1_dir = self.output_dir.replace('Stage2', 'Stage1')
-                stage1_files = glob.glob(s1_dir + '*')
-                for root in self.fileroots:
-                    expected_file = s1_dir + root + 'pixelflags.fits'
-                    if expected_file in stage1_files:
-                        new_pixel_flags.append(expected_file)
-                # If some files were found, pass them to the function call.
-                if len(new_pixel_flags) > 0:
-                    pixel_flags = new_pixel_flags
-
             step_results = tracingstep(self.datafiles, self.deepframe,
                                        calculate_stability=calculate_stability,
                                        pca_components=pca_components,
-                                       generate_tracemask=generate_tracemask,
-                                       inner_mask_width=inner_mask_width,
-                                       outer_mask_width=outer_mask_width,
                                        pixel_flags=pixel_flags,
                                        generate_order0_mask=generate_order0_mask,
                                        f277w=f277w, generate_lc=generate_lc,
@@ -347,12 +336,12 @@ class TracingStep:
                                        save_results=save_results,
                                        fileroot_noseg=self.fileroot_noseg,
                                        do_plot=do_plot, show_plot=show_plot)
-            centroids, tracemask, order0mask, smoothed_lc = step_results
+            centroids, order0mask, smoothed_lc = step_results
 
-        return centroids, tracemask, order0mask, smoothed_lc
+        return centroids, order0mask, smoothed_lc
 
 
-def backgroundstep(datafiles, background_model, output_dir='./',
+def backgroundstep(datafiles, background_model, baseline_ints, output_dir='./',
                    save_results=True, fileroots=None, fileroot_noseg='',
                    scale1=None, background_coords1=None, scale2=None,
                    background_coords2=None, differential=False):
@@ -372,6 +361,8 @@ def backgroundstep(datafiles, background_model, output_dir='./',
         themselves.
     background_model : array-like[float]
         Background model. Should be 2D (dimy, dimx)
+    baseline_ints : array-like[int]
+        Integrations of ingress and egress.
     output_dir : str
         Directory to which to save outputs.
     save_results : bool
@@ -424,9 +415,10 @@ def backgroundstep(datafiles, background_model, output_dir='./',
 
     # Make median stack of all integrations to use for background scaling.
     # This is to limit the influence of cosmic rays, which can greatly effect
-    # the background scaling factor calculated for an individual inegration.
-    fancyprint('Generating a median stack using all integrations.')
-    stack = utils.make_deepstack(cube)
+    # the background scaling factor calculated for an individual integration.
+    fancyprint('Generating a median stack using baseline integrations.')
+    baseline_ints = utils.format_out_frames(baseline_ints)
+    stack = utils.make_deepstack(cube[baseline_ints])
     # If applied at the integration level, reshape median stack to 3D.
     if np.ndim(stack) != 3:
         dimy, dimx = np.shape(stack)
@@ -443,6 +435,7 @@ def backgroundstep(datafiles, background_model, output_dir='./',
     fancyprint('Calculating background model scaling.')
     model_scaled = np.zeros_like(stack)
     first_time = True
+    shifts = np.zeros(ngroup)
     for i in range(ngroup):
         if scale1 is None:
             if background_coords1 is None:
@@ -462,15 +455,18 @@ def backgroundstep(datafiles, background_model, output_dir='./',
                 # Convert to int if not already.
                 background_coords1 = np.array(background_coords1).astype(int)
                 xl, xu, yl, yu = background_coords1
-            bkg_ratio = stack[i, xl:xu, yl:yu] / background_model[xl:xu, yl:yu]
-            # Instead of a straight median, use the median of the 2nd quartile
-            # to limit the effect of any remaining illuminated pixels.
-            q1 = np.nanpercentile(bkg_ratio, 25)
-            q2 = np.nanpercentile(bkg_ratio, 50)
-            ii = np.where((bkg_ratio > q1) & (bkg_ratio < q2))
-            scale_factor1 = np.nanmedian(bkg_ratio[ii])
-            if scale_factor1 < 0 and differential is False:
-                scale_factor1 = 0
+            scale_factor1 = -1000
+            while scale_factor1 < 0:
+                bkg_ratio = (stack[i, xl:xu, yl:yu] + shifts[i]) / background_model[xl:xu, yl:yu]
+                # Instead of a straight median, use the median of the 2nd
+                # quartile to limit the effect of any remaining illuminated
+                # pixels.
+                q1 = np.nanpercentile(bkg_ratio, 25)
+                q2 = np.nanpercentile(bkg_ratio, 50)
+                ii = np.where((bkg_ratio > q1) & (bkg_ratio < q2))
+                scale_factor1 = np.nanmedian(bkg_ratio[ii])
+                if scale_factor1 < 0:
+                    shifts[i] -= scale_factor1 * np.median(background_model[xl:xu, yl:yu])
         else:
             scale_factor1 = scale1[i]
 
@@ -490,7 +486,7 @@ def backgroundstep(datafiles, background_model, output_dir='./',
                 # Convert to int if not already.
                 background_coords2 = np.array(background_coords2).astype(int)
                 xl, xu, yl, yu = background_coords2
-            bkg_ratio = stack[i, xl:xu, yl:yu] / background_model[xl:xu, yl:yu]
+            bkg_ratio = (stack[i, xl:xu, yl:yu] + shifts[i]) / background_model[xl:xu, yl:yu]
             # Instead of a straight median, use the median of the 2nd quartile
             # to limit the effect of any remaining illuminated pixels.
             q1 = np.nanpercentile(bkg_ratio, 25)
@@ -507,18 +503,18 @@ def backgroundstep(datafiles, background_model, output_dir='./',
         # Apply scaling to background model.
         if differential is True:
             fancyprint('Using differential background scale factors: {0:.5f}, '
-                       '{1:.5f}'.format(scale_factor1, scale_factor2))
+                       '{1:.5f}, and shift: {2:.5f}'.format(scale_factor1, scale_factor2, shifts[i]))
             # Locate background step.
             grad_bkg = np.gradient(background_model, axis=1)
             step_pos = np.argmax(grad_bkg[:, 10:-10], axis=1) + 10 - 4
             # Apply differential scaling to either side of step.
             for j in range(256):
-                model_scaled[i, j, :step_pos[j]] = background_model[j, :step_pos[j]] * scale_factor1
-                model_scaled[i, j, step_pos[j]:] = background_model[j, step_pos[j]:] * scale_factor2
+                model_scaled[i, j, :step_pos[j]] = background_model[j, :step_pos[j]] * scale_factor1 - shifts[i]
+                model_scaled[i, j, step_pos[j]:] = background_model[j, step_pos[j]:] * scale_factor2 - shifts[i]
         else:
-            fancyprint('Using background scale factor: {0:.5f}'
-                       ''.format(scale_factor1))
-            model_scaled[i] = background_model * scale_factor1
+            fancyprint('Using background scale factor: {0:.5f}, and shift: '
+                       '{1:.5f}'.format(scale_factor1, shifts[i]))
+            model_scaled[i] = background_model * scale_factor1 - shifts[i]
 
     # Loop over all segments in the exposure and subtract the background from
     # each of them.
@@ -626,8 +622,8 @@ def badpixstep(datafiles, baseline_ints, space_thresh=15, time_thresh=10,
     deepframe_itl = utils.make_deepstack(newdata[baseline_ints])
 
     # Get locations of all hot pixels.
-    hot_pix = utils.get_dq_flag_metrics(dq_cube[0], ['HOT', 'WARM',
-                                                     'DO_NOT_USE'])
+    hot_pix = utils.get_dq_flag_metrics(dq_cube[10], ['HOT', 'WARM',
+                                                      'DO_NOT_USE'])
 
     hotpix = np.zeros_like(deepframe_itl)
     nanpix = np.zeros_like(deepframe_itl)
@@ -687,8 +683,8 @@ def badpixstep(datafiles, baseline_ints, space_thresh=15, time_thresh=10,
     fancyprint('Starting temporal outlier flagging...')
     # Median filter the data.
     cube_filt = medfilt(newdata, (5, 1, 1))
-    cube_filt[0] = cube_filt[1]
-    cube_filt[-1] = cube_filt[-2]
+    cube_filt[:1] = cube_filt[2]
+    cube_filt[-2:] = cube_filt[-3]
     # Check along the time axis for outlier pixels.
     std_dev = bn.nanmedian(np.abs(0.5*(newdata[0:-2] + newdata[2:]) - newdata[1:-1]), axis=0)
     std_dev = np.where(std_dev == 0, np.nanmedian(std_dev), std_dev)
@@ -751,7 +747,7 @@ def badpixstep(datafiles, baseline_ints, space_thresh=15, time_thresh=10,
 
     if do_plot is True:
         if save_results is True:
-            outfile = output_dir + 'badpixstep.pdf'
+            outfile = output_dir + 'badpixstep.png'
         else:
             outfile = None
         hotpix = np.where(hotpix != 0)
@@ -764,23 +760,21 @@ def badpixstep(datafiles, baseline_ints, space_thresh=15, time_thresh=10,
 
 
 def tracingstep(datafiles, deepframe=None, calculate_stability=True,
-                pca_components=10, generate_tracemask=True,
-                inner_mask_width=40, outer_mask_width=70, pixel_flags=None,
+                pca_components=10, pixel_flags=None,
                 generate_order0_mask=False, f277w=None, generate_lc=True,
                 baseline_ints=None, smoothing_scale=None, output_dir='./',
                 save_results=True, fileroot_noseg='', do_plot=False,
                 show_plot=False):
     """A multipurpose step to perform some initial analysis of the 2D
     dataframes and produce products which can be useful in further reduction
-    iterations. The five functionalities are detailed below:
+    iterations. The four functionalities are detailed below:
     1. Locate the centroids of all three SOSS orders via the edgetrigger
     algorithm.
-    2. (optional) Generate a mask of the target diffraction orders.
-    3. (optional) Generate a mask of order 0 contaminants from background
+    2. (optional) Generate a mask of order 0 contaminants from background
     stars.
-    4. (optional) Calculate the stability of the SOSS traces over the course
+    3. (optional) Calculate the stability of the SOSS traces over the course
     of the TSO.
-    5. (optional) Create a smoothed estimate of the order 1 white light curve.
+    4. (optional) Create a smoothed estimate of the order 1 white light curve.
 
     Parameters
     ----------
@@ -795,14 +789,6 @@ def tracingstep(datafiles, deepframe=None, calculate_stability=True,
         PCA method.
     pca_components : int
         Number of PCA stability components to calcaulte.
-    generate_tracemask : bool
-        If True, generate a mask of the target diffraction orders.
-    inner_mask_width : int
-        Inner mask width, in pixels, around the trace centroids. Only
-        necesssary if generate_tracemask is True.
-    outer_mask_width : int
-        Outer mask width, in pixels, around the trace centroids. Only
-        necesssary if generate_tracemask is True.
     pixel_flags: None, str, array-like[str]
         Paths to files containing existing pixel flags to which the trace mask
         should be added. Only necesssary if generate_tracemask is True.
@@ -835,8 +821,6 @@ def tracingstep(datafiles, deepframe=None, calculate_stability=True,
     -------
     centroids : array-like[float]
         Trace centroids for all three orders.
-    tracemask : array-like[bool], None
-        If requested, the trace mask.
     order0mask : array-like[bool], None
         If requested, the order 0 mask.
     smoothed_lc : array-like[float], None
@@ -881,122 +865,8 @@ def tracingstep(datafiles, deepframe=None, calculate_stability=True,
     centroids = utils.get_trace_centroids(deepframe, tracetable, subarray,
                                           save_results=save_results,
                                           save_filename=save_filename)
-    x1, y1 = centroids[0][0], centroids[0][1]
-    x2, y2 = centroids[1][0], centroids[1][1]
-    x3, y3 = centroids[2][0], centroids[2][1]
 
-    # ===== PART 2: Create trace masks for each order =====
-    # If requested, create a trace mask for each order.
-    tracemask = None
-    if generate_tracemask is True:
-        fancyprint('Generating trace masks.')
-        # Get bounds of inner and outer masks.
-        low_in = np.max([np.zeros_like(y1),
-                         y1 - inner_mask_width/2], axis=0).astype(int)
-        up_in = np.min([dimy*np.ones_like(y1),
-                        y1 + inner_mask_width/2], axis=0).astype(int)
-        low_out = np.max([np.zeros_like(y1),
-                          y1 - outer_mask_width/2], axis=0).astype(int)
-        up_out = np.min([dimy*np.ones_like(y1),
-                         y1 + outer_mask_width/2], axis=0).astype(int)
-        # Create inner and outer masks.
-        mask1_in, mask1_out = np.zeros((dimy, dimx)), np.zeros((dimy, dimx))
-        for i, x in enumerate(x1):
-            mask1_in[low_in[i]:up_in[i], int(x)] = 1
-            mask1_out[low_out[i]:up_out[i], int(x)] = 1
-        # Include orders 2 and 3 for SUBSTRIP256.
-        if subarray != 'SUBSTRIP96':
-            # Order 2 -- inner and outer masks.
-            low_in = np.max([np.zeros_like(y2),
-                             y2 - inner_mask_width/2], axis=0).astype(int)
-            up_in = np.min([dimy*np.ones_like(y2),
-                            y2 + inner_mask_width/2], axis=0).astype(int)
-            low_out = np.max([np.zeros_like(y2),
-                              y2 - outer_mask_width/2], axis=0).astype(int)
-            up_out = np.min([dimy*np.ones_like(y2),
-                             y2 + outer_mask_width/2], axis=0).astype(int)
-            mask2_in, mask2_out = np.zeros((dimy, dimx)), np.zeros((dimy, dimx))
-            for i, x in enumerate(x2):
-                mask2_in[low_in[i]:up_in[i], int(x)] = 1
-                mask2_out[low_out[i]:up_out[i], int(x)] = 1
-            # Order 3 -- only need inner mask.
-            low = np.max([np.zeros_like(y3),
-                          y3 - inner_mask_width/2], axis=0).astype(int)
-            up = np.min([dimy*np.ones_like(y3),
-                         y3 + inner_mask_width/2], axis=0).astype(int)
-            mask3 = np.zeros((dimy, dimx))
-            for i, x in enumerate(x3):
-                mask3[low[i]:up[i], int(x)] = 1
-        # But not for SUBSTRIP96.
-        else:
-            mask2_in = np.zeros_like(mask1_in)
-            mask2_out = np.zeros_like(mask1_in)
-            mask3 = np.zeros_like(mask1_in)
-
-        # Combine the masks for each order.
-        tracemask = mask1_in.astype(bool) | mask2_in.astype(bool) |\
-            mask3.astype(bool)
-        # Make individual order masks.
-        mask_in1, mask_in2 = ~mask1_in.astype(bool), ~mask2_in.astype(bool)
-        # Make window masks.
-        mask_out1, mask_out2 = ~mask1_out.astype(bool), ~mask2_out.astype(bool)
-
-        # Save the trace mask to file if requested.
-        if save_results is True:
-            # If we are to combine the trace mask with existing pixel mask.
-            if pixel_flags is not None:
-                pixel_flags = np.atleast_1d(pixel_flags)
-                # Ensure there is one pixel flag file per data file
-                assert len(pixel_flags) == len(datafiles)
-                # Combine tracemask with existing flags and overwrite old file.
-                for flag_file in pixel_flags:
-                    # Check if file already has extensions with and without
-                    # trace mask.
-                    if len(fits.open(flag_file)) >= 3:
-                        old_flags = fits.getdata(flag_file, 2)
-                    else:
-                        old_flags = fits.getdata(flag_file)
-                    nint = np.shape(old_flags)[0]
-
-                    # Save all kinds of pixels maps.
-                    hdu = fits.PrimaryHDU()
-                    # First extension will be combined flags.
-                    this_flag = old_flags.astype(bool) | tracemask
-                    hdu1 = fits.ImageHDU(this_flag.astype(int))
-                    # Second extension is flags without the trace mask.
-                    hdu2 = fits.ImageHDU(old_flags.astype(int))
-                    # Third extension is inner order 1 mask.
-                    this_flag = np.repeat(mask_in1[np.newaxis], nint, axis=0)
-                    hdu3 = fits.ImageHDU(this_flag.astype(int))
-                    # Fourth extension is inner order 2 mask.
-                    this_flag = np.repeat(mask_in2[np.newaxis], nint, axis=0)
-                    hdu4 = fits.ImageHDU(this_flag.astype(int))
-                    # Fifth extension is outer order 1 mask.
-                    this_flag = np.repeat(mask_out1[np.newaxis], nint, axis=0)
-                    hdu5 = fits.ImageHDU(this_flag.astype(int))
-                    # Sixth extension is outer order 2 mask.
-                    this_flag = np.repeat(mask_out2[np.newaxis], nint, axis=0)
-                    hdu6 = fits.ImageHDU(this_flag.astype(int))
-                    # And write to file.
-                    hdul = fits.HDUList([hdu, hdu1, hdu2, hdu3, hdu4, hdu5,
-                                         hdu6])
-                    hdul.writeto(flag_file, overwrite=True)
-                # Overwrite old flags file.
-                parts = pixel_flags[0].split('seg')
-                outfile = parts[0] + 'seg' + 'XXX' + parts[1][3:]
-                fancyprint('Trace mask added to {}'.format(outfile))
-            else:
-                hdul = [fits.PrimaryHDU()]
-                to_save = [tracemask, mask_in1, mask_in2, mask_out1, mask_out2]
-                for item in to_save:
-                    hdul.append(fits.ImageHDU(item.astype(int)))
-                hdul = fits.HDUList(hdul)
-                suffix = 'tracemask.fits'
-                outfile = output_dir + fileroot_noseg + suffix
-                hdul.writeto(outfile, overwrite=True)
-                fancyprint('Trace mask saved to {}'.format(outfile))
-
-    # ===== PART 3: Create order 0 background contamination mask =====
+    # ===== PART 2: Create order 0 background contamination mask =====
     # If requested, create a mask for all background order 0 contaminants.
     order0mask = None
     if generate_order0_mask is True:
@@ -1023,25 +893,13 @@ def tracingstep(datafiles, deepframe=None, calculate_stability=True,
                     assert len(pixel_flags) == len(datafiles)
                     # Combine with existing flags and overwrite old file.
                     for flag_file in pixel_flags:
-                        hdul = [fits.PrimaryHDU()]
                         with fits.open(flag_file) as old_flags:
-                            for ext in range(1, len(old_flags)):
-                                # Add order 0 flags to first two extensions.
-                                if ext > 2:
-                                    this_flag = old_flags[ext].data
-                                    this_hdu = fits.ImageHDU(this_flag)
-                                    hdul.append(this_hdu)
-                                else:
-                                    this_flag = old_flags[ext].data.astype(bool) | order0mask.astype(bool)
-                                    this_hdu = fits.ImageHDU(this_flag.astype(int))
-                                    hdul.append(this_hdu)
-                        hdul = fits.HDUList(hdul)
-                        hdul.writeto(flag_file, overwrite=True)
+                            old_flags[0].data = old_flags[0].data.astype(bool) | order0mask.astype(bool)
+                        old_flags.writeto(flag_file, overwrite=True)
                     # Overwrite old flags file.
                     parts = pixel_flags[0].split('seg')
                     outfile = parts[0] + 'seg' + 'XXX' + parts[1][3:]
                     fancyprint('Order 0 mask added to {}'.format(outfile))
-
                 else:
                     hdu = fits.PrimaryHDU(order0mask)
                     suffix = 'order0_mask.fits'
@@ -1049,7 +907,7 @@ def tracingstep(datafiles, deepframe=None, calculate_stability=True,
                     hdu.writeto(outfile, overwrite=True)
                     fancyprint('Order 0 mask saved to {}'.format(outfile))
 
-    # ===== PART 4: Calculate the trace stability =====
+    # ===== PART 3: Calculate the trace stability =====
     # If requested, calculate the stability of the SOSS trace over the course
     # of the TSO using PCA.
     if calculate_stability is True:
@@ -1058,7 +916,7 @@ def tracingstep(datafiles, deepframe=None, calculate_stability=True,
                                      'soss_stability.'
 
         # Calculate the trace stability using PCA.
-        outfile = output_dir + 'soss_stability_pca.pdf'
+        outfile = output_dir + 'soss_stability_pca.png'
         pcs, var = soss_stability_pca(cube, n_components=pca_components,
                                       outfile=outfile, do_plot=do_plot,
                                       show_plot=show_plot)
@@ -1078,7 +936,7 @@ def tracingstep(datafiles, deepframe=None, calculate_stability=True,
             df = pd.DataFrame(data=stability_results)
             df.to_csv(output_dir + fileroot_noseg + suffix, index=False)
 
-    # ===== PART 5: Calculate a smoothed light curve =====
+    # ===== PART 4: Calculate a smoothed light curve =====
     # If requested, generate a smoothed estimate of the order 1 white light
     # curve.
     smoothed_lc = None
@@ -1105,7 +963,7 @@ def tracingstep(datafiles, deepframe=None, calculate_stability=True,
             fancyprint('Smoothed light curve saved to {}'.format(outfile))
             np.save(outfile, smoothed_lc)
 
-    return centroids, tracemask, order0mask, smoothed_lc
+    return centroids, order0mask, smoothed_lc
 
 
 def make_order0_mask_from_f277w(f277w, thresh_std=1, thresh_size=10):
@@ -1143,7 +1001,10 @@ def make_order0_mask_from_f277w(f277w, thresh_std=1, thresh_size=10):
         for group in mit.consecutive_groups(vals):
             group = list(group)
             if len(group) > thresh_size:
-                mask[group, col] = 1
+                # Extend 3 columns and rows to either size.
+                min_g = np.max([0, np.min(group) - 3])
+                max_g = np.min([dimy - 1, np.max(group) + 3])
+                mask[min_g:max_g, (col - 3):(col + 3)] = 1
 
     return mask
 
@@ -1209,10 +1070,10 @@ def run_stage2(results, background_model, baseline_ints, save_results=True,
                calculate_stability=True, pca_components=10, timeseries=None,
                timeseries_o2=None, oof_method='scale-achromatic',
                root_dir='./', output_tag='', smoothing_scale=None,
-               skip_steps=None, generate_lc=True, generate_tracemask=True,
-               inner_mask_width=40, outer_mask_width=70, pixel_masks=None,
+               skip_steps=None, generate_lc=True, inner_mask_width=40,
+               outer_mask_width=70, pixel_masks=None,
                generate_order0_mask=True, f277w=None, do_plot=False,
-               show_plot=False, **kwargs):
+               show_plot=False, centroids=None, **kwargs):
     """Run the supreme-SPOON Stage 2 pipeline: spectroscopic processing,
     using a combination of official STScI DMS and custom steps. Documentation
     for the official DMS steps can be found here:
@@ -1257,14 +1118,10 @@ def run_stage2(results, background_model, baseline_ints, save_results=True,
         Step names to skip (if any).
     generate_lc : bool
         If True, produce a smoothed order 1 white light curve.
-    generate_tracemask : bool
-        If True, generate a mask of the target diffraction orders.
     inner_mask_width : int
-        Inner mask width, in pixels, around the trace centroids. Only
-        necesssary if generate_tracemask is True.
+        Inner mask width, in pixels, around the trace centroids.
     outer_mask_width : int
-        Outer mask width, in pixels, around the trace centroids. Only
-        necesssary if generate_tracemask is True.
+        Outer mask width, in pixels, around the trace centroids.
     pixel_masks: None, str, array-like[str]
         Paths to files containing existing pixel flags to which the trace mask
         should be added. Only necesssary if generate_tracemask is True.
@@ -1279,6 +1136,8 @@ def run_stage2(results, background_model, baseline_ints, save_results=True,
     show_plot : bool
         Only necessary if do_plot is True. Show the diagnostic plots in
         addition to/instead of saving to file.
+    centroids : str, None
+        Path to file containing trace positions for all orders.
 
     Returns
     -------
@@ -1341,7 +1200,8 @@ def run_stage2(results, background_model, baseline_ints, save_results=True,
             step_kwargs = kwargs['BackgroundStep']
         else:
             step_kwargs = {}
-        step = BackgroundStep(results, background_model=background_model,
+        step = BackgroundStep(results, baseline_ints=baseline_ints,
+                              background_model=background_model,
                               output_dir=outdir)
         results = step.run(save_results=save_results, force_redo=force_redo,
                            do_plot=do_plot, show_plot=show_plot,
@@ -1358,10 +1218,12 @@ def run_stage2(results, background_model, baseline_ints, save_results=True,
                                    output_dir=outdir, method=oof_method,
                                    timeseries=timeseries,
                                    timeseries_o2=timeseries_o2,
-                                   pixel_masks=pixel_masks)
+                                   pixel_masks=pixel_masks,
+                                   centroids=centroids)
         results = step.run(save_results=save_results, force_redo=force_redo,
                            do_plot=do_plot, show_plot=show_plot,
-                           **step_kwargs)
+                           inner_mask_width=inner_mask_width,
+                           outer_mask_width=outer_mask_width, **step_kwargs)
 
     # ===== Bad Pixel Correction Step =====
     # Custom DMS step.
@@ -1386,10 +1248,7 @@ def run_stage2(results, background_model, baseline_ints, save_results=True,
     if 'TracingStep' not in skip_steps:
         step = TracingStep(results, deepframe=deepframe, output_dir=outdir)
         step.run(calculate_stability=calculate_stability,
-                 pca_components=pca_components,
-                 generate_tracemask=generate_tracemask,
-                 inner_mask_width=inner_mask_width,
-                 outer_mask_width=outer_mask_width, pixel_flags=pixel_masks,
+                 pca_components=pca_components, pixel_flags=pixel_masks,
                  generate_order0_mask=generate_order0_mask, f277w=f277w,
                  generate_lc=generate_lc, baseline_ints=baseline_ints,
                  smoothing_scale=smoothing_scale, save_results=save_results,
